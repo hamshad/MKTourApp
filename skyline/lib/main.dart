@@ -13,6 +13,8 @@ import 'features/booking/destination_search_screen.dart';
 import 'features/booking/vehicle_selection_panel.dart';
 import 'features/booking/confirm_booking_screen.dart';
 import 'features/ride/ride_assigned_screen.dart';
+import 'features/ride/driver_assigned_screen.dart';
+import 'features/ride/ride_complete_screen.dart';
 
 void main() {
   runApp(
@@ -45,7 +47,22 @@ class RideEaseApp extends StatelessWidget {
         '/destination-search': (context) => const DestinationSearchScreen(),
         '/vehicle-selection': (context) => const VehicleSelectionScreen(),
         '/confirm-booking': (context) => const ConfirmBookingScreen(),
-        '/ride-assigned': (context) => const RideAssignedScreen(),
+      },
+      onGenerateRoute: (settings) {
+        // Handle routes with arguments dynamically
+        if (settings.name == '/ride-assigned') {
+          final args = settings.arguments as Map<String, dynamic>?;
+          return MaterialPageRoute(
+            builder: (context) => DriverAssignedScreen(bookingData: args ?? {}),
+          );
+        }
+        if (settings.name == '/ride-complete') {
+          final args = settings.arguments as Map<String, dynamic>?;
+          return MaterialPageRoute(
+            builder: (context) => RideCompleteScreen(rideData: args ?? {}),
+          );
+        }
+        return null;
       },
     );
   }

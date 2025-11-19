@@ -29,6 +29,8 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
   Widget build(BuildContext context) {
     final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     final destination = args?['destination'] ?? {'name': 'Destination', 'address': ''};
+    print('🚗 VEHICLE SELECTION: Screen loaded');
+    print('🚗 VEHICLE SELECTION: Destination = $destination');
 
     return Scaffold(
       body: Stack(
@@ -242,11 +244,14 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
                     width: double.infinity,
                     child: ElevatedButton(
                       onPressed: () {
+                        final selectedVehicle = AppConstants.vehicleTypes[_selectedVehicleIndex];
+                        print('🚗 VEHICLE SELECTION: Selected vehicle: ${selectedVehicle['name']}');
+                        print('🚗 VEHICLE SELECTION: Navigating to /confirm-booking');
                         Navigator.pushNamed(
                           context, 
                           '/confirm-booking',
                           arguments: {
-                            'vehicle': AppConstants.vehicleTypes[_selectedVehicleIndex],
+                            'vehicle': selectedVehicle,
                             'destination': destination,
                           },
                         );

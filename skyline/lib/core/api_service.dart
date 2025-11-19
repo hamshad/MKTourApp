@@ -76,6 +76,7 @@ class ApiService {
             'success': true,
             'bookingId': "book_mock_${DateTime.now().millisecondsSinceEpoch}",
             'status': "driver_assigned",
+            'otp': "1234",  // Add OTP to mock
             'driver': { "name": "Mock Driver", "vehicle": "Mock Car", "plate": "MOCK 123", "rating": 5.0 },
             'eta': "5 mins",
             'fare': 15.50
@@ -95,6 +96,45 @@ class ApiService {
       return {
         'status': 'driver_assigned',
         'location': {'lat': 51.5074, 'lng': -0.1278}
+      };
+    }
+  }
+  
+  static Future<Map<String, dynamic>> completeRide({
+    required String bookingId,
+    required int rating,
+    required double tip,
+    required String feedback,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('${AppConstants.apiBaseUrl}/complete-ride'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'bookingId': bookingId,
+          'rating': rating,
+          'tip': tip,
+          'feedback': feedback,
+        }),
+      );
+      
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception('Failed to complete ride');
+      }
+    } catch (e) {
+      print('API Error: $e. Returning mock completion.');
+      return {
+        'success': true,
+        'fare': {
+          'base': 2.50,
+          'distance': 8.20,
+          'time': 2.30,
+          'subtotal': 13.00,
+          'tip': tip,
+          'total': 13.00 + tip,
+        },
       };
     }
   }

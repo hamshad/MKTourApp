@@ -16,6 +16,10 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
   Future<void> _confirmBooking(Map<String, dynamic> vehicle, Map<String, dynamic> destination) async {
     setState(() => _isLoading = true);
     
+    print('✅ CONFIRM BOOKING: Booking ride...');
+    print('✅ CONFIRM BOOKING: Vehicle = ${vehicle['name']}');
+    print('✅ CONFIRM BOOKING: Destination = ${destination['name']}');
+    
     // Call API
     final apiService = ApiService();
     final result = await apiService.bookRide({
@@ -27,6 +31,9 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
     setState(() => _isLoading = false);
     
     if (result['success'] == true && mounted) {
+      print('✅ CONFIRM BOOKING: Booking successful!');
+      print('✅ CONFIRM BOOKING: OTP = ${result['otp']}');
+      print('✅ CONFIRM BOOKING: Navigating to /ride-assigned');
       Navigator.pushNamedAndRemoveUntil(
         context, 
         '/ride-assigned', 
@@ -42,9 +49,23 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
   Widget build(BuildContext context) {
     final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     final vehicle = args?['vehicle'];
-    final destination = args?['destination'];
+    final destinationArg = args?['destination'];
+    
+    // Handle both Map and String types for destination
+    final Map<String, dynamic> destination;
+    if (destinationArg is Map<String, dynamic>) {
+      destination = destinationArg;
+    } else if (destinationArg is String) {
+      destination = {'name': destinationArg, 'address': ''};
+    } else {
+      destination = {'name': 'Unknown destination', 'address': ''};
+    }
+    
+    print('✅ CONFIRM BOOKING: Screen loaded');
+    print('✅ CONFIRM BOOKING: Vehicle = ${vehicle?['name']}');
+    print('✅ CONFIRM BOOKING: Destination = ${destination['name']}');
 
-    if (vehicle == null || destination == null) {
+    if (vehicle == null) {
       return const Scaffold(body: Center(child: Text('Error: Missing booking details')));
     }
 
