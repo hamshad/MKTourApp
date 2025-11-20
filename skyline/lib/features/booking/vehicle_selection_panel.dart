@@ -15,7 +15,6 @@ class VehicleSelectionScreen extends StatefulWidget {
 class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
   final PanelController _panelController = PanelController();
   int _selectedVehicleIndex = 0;
-  bool _bookNow = true;
   
   // Route points (Mock)
   final List<LatLng> _route = [
@@ -29,8 +28,6 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
   Widget build(BuildContext context) {
     final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     final destination = args?['destination'] ?? {'name': 'Destination', 'address': ''};
-    print('🚗 VEHICLE SELECTION: Screen loaded');
-    print('🚗 VEHICLE SELECTION: Destination = $destination');
 
     return Scaffold(
       body: Stack(
@@ -51,7 +48,7 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
                   Polyline(
                     points: _route,
                     strokeWidth: 4.0,
-                    color: Theme.of(context).primaryColor,
+                    color: AppTheme.primaryColor,
                   ),
                 ],
               ),
@@ -90,177 +87,190 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
           // Vehicle Selection Panel
           SlidingUpPanel(
             controller: _panelController,
-            minHeight: 320,
-            maxHeight: 450,
+            minHeight: 400,
+            maxHeight: 600,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            panel: Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[300],
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Select your ride',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                  ),
-                  const SizedBox(height: 20),
-                  // Vehicle List
-                  SizedBox(
-                    height: 140,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: AppConstants.vehicleTypes.length,
-                      separatorBuilder: (context, index) => const SizedBox(width: 12),
-                      itemBuilder: (context, index) {
-                        final vehicle = AppConstants.vehicleTypes[index];
-                        final isSelected = _selectedVehicleIndex == index;
-                        
-                        return GestureDetector(
-                          onTap: () => setState(() => _selectedVehicleIndex = index),
-                          child: Container(
-                            width: 120,
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: isSelected ? Theme.of(context).primaryColor.withOpacity(0.05) : Colors.white,
-                              border: Border.all(
-                                color: isSelected ? Theme.of(context).primaryColor : Colors.grey.shade200,
-                                width: 2,
-                              ),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                // Icon placeholder
-                                Icon(
-                                  Icons.local_taxi, 
-                                  size: 40, 
-                                  color: isSelected ? Theme.of(context).primaryColor : Colors.grey,
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  vehicle['name'],
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: isSelected ? Theme.of(context).primaryColor : Colors.black,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  '£${vehicle['basePrice']}',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    color: isSelected ? Theme.of(context).primaryColor : Colors.grey,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  // Book Now / Later Toggle
-                  Container(
-                    padding: const EdgeInsets.all(4),
+            panel: Column(
+              children: [
+                const SizedBox(height: 12),
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
                     decoration: BoxDecoration(
-                      color: Colors.grey[100],
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () => setState(() => _bookNow = true),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              decoration: BoxDecoration(
-                                color: _bookNow ? Colors.white : Colors.transparent,
-                                borderRadius: BorderRadius.circular(8),
-                                boxShadow: _bookNow ? [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.05),
-                                    blurRadius: 4,
-                                  )
-                                ] : [],
-                              ),
-                              child: Center(
-                                child: Text(
-                                  'Book Now',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    color: _bookNow ? Colors.black : Colors.grey,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () => setState(() => _bookNow = false),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              decoration: BoxDecoration(
-                                color: !_bookNow ? Colors.white : Colors.transparent,
-                                borderRadius: BorderRadius.circular(8),
-                                boxShadow: !_bookNow ? [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.05),
-                                    blurRadius: 4,
-                                  )
-                                ] : [],
-                              ),
-                              child: Center(
-                                child: Text(
-                                  'Schedule',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    color: !_bookNow ? Colors.black : Colors.grey,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2),
                     ),
                   ),
-                  const Spacer(),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        final selectedVehicle = AppConstants.vehicleTypes[_selectedVehicleIndex];
-                        print('🚗 VEHICLE SELECTION: Selected vehicle: ${selectedVehicle['name']}');
-                        print('🚗 VEHICLE SELECTION: Navigating to /confirm-booking');
-                        Navigator.pushNamed(
-                          context, 
-                          '/confirm-booking',
-                          arguments: {
-                            'vehicle': selectedVehicle,
-                            'destination': destination,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Choose a ride',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: ListView.separated(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    itemCount: AppConstants.vehicleTypes.length,
+                    separatorBuilder: (context, index) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final vehicle = AppConstants.vehicleTypes[index];
+                      final isSelected = _selectedVehicleIndex == index;
+                      
+                      return InkWell(
+                        onTap: () => setState(() => _selectedVehicleIndex = index),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          decoration: BoxDecoration(
+                            color: isSelected ? AppTheme.surfaceColor : Colors.transparent,
+                            borderRadius: BorderRadius.circular(12),
+                            border: isSelected ? Border.all(color: AppTheme.primaryColor, width: 2) : null,
+                          ),
+                          child: Row(
+                            children: [
+                              // Vehicle Image/Icon
+                              Container(
+                                width: 80,
+                                height: 60,
+                                margin: const EdgeInsets.symmetric(horizontal: 12),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[100],
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Icon(
+                                  Icons.local_taxi,
+                                  size: 40,
+                                  color: AppTheme.primaryColor,
+                                ),
+                              ),
+                              
+                              // Details
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Text(
+                                          vehicle['name'],
+                                          style: const TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                            color: AppTheme.textPrimary,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        const Icon(Icons.person, size: 14, color: AppTheme.textSecondary),
+                                        Text(
+                                          '4',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            color: AppTheme.textSecondary,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '12:05 PM drop-off',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: AppTheme.textSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              
+                              // Price
+                              Padding(
+                                padding: const EdgeInsets.only(right: 16),
+                                child: Text(
+                                  '£${vehicle['basePrice']}',
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppTheme.textPrimary,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                
+                // Payment & Book Button
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 10,
+                        offset: const Offset(0, -5),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.payment, color: AppTheme.textPrimary),
+                          const SizedBox(width: 12),
+                          const Text(
+                            'Personal • Visa **** 4242',
+                            style: TextStyle(fontWeight: FontWeight.w500),
+                          ),
+                          const Spacer(),
+                          TextButton(
+                            onPressed: () {},
+                            child: const Text('Switch'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 56,
+                        child: ElevatedButton(
+                          onPressed: () {
+                            final selectedVehicle = AppConstants.vehicleTypes[_selectedVehicleIndex];
+                            Navigator.pushNamed(
+                              context, 
+                              '/confirm-booking',
+                              arguments: {
+                                'vehicle': selectedVehicle,
+                                'destination': destination,
+                              },
+                            );
                           },
-                        );
-                      },
-                      child: Text('Choose ${AppConstants.vehicleTypes[_selectedVehicleIndex]['name']}'),
-                    ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primaryColor,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: Text(
+                            'Choose ${AppConstants.vehicleTypes[_selectedVehicleIndex]['name']}',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ],

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import '../../core/api_service.dart';
 import '../../core/theme.dart';
 
@@ -12,13 +13,10 @@ class ConfirmBookingScreen extends StatefulWidget {
 
 class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
   bool _isLoading = false;
+  final TextEditingController _notesController = TextEditingController();
 
   Future<void> _confirmBooking(Map<String, dynamic> vehicle, Map<String, dynamic> destination) async {
     setState(() => _isLoading = true);
-    
-    print('✅ CONFIRM BOOKING: Booking ride...');
-    print('✅ CONFIRM BOOKING: Vehicle = ${vehicle['name']}');
-    print('✅ CONFIRM BOOKING: Destination = ${destination['name']}');
     
     // Call API
     final apiService = ApiService();
@@ -26,14 +24,12 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
       'pickup': 'Current Location',
       'destination': destination['name'],
       'vehicleType': vehicle['id'],
+      'notes': _notesController.text,
     });
     
     setState(() => _isLoading = false);
     
     if (result['success'] == true && mounted) {
-      print('✅ CONFIRM BOOKING: Booking successful!');
-      print('✅ CONFIRM BOOKING: OTP = ${result['otp']}');
-      print('✅ CONFIRM BOOKING: Navigating to /ride-assigned');
       Navigator.pushNamedAndRemoveUntil(
         context, 
         '/ride-assigned', 
@@ -51,7 +47,6 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
     final vehicle = args?['vehicle'];
     final destinationArg = args?['destination'];
     
-    // Handle both Map and String types for destination
     final Map<String, dynamic> destination;
     if (destinationArg is Map<String, dynamic>) {
       destination = destinationArg;
@@ -60,18 +55,15 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
     } else {
       destination = {'name': 'Unknown destination', 'address': ''};
     }
-    
-    print('✅ CONFIRM BOOKING: Screen loaded');
-    print('✅ CONFIRM BOOKING: Vehicle = ${vehicle?['name']}');
-    print('✅ CONFIRM BOOKING: Destination = ${destination['name']}');
 
     if (vehicle == null) {
       return const Scaffold(body: Center(child: Text('Error: Missing booking details')));
     }
 
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('Confirm Booking'),
+        title: const Text('Confirm Booking', style: TextStyle(color: Colors.black)),
         centerTitle: true,
         backgroundColor: Colors.white,
         elevation: 0,
@@ -80,112 +72,190 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Route Summary
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.grey[50],
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.shade200),
+      body: Column(
+        children: [
+          // Map Snapshot (Mock)
+          SizedBox(
+            height: 200,
+            child: FlutterMap(
+              options: MapOptions(
+                initialCenter: const LatLng(51.5085, -0.1260),
+                initialZoom: 14.0,
+                interactionOptions: const InteractionOptions(flags: InteractiveFlag.none),
               ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.example.skyline',
+                ),
+                MarkerLayer(
+                  markers: [
+                    const Marker(
+                      point: LatLng(51.5074, -0.1278),
+                      width: 20,
+                      height: 20,
+                      child: Icon(Icons.my_location, color: Colors.blue),
+                    ),
+                    const Marker(
+                      point: LatLng(51.5100, -0.1240),
+                      width: 30,
+                      height: 30,
+                      child: Icon(Icons.location_on, color: Colors.red, size: 30),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24.0),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Trip Details
                   Row(
                     children: [
-                      const Icon(Icons.my_location, color: Colors.blue, size: 20),
-                      const SizedBox(width: 12),
-                      const Text('Current Location', style: TextStyle(fontWeight: FontWeight.w500)),
+                      Column(
+                        children: [
+                          const Icon(Icons.my_location, color: Colors.blue, size: 16),
+                          Container(height: 24, width: 2, color: Colors.grey[300]),
+                          const Icon(Icons.location_on, color: Colors.red, size: 16),
+                        ],
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Current Location',
+                              style: TextStyle(fontWeight: FontWeight.w500),
+                            ),
+                            const SizedBox(height: 24),
+                            Text(
+                              destination['name'],
+                              style: const TextStyle(fontWeight: FontWeight.w500),
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
-                  Container(
-                    margin: const EdgeInsets.only(left: 9),
-                    height: 20,
-                    decoration: BoxDecoration(
-                      border: Border(left: BorderSide(color: Colors.grey.shade300, width: 2)),
-                    ),
-                  ),
+                  
+                  const SizedBox(height: 32),
+                  const Divider(),
+                  const SizedBox(height: 16),
+                  
+                  // Vehicle Info
                   Row(
                     children: [
-                      const Icon(Icons.location_on, color: Colors.red, size: 20),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          destination['name'], 
-                          style: const TextStyle(fontWeight: FontWeight.w500),
-                          overflow: TextOverflow.ellipsis,
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          borderRadius: BorderRadius.circular(8),
                         ),
+                        child: Icon(Icons.local_taxi, color: AppTheme.primaryColor, size: 32),
+                      ),
+                      const SizedBox(width: 16),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            vehicle['name'],
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const Text(
+                            '12:05 PM drop-off',
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                      const Spacer(),
+                      Text(
+                        '£${vehicle['basePrice']}',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  
+                  const SizedBox(height: 24),
+                  
+                  // Notes
+                  TextField(
+                    controller: _notesController,
+                    decoration: InputDecoration(
+                      hintText: 'Add a note for driver...',
+                      filled: true,
+                      fillColor: Colors.grey[50],
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      prefixIcon: const Icon(Icons.edit_note),
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 24),
+                  
+                  // Payment
+                  Row(
+                    children: [
+                      const Icon(Icons.payment, color: Colors.grey),
+                      const SizedBox(width: 12),
+                      const Text('Visa **** 4242'),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () {},
+                        child: const Text('Change'),
                       ),
                     ],
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 24),
-            
-            // Vehicle Summary
-            Text('Vehicle', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 12),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).primaryColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(Icons.local_taxi, color: Theme.of(context).primaryColor),
-              ),
-              title: Text(vehicle['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: Text(vehicle['description']),
-              trailing: Text(
-                '£${vehicle['basePrice']}',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: Theme.of(context).primaryColor,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            const Divider(height: 32),
-            
-            // Payment Method
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Payment Method'),
-                Row(
-                  children: [
-                    const Icon(Icons.apple, size: 20),
-                    const SizedBox(width: 4),
-                    const Text('Apple Pay', style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(width: 8),
-                    Text('Change', style: TextStyle(color: Theme.of(context).primaryColor)),
-                  ],
-                ),
-              ],
-            ),
-            
-            const Spacer(),
-            
-            SizedBox(
+          ),
+          
+          // Confirm Button
+          Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: SizedBox(
               width: double.infinity,
+              height: 56,
               child: ElevatedButton(
                 onPressed: _isLoading ? null : () => _confirmBooking(vehicle, destination),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
                 child: _isLoading
                     ? const SizedBox(
-                        height: 20,
-                        width: 20,
+                        height: 24,
+                        width: 24,
                         child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                       )
-                    : const Text('Confirm Booking'),
+                    : const Text(
+                        'Confirm Booking',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

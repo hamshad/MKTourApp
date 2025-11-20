@@ -217,6 +217,29 @@ class _LoginScreenState extends State<LoginScreen> {
                     ],
                   ),
                 ),
+
+                const SizedBox(height: 32),
+
+                // Driver Login
+                Center(
+                  child: TextButton(
+                    onPressed: () {
+                      // Navigate to Driver Home (Mock)
+                      Navigator.pushReplacementNamed(context, '/driver-home');
+                    },
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppTheme.textSecondary,
+                    ),
+                    child: const Text(
+                      'Login as Driver',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
               ],
             ),
           ),

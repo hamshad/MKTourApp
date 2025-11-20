@@ -1,0 +1,472 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:sliding_up_panel/sliding_up_panel.dart';
+import '../../core/theme.dart';
+import 'driver_request_panel.dart';
+import 'driver_navigation_panel.dart';
+
+class DriverHomeScreen extends StatefulWidget {
+  const DriverHomeScreen({super.key});
+
+  @override
+  State<DriverHomeScreen> createState() => _DriverHomeScreenState();
+}
+
+class _DriverHomeScreenState extends State<DriverHomeScreen> {
+  // Status: offline, online, request, pickup, arrived, in_progress, complete
+  String _status = 'offline';
+  final PanelController _panelController = PanelController();
+  
+  // Mock location
+  LatLng _currentLocation = const LatLng(51.5085, -0.1260);
+
+  void _toggleOnline() {
+    setState(() {
+      if (_status == 'offline') {
+        _status = 'online';
+        // Simulate incoming request after 3 seconds
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted && _status == 'online') {
+            setState(() => _status = 'request');
+          }
+        });
+      } else {
+        _status = 'offline';
+      }
+    });
+  }
+
+  void _handleRideAction() {
+    if (_status == 'arrived') {
+      _showOtpDialog();
+      return;
+    }
+
+    setState(() {
+      switch (_status) {
+        case 'request':
+          _status = 'pickup';
+          break;
+        case 'pickup':
+          _status = 'arrived';
+          break;
+        case 'in_progress':
+          _status = 'complete';
+          // Reset to online after short delay
+          Future.delayed(const Duration(seconds: 2), () {
+            if (mounted) setState(() => _status = 'online');
+          });
+          break;
+      }
+    });
+  }
+
+  void _showOtpDialog() {
+    final TextEditingController otpController = TextEditingController();
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Enter OTP'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Ask passenger for the 4-digit PIN'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: otpController,
+              keyboardType: TextInputType.number,
+              maxLength: 4,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 24, letterSpacing: 8),
+              decoration: const InputDecoration(
+                hintText: '0000',
+                counterText: '',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (otpController.text == '1234') { // Mock OTP
+                Navigator.pop(context);
+                setState(() => _status = 'in_progress');
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('OTP Verified! Trip Started.')),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Invalid OTP. Try 1234'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryColor,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Verify & Start'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Stack(
+        children: [
+          // Map
+          FlutterMap(
+            options: MapOptions(
+              initialCenter: _currentLocation,
+              initialZoom: 14.0,
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.example.skyline',
+              ),
+              MarkerLayer(
+                markers: [
+                  Marker(
+                    point: _currentLocation,
+                    width: 40,
+                    height: 40,
+                    child: const Icon(Icons.directions_car, color: AppTheme.primaryColor, size: 40),
+                  ),
+                  if (_status == 'pickup' || _status == 'in_progress')
+                    const Marker(
+                      point: LatLng(51.5074, -0.1278), // Destination/Pickup
+                      width: 40,
+                      height: 40,
+                      child: Icon(Icons.location_on, color: Colors.red, size: 40),
+                    ),
+                ],
+              ),
+              if (_status == 'pickup' || _status == 'in_progress')
+                PolylineLayer(
+                  polylines: [
+                    Polyline(
+                      points: [_currentLocation, const LatLng(51.5074, -0.1278)],
+                      strokeWidth: 4.0,
+                      color: AppTheme.primaryColor,
+                    ),
+                  ],
+                ),
+            ],
+          ),
+          
+          // Top Bar (Earnings & Status)
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Earnings Pill
+                  GestureDetector(
+                    onTap: () => Navigator.pushNamed(context, '/driver-earnings'),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.1),
+                            blurRadius: 10,
+                          ),
+                        ],
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.account_balance_wallet, color: AppTheme.primaryColor),
+                          SizedBox(width: 8),
+                          Text(
+                            '£142.50',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  
+                  // Profile Button
+                  CircleAvatar(
+                    backgroundColor: Colors.white,
+                    child: IconButton(
+                      icon: const Icon(Icons.person, color: Colors.black),
+                      onPressed: () => Navigator.pushNamed(context, '/driver-profile'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          
+          // Bottom UI based on Status
+          if (_status == 'offline' || _status == 'online')
+            _buildOfflineOnlinePanel(context)
+          else if (_status == 'request')
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: DriverRequestPanel(
+                onAccept: _handleRideAction,
+                onDecline: () => setState(() => _status = 'online'),
+              ),
+            )
+          else
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: DriverNavigationPanel(
+                status: _status,
+                onAction: _handleRideAction,
+              ),
+            ),
+            
+          // Complete Trip Overlay
+          if (_status == 'complete')
+            Container(
+              color: Colors.black.withOpacity(0.7),
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.all(32),
+                  margin: const EdgeInsets.all(32),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.check_circle, color: Colors.green, size: 64),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Trip Completed!',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'You earned £14.50',
+                        style: TextStyle(
+                          fontSize: 18,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOfflineOnlinePanel(BuildContext context) {
+    return SlidingUpPanel(
+      controller: _panelController,
+      minHeight: 160,
+      maxHeight: 400,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      panel: Column(
+        children: [
+          const SizedBox(height: 12),
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          
+          // Go Online Button
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: GestureDetector(
+              onTap: _toggleOnline,
+              child: Container(
+                height: 60,
+                decoration: BoxDecoration(
+                  color: _status == 'online' ? Colors.red : AppTheme.primaryColor,
+                  borderRadius: BorderRadius.circular(30),
+                  boxShadow: [
+                    BoxShadow(
+                      color: (_status == 'online' ? Colors.red : AppTheme.primaryColor).withValues(alpha: 0.3),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: Text(
+                    _status == 'online' ? 'GO OFFLINE' : 'GO ONLINE',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          
+          const SizedBox(height: 32),
+          
+          // Stats / Recent Activity
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Today\'s Summary',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pushNamed(context, '/driver-activity'),
+                      child: const Text('See All'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    _buildStatCard('Trips', '12', Icons.directions_car),
+                    const SizedBox(width: 16),
+                    _buildStatCard('Hours', '4.5', Icons.access_time),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Recent Activity',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _buildActivityItem('Heathrow Drop-off', '£24.50', '10:30 AM'),
+                _buildActivityItem('City Center Ride', '£12.20', '09:15 AM'),
+                _buildActivityItem('Morning Commute', '£8.50', '08:45 AM'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatCard(String label, String value, IconData icon) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.grey[50],
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.grey[200]!),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: AppTheme.textSecondary),
+            const SizedBox(height: 8),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            Text(
+              label,
+              style: const TextStyle(
+                color: AppTheme.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActivityItem(String title, String amount, String time) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppTheme.surfaceColor,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.history, color: AppTheme.textPrimary),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                Text(
+                  time,
+                  style: const TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            amount,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              color: AppTheme.primaryColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

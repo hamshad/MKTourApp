@@ -15,6 +15,13 @@ import 'features/booking/confirm_booking_screen.dart';
 import 'features/ride/ride_assigned_screen.dart';
 import 'features/ride/driver_assigned_screen.dart';
 import 'features/ride/ride_complete_screen.dart';
+import 'features/driver/driver_home_screen.dart';
+import 'features/ride/ride_progress_screen.dart';
+
+import 'features/driver/driver_profile_screen.dart';
+import 'features/driver/driver_earnings_screen.dart';
+import 'features/driver/driver_activity_screen.dart';
+import 'features/driver/driver_ride_detail_screen.dart';
 
 void main() {
   runApp(
@@ -47,6 +54,11 @@ class RideEaseApp extends StatelessWidget {
         '/destination-search': (context) => const DestinationSearchScreen(),
         '/vehicle-selection': (context) => const VehicleSelectionScreen(),
         '/confirm-booking': (context) => const ConfirmBookingScreen(),
+        '/driver-home': (context) => const DriverHomeScreen(),
+        '/ride-progress': (context) => const RideProgressScreen(),
+        '/driver-profile': (context) => const DriverProfileScreen(),
+        '/driver-earnings': (context) => const DriverEarningsScreen(),
+        '/driver-activity': (context) => const DriverActivityScreen(),
       },
       onGenerateRoute: (settings) {
         // Handle routes with arguments dynamically
@@ -60,6 +72,12 @@ class RideEaseApp extends StatelessWidget {
           final args = settings.arguments as Map<String, dynamic>?;
           return MaterialPageRoute(
             builder: (context) => RideCompleteScreen(rideData: args ?? {}),
+          );
+        }
+        if (settings.name == '/driver-ride-detail') {
+          final args = settings.arguments as Map<String, dynamic>?;
+          return MaterialPageRoute(
+            builder: (context) => DriverRideDetailScreen(rideData: args ?? {}),
           );
         }
         return null;
