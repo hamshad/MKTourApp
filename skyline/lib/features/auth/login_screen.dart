@@ -80,7 +80,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   keyboardType: TextInputType.emailAddress,
                   decoration: const InputDecoration(
                     labelText: 'Email address',
-                    hintText: 'you@example.com',
+                    hintText: 'name@example.com',
                   ),
                   validator: (value) {
                     if (value == null || value.isEmpty) {
@@ -119,7 +119,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     onPressed: () {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: const Text('Password reset link sent'),
+                          content: const Text(' Coming soon :)'),
                           behavior: SnackBarBehavior.floating,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         ),
