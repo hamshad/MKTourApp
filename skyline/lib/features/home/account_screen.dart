@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme.dart';
 import '../account/edit_profile_screen.dart';
 import '../account/payment_methods_screen.dart';
 import '../account/settings_screen.dart';
+import '../auth/phone_login_screen.dart';
 
 class AccountScreen extends StatelessWidget {
   const AccountScreen({super.key});
@@ -134,7 +136,21 @@ class AccountScreen extends StatelessWidget {
             ),
             const SizedBox(height: 32),
             TextButton(
-              onPressed: () {},
+              onPressed: () async {
+                // Clear auth token
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.remove('auth_token');
+                
+                // Navigate to login screen
+                if (!context.mounted) return;
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const PhoneLoginScreen(role: 'user'),
+                  ),
+                  (route) => false,
+                );
+              },
               child: const Text(
                 'Sign Out',
                 style: TextStyle(

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:skyline/features/auth/user_registration_screen.dart';
 import 'package:skyline/features/auth/driver_registration_screen.dart';
+import 'package:skyline/features/auth/name_input_screen.dart';
 import 'package:skyline/core/api_service.dart';
+import 'package:skyline/core/widgets/custom_snackbar.dart';
 
 class PhoneLoginScreen extends StatefulWidget {
   final String role; // 'user' or 'driver'
@@ -22,8 +24,10 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
   Future<void> _onContinue() async {
     final phone = _phoneController.text.trim();
     if (phone.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter your phone number')),
+      CustomSnackbar.show(
+        context,
+        message: 'Please enter your phone number',
+        type: SnackbarType.warning,
       );
       return;
     }
@@ -39,48 +43,104 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
     debugPrint('📱 [PhoneLoginScreen] Role: ${widget.role}');
 
     try {
-      debugPrint('⏳ [PhoneLoginScreen] Calling ApiService.sendOtp...');
-      final response = await _apiService.sendOtp(fullPhoneNumber);
-      debugPrint('✅ [PhoneLoginScreen] API Call Completed');
+      // Step 1: Check Phone
+      debugPrint('⏳ [PhoneLoginScreen] Calling ApiService.checkPhone...');
+      final checkResponse = await _apiService.checkPhone(fullPhoneNumber, widget.role);
       
       if (!mounted) return;
 
-      setState(() {
-        _isLoading = false;
-      });
+      if (checkResponse['success'] == true) {
+        final data = checkResponse['data'];
+        final bool isNewUser = data['isNewUser'] ?? false;
+        final String? existingName = data['user']?['name'];
 
-      if (response['success'] == true) {
-        final otp = response['data']['otp']; // Extract OTP for testing/autofill if needed
-        debugPrint('🎉 [PhoneLoginScreen] OTP Sent Successfully. OTP: $otp');
-        
-        // Show OTP in snackbar for testing convenience
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('OTP Sent: $otp')),
-        );
+        debugPrint('🔍 [PhoneLoginScreen] Check Phone Result: isNewUser=$isNewUser, Name=$existingName');
 
-        debugPrint('🚀 [PhoneLoginScreen] Navigating to Registration Screen...');
-        debugPrint('📱 ------------------------------------------------------------------');
-
-        if (widget.role == 'user') {
+        if (isNewUser) {
+          // Case A: New User -> Go to Name Input Screen
+          debugPrint('🆕 [PhoneLoginScreen] New User detected. Navigating to NameInputScreen...');
+          setState(() {
+            _isLoading = false;
+          });
+          
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => UserRegistrationScreen(phoneNumber: fullPhoneNumber),
+              builder: (context) => NameInputScreen(
+                phoneNumber: fullPhoneNumber,
+                role: widget.role,
+              ),
             ),
           );
         } else {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => DriverRegistrationScreen(phoneNumber: fullPhoneNumber),
-            ),
-          );
+          // Case B: Returning User -> Show Welcome & Send OTP
+          debugPrint('👋 [PhoneLoginScreen] Returning User detected. Sending OTP...');
+          
+          if (existingName != null) {
+            CustomSnackbar.show(
+              context,
+              message: 'Welcome back, $existingName! Sending OTP...',
+              type: SnackbarType.info,
+            );
+          }
+
+          // Send OTP
+          final otpResponse = await _apiService.sendOtp(fullPhoneNumber);
+          
+          if (!mounted) return;
+          
+          setState(() {
+            _isLoading = false;
+          });
+
+          if (otpResponse['success'] == true) {
+            final otp = otpResponse['data']['otp'];
+            debugPrint('🎉 [PhoneLoginScreen] OTP Sent. OTP: $otp');
+            CustomSnackbar.show(
+              context,
+              message: 'OTP Sent: $otp',
+              type: SnackbarType.success,
+            );
+
+            // Navigate to OTP Screen (UserRegistrationScreen)
+            // Pass isNewUser=false and name=null (or existing name if we want to display it, but logic says skip input)
+             if (widget.role == 'user') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => UserRegistrationScreen(
+                    phoneNumber: fullPhoneNumber,
+                    isNewUser: false,
+                    name: existingName,
+                  ),
+                ),
+              );
+            } else {
+              // For drivers, we might keep the old flow or update similarly
+              // Assuming driver flow is similar for now, or keeping as is
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => DriverRegistrationScreen(phoneNumber: fullPhoneNumber),
+                ),
+              );
+            }
+          } else {
+             CustomSnackbar.show(
+               context,
+               message: otpResponse['message'] ?? 'Failed to send OTP',
+               type: SnackbarType.error,
+             );
+          }
         }
       } else {
-        debugPrint('⚠️ [PhoneLoginScreen] API returned success=false. Message: ${response['message']}');
-        debugPrint('📱 ------------------------------------------------------------------');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(response['message'] ?? 'Failed to send OTP')),
+        setState(() {
+          _isLoading = false;
+        });
+        CustomSnackbar.show(
+          context,
+          message: checkResponse['message'] ?? 'Failed to check phone',
+          type: SnackbarType.error,
         );
       }
     } catch (e) {
@@ -90,8 +150,10 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
       setState(() {
         _isLoading = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
+      CustomSnackbar.show(
+        context,
+        message: 'Error: $e',
+        type: SnackbarType.error,
       );
     }
   }

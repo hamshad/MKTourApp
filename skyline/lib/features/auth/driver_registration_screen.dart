@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:skyline/core/api_service.dart';
 import 'package:skyline/features/driver/driver_home_screen.dart';
+import 'package:skyline/core/widgets/custom_snackbar.dart';
 
 class DriverRegistrationScreen extends StatefulWidget {
   final String phoneNumber;
@@ -29,8 +30,10 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
 
   Future<void> _completeRegistration() async {
     if (_otpController.text.length != 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a valid 6-digit OTP')),
+      CustomSnackbar.show(
+        context,
+        message: 'Please enter a valid 6-digit OTP',
+        type: SnackbarType.warning,
       );
       return;
     }
@@ -40,8 +43,10 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
         _vehicleModelController.text.isEmpty || 
         _vehicleNumberController.text.isEmpty || 
         _vehicleColorController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill all fields')),
+      CustomSnackbar.show(
+        context,
+        message: 'Please fill all fields',
+        type: SnackbarType.warning,
       );
       return;
     }
@@ -73,8 +78,10 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
       });
 
       if (response['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Registration Successful!')),
+        CustomSnackbar.show(
+          context,
+          message: 'Registration Successful!',
+          type: SnackbarType.success,
         );
         
         Navigator.pushAndRemoveUntil(
@@ -83,8 +90,10 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
           (route) => false,
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(response['message'] ?? 'Registration Failed')),
+        CustomSnackbar.show(
+          context,
+          message: response['message'] ?? 'Registration Failed',
+          type: SnackbarType.error,
         );
       }
     } catch (e) {
@@ -92,8 +101,10 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
       setState(() {
         _isLoading = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
+      CustomSnackbar.show(
+        context,
+        message: 'Error: $e',
+        type: SnackbarType.error,
       );
     }
   }

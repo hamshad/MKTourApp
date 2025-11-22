@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/auth_provider.dart';
 import '../../core/theme.dart';
+import '../../core/widgets/custom_snackbar.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -35,13 +36,10 @@ class _LoginScreenState extends State<LoginScreen> {
       if (success && mounted) {
         Navigator.pushReplacementNamed(context, '/onboarding');
       } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Login failed. Please check your credentials.'),
-            backgroundColor: AppTheme.errorColor,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          ),
+        CustomSnackbar.show(
+          context,
+          message: 'Login failed. Please check your credentials.',
+          type: SnackbarType.error,
         );
       }
     }
@@ -117,12 +115,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   alignment: Alignment.centerRight,
                   child: TextButton(
                     onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: const Text(' Coming soon :)'),
-                          behavior: SnackBarBehavior.floating,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
+                      CustomSnackbar.show(
+                        context,
+                        message: 'Coming soon :)',
+                        type: SnackbarType.info,
                       );
                     },
                     child: const Text('Forgot password?'),

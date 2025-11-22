@@ -1,11 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:skyline/features/home/home_screen.dart';
-import 'package:skyline/core/api_service.dart'; // Assuming this exists or will exist
+import 'package:skyline/core/api_service.dart';
+import 'package:skyline/core/widgets/custom_snackbar.dart';
 
 class UserRegistrationScreen extends StatefulWidget {
   final String phoneNumber;
+  final bool isNewUser;
+  final String? name;
 
-  const UserRegistrationScreen({super.key, required this.phoneNumber});
+  const UserRegistrationScreen({
+    super.key, 
+    required this.phoneNumber,
+    this.isNewUser = false,
+    this.name,
+  });
 
   @override
   State<UserRegistrationScreen> createState() => _UserRegistrationScreenState();
@@ -13,21 +21,15 @@ class UserRegistrationScreen extends StatefulWidget {
 
 class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
   final TextEditingController _otpController = TextEditingController();
-  final TextEditingController _nameController = TextEditingController();
   final ApiService _apiService = ApiService();
   bool _isLoading = false;
 
   Future<void> _completeRegistration() async {
     if (_otpController.text.length != 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a valid 6-digit OTP')),
-      );
-      return;
-    }
-
-    if (_nameController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter your name')),
+      CustomSnackbar.show(
+        context,
+        message: 'Please enter a valid 6-digit OTP',
+        type: SnackbarType.warning,
       );
       return;
     }
@@ -37,11 +39,12 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
     });
 
     try {
+      // Use the name passed from previous screen if new user, otherwise null (backend handles it)
       final response = await _apiService.verifyOtp(
         phone: widget.phoneNumber,
         otp: _otpController.text,
         role: 'user',
-        name: _nameController.text,
+        name: widget.name, 
       );
 
       if (!mounted) return;
@@ -51,8 +54,10 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
       });
 
       if (response['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Registration Successful!')),
+        CustomSnackbar.show(
+          context,
+          message: 'Login Successful!',
+          type: SnackbarType.success,
         );
         
         Navigator.pushAndRemoveUntil(
@@ -61,8 +66,10 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
           (route) => false,
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(response['message'] ?? 'Registration Failed')),
+        CustomSnackbar.show(
+          context,
+          message: response['message'] ?? 'Login Failed',
+          type: SnackbarType.error,
         );
       }
     } catch (e) {
@@ -70,8 +77,10 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
       setState(() {
         _isLoading = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
+      CustomSnackbar.show(
+        context,
+        message: 'Error: $e',
+        type: SnackbarType.error,
       );
     }
   }
@@ -80,7 +89,7 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('User Verification'),
+        title: const Text('Verify OTP'),
       ),
       body: Padding(
         padding: const EdgeInsets.all(24.0),
@@ -92,6 +101,22 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
               style: const TextStyle(fontSize: 18, color: Colors.grey),
             ),
             const SizedBox(height: 24),
+            
+            // Show greeting if name is available
+            if (widget.name != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 24.0),
+                child: Text(
+                  widget.isNewUser 
+                    ? 'Welcome, ${widget.name}!' 
+                    : 'Welcome back, ${widget.name}!',
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+
             _buildSectionTitle('Verification'),
             Card(
               elevation: 2,
@@ -121,27 +146,9 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 24),
-            _buildSectionTitle('Personal Details'),
-            Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    TextField(
-                      controller: _nameController,
-                      decoration: const InputDecoration(
-                        labelText: 'Full Name',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.person_outline),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+            
+            // Removed Name Input Section
+            
             const SizedBox(height: 32),
             ElevatedButton(
               onPressed: _isLoading ? null : _completeRegistration,
@@ -159,7 +166,7 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
                       child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                     )
                   : const Text(
-                      'Start Riding',
+                      'Verify & Login',
                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
             ),

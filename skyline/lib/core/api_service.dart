@@ -168,25 +168,49 @@ class ApiService {
       }
     } catch (e) {
       debugPrint('🟠 [ApiService] Exception caught: $e');
-      debugPrint('🟠 [ApiService] Returning mock OTP for testing.');
       debugPrint('🔵 ------------------------------------------------------------------');
-      // Mock response for testing if backend is not ready/reachable
-      return {
-        "success": true,
-        "message": "OTP sent successfully",
-        "data": {
-            "message": "OTP sent successfully",
-            "phone": phone,
-            "otp": "213369" 
-        }
-      };
+      throw Exception('Failed to send OTP: $e');
     }
   }
+  Future<Map<String, dynamic>> checkPhone(String phone, String role) async {
+    debugPrint('🔵 ------------------------------------------------------------------');
+    debugPrint('🔵 [ApiService] checkPhone called');
+    debugPrint('🔵 [Request] URL: ${ApiConstants.baseUrl}/auth/check-phone');
+    debugPrint('🔵 [Request] Body: {"phone": "$phone", "role": "$role"}');
+
+    try {
+      // Note: Using a direct URL construction here as ApiConstants might not have checkPhone yet
+      // Ideally, add checkPhone to ApiConstants
+      final response = await http.post(
+        Uri.parse('${ApiConstants.baseUrl}/auth/check-phone'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'phone': phone, 'role': role}),
+      );
+
+      debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
+      debugPrint('🟣 [Response] Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        debugPrint('🟢 [ApiService] checkPhone Success');
+        debugPrint('🔵 ------------------------------------------------------------------');
+        return jsonDecode(response.body);
+      } else {
+        debugPrint('🔴 [ApiService] checkPhone Failed: ${response.body}');
+        debugPrint('🔵 ------------------------------------------------------------------');
+        throw Exception('Failed to check phone: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('🟠 [ApiService] Exception caught: $e');
+      debugPrint('🔵 ------------------------------------------------------------------');
+      throw Exception('Failed to check phone: $e');
+    }
+  }
+
   Future<Map<String, dynamic>> verifyOtp({
     required String phone,
     required String otp,
     required String role,
-    required String name,
+    String? name, // Made nullable
     Map<String, dynamic>? vehicleDetails,
   }) async {
     debugPrint('🔵 ------------------------------------------------------------------');
@@ -196,8 +220,11 @@ class ApiService {
       'phone': phone,
       'otp': otp,
       'role': role,
-      'name': name,
     };
+
+    if (name != null) {
+      requestBody['name'] = name;
+    }
 
     if (role == 'driver' && vehicleDetails != null) {
       requestBody['vehicle'] = vehicleDetails;
@@ -239,38 +266,8 @@ class ApiService {
       }
     } catch (e) {
       debugPrint('🟠 [ApiService] Exception caught: $e');
-      
-      // Don't mock success for specific errors or if we want to enforce real auth
-      // For now, we'll keep the mock but maybe add a flag or check the error type
-      // If it's a platform exception (shared_prefs), we might still want to succeed but warn
-      
-      debugPrint('🟠 [ApiService] Returning mock success for testing.');
       debugPrint('🔵 ------------------------------------------------------------------');
-      
-      // Mock response
-      final mockToken = "mock_token_${DateTime.now().millisecondsSinceEpoch}";
-      
-      // Try to save mock token, but ignore error if shared_prefs fails (e.g. hot reload issue)
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('auth_token', mockToken);
-      } catch (prefsError) {
-        debugPrint('⚠️ [ApiService] Failed to save mock token: $prefsError');
-      }
-
-      return {
-        "success": true,
-        "message": "Authentication successful",
-        "data": {
-            "token": mockToken,
-            "user": {
-                "id": "mock_id_123",
-                "phone": phone,
-                "name": name,
-                "role": role
-            }
-        }
-      };
+      throw Exception('Failed to verify OTP: $e');
     }
   }
 }

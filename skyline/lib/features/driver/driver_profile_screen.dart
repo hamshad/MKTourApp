@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme.dart';
+import '../auth/phone_login_screen.dart';
 
 class DriverProfileScreen extends StatelessWidget {
   const DriverProfileScreen({super.key});
@@ -182,7 +184,27 @@ class DriverProfileScreen extends StatelessWidget {
             _buildMenuItem(Icons.description, 'Documents', 'License, Insurance, Registration'),
             _buildMenuItem(Icons.payment, 'Payout Settings', 'Bank Account'),
             _buildMenuItem(Icons.settings, 'App Settings', 'Navigation, Sound'),
-            _buildMenuItem(Icons.logout, 'Log Out', '', isDestructive: true),
+            _buildMenuItem(
+              Icons.logout, 
+              'Log Out', 
+              '', 
+              isDestructive: true,
+              onTap: () async {
+                // Clear auth token
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.remove('auth_token');
+                
+                // Navigate to login screen
+                if (!context.mounted) return;
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const PhoneLoginScreen(role: 'driver'),
+                  ),
+                  (route) => false,
+                );
+              },
+            ),
           ],
         ),
       ),
@@ -224,7 +246,13 @@ class DriverProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildMenuItem(IconData icon, String title, String subtitle, {bool isDestructive = false}) {
+  Widget _buildMenuItem(
+    IconData icon, 
+    String title, 
+    String subtitle, {
+    bool isDestructive = false,
+    VoidCallback? onTap,
+  }) {
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: Container(
@@ -250,7 +278,7 @@ class DriverProfileScreen extends StatelessWidget {
           ? Text(subtitle, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12))
           : null,
       trailing: const Icon(Icons.chevron_right, color: AppTheme.textSecondary),
-      onTap: () {},
+      onTap: onTap ?? () {},
     );
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/auth_provider.dart';
 import '../../core/theme.dart';
+import '../../core/widgets/custom_snackbar.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -50,13 +51,10 @@ class _SignupScreenState extends State<SignupScreen> {
       if (success && mounted) {
         Navigator.pushReplacementNamed(context, '/onboarding');
       } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Signup failed. Please try again.'),
-            backgroundColor: AppTheme.errorColor,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          ),
+        CustomSnackbar.show(
+          context,
+          message: 'Signup failed. Please try again.',
+          type: SnackbarType.error,
         );
       }
     }

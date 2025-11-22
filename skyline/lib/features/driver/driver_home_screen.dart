@@ -5,6 +5,7 @@ import 'package:sliding_up_panel/sliding_up_panel.dart';
 import '../../core/theme.dart';
 import 'driver_request_panel.dart';
 import 'driver_navigation_panel.dart';
+import '../../core/widgets/custom_snackbar.dart';
 
 class DriverHomeScreen extends StatefulWidget {
   const DriverHomeScreen({super.key});
@@ -98,15 +99,16 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
               if (otpController.text == '1234') { // Mock OTP
                 Navigator.pop(context);
                 setState(() => _status = 'in_progress');
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('OTP Verified! Trip Started.')),
+                CustomSnackbar.show(
+                  context,
+                  message: 'OTP Verified! Trip Started.',
+                  type: SnackbarType.success,
                 );
               } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Invalid OTP. Try 1234'),
-                    backgroundColor: Colors.red,
-                  ),
+                CustomSnackbar.show(
+                  context,
+                  message: 'Invalid OTP. Try 1234',
+                  type: SnackbarType.error,
                 );
               }
             },

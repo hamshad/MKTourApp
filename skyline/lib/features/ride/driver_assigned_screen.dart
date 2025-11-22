@@ -416,8 +416,13 @@ class _DriverAssignedScreenState extends State<DriverAssignedScreen> {
                             ),
                             TextButton(
                               onPressed: () {
-                                Navigator.pop(context);
-                                Navigator.pop(context);
+                                Navigator.pop(context); // Close dialog
+                                // Navigate to home screen instead of double pop
+                                Navigator.pushNamedAndRemoveUntil(
+                                  context,
+                                  '/home',
+                                  (route) => false,
+                                );
                               },
                               child: Text(
                                 'Yes, cancel',

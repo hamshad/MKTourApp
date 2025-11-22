@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/theme.dart';
 import '../../core/api_service.dart';
+import '../../core/widgets/custom_snackbar.dart';
 
 class RideCompleteScreen extends StatefulWidget {
   final Map<String, dynamic> rideData;
@@ -44,11 +45,10 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Failed to submit rating'),
-            backgroundColor: AppTheme.errorColor,
-          ),
+        CustomSnackbar.show(
+          context,
+          message: 'Failed to submit rating',
+          type: SnackbarType.error,
         );
       }
     } finally {
