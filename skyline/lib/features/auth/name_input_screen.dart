@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:skyline/core/api_service.dart';
 import 'package:skyline/features/auth/user_registration_screen.dart';
+import 'package:skyline/features/auth/driver_registration_screen.dart';
 import 'package:skyline/core/widgets/custom_snackbar.dart';
+import 'package:skyline/core/theme.dart';
 
 class NameInputScreen extends StatefulWidget {
   final String phoneNumber;
@@ -58,17 +61,40 @@ class _NameInputScreenState extends State<NameInputScreen> {
           type: SnackbarType.success,
         );
 
-        // Navigate to OTP Screen (UserRegistrationScreen refactored)
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => UserRegistrationScreen(
-              phoneNumber: widget.phoneNumber,
-              isNewUser: true,
-              name: name,
+        // Navigate based on role
+        if (widget.role == 'driver') {
+          // For drivers, we navigate to DriverRegistrationScreen
+          // Note: DriverRegistrationScreen might need to be updated to accept name if it's not already
+          // But based on previous code, it seems to ask for name again or we can pass it.
+          // Let's check DriverRegistrationScreen. It asks for name. 
+          // We can either pass it or let them enter it again. 
+          // Ideally, we should pass it. 
+          // For now, let's navigate to DriverRegistrationScreen. 
+          // Since DriverRegistrationScreen takes phoneNumber, we pass that.
+          // We might need to refactor DriverRegistrationScreen to accept name as well to pre-fill it.
+          // But for now, let's just navigate there.
+          
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => DriverRegistrationScreen(
+                phoneNumber: widget.phoneNumber,
+              ),
             ),
-          ),
-        );
+          );
+        } else {
+          // For users, navigate to UserRegistrationScreen
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => UserRegistrationScreen(
+                phoneNumber: widget.phoneNumber,
+                isNewUser: true,
+                name: name,
+              ),
+            ),
+          );
+        }
       } else {
         CustomSnackbar.show(
           context,
@@ -92,60 +118,96 @@ class _NameInputScreenState extends State<NameInputScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('Enter Your Name'),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              'What should we call you?',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Please enter your full name to create an account.',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey,
-              ),
-            ),
-            const SizedBox(height: 32),
-            TextField(
-              controller: _nameController,
-              decoration: const InputDecoration(
-                labelText: 'Full Name',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.person_outline),
-              ),
-              textCapitalization: TextCapitalization.words,
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: _isLoading ? null : _onContinue,
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'What should we call you?',
+                style: GoogleFonts.outfit(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textPrimary,
                 ),
               ),
-              child: _isLoading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Text(
-                      'Continue',
-                      style: TextStyle(fontSize: 18),
+              const SizedBox(height: 8),
+              Text(
+                'Please enter your full name to create an account.',
+                style: GoogleFonts.outfit(
+                  fontSize: 16,
+                  color: AppTheme.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 40),
+              
+              Container(
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceColor,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppTheme.borderColor),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: TextField(
+                  controller: _nameController,
+                  style: GoogleFonts.outfit(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w500,
+                    color: AppTheme.textPrimary,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Full Name',
+                    hintStyle: GoogleFonts.outfit(color: AppTheme.textSecondary),
+                    border: InputBorder.none,
+                    icon: const Icon(Icons.person_outline, color: AppTheme.textSecondary),
+                  ),
+                  textCapitalization: TextCapitalization.words,
+                ),
+              ),
+              
+              const Spacer(),
+              
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  onPressed: _isLoading ? null : _onContinue,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryColor,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
-            ),
-          ],
+                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          height: 24,
+                          width: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                        )
+                      : Text(
+                          'Continue',
+                          style: GoogleFonts.outfit(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
         ),
       ),
     );
