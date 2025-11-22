@@ -3,7 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
   // Professional Color System (Duolingo/Zomato inspired)
-  static const Color primaryColor = Color(0xFF1A73E8); // Google Blue - trustworthy
+  static const Color primaryColor = Color(0xFFFF6B35); // Coral/Orange - energetic CTAs
   static const Color accentColor = Color(0xFFFF6B35); // Coral/Orange - energetic CTAs
   static const Color backgroundColor = Color(0xFFFFFFFF); // Pure white
   static const Color surfaceColor = Color(0xFFF8F9FA); // Very light gray for cards

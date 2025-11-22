@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:skyline/features/auth/user_registration_screen.dart';
 import 'package:skyline/features/auth/driver_registration_screen.dart';
 import 'package:skyline/features/auth/name_input_screen.dart';
 import 'package:skyline/core/api_service.dart';
 import 'package:skyline/core/widgets/custom_snackbar.dart';
+import 'package:skyline/core/theme.dart';
 
 class PhoneLoginScreen extends StatefulWidget {
   final String role; // 'user' or 'driver'
@@ -77,11 +79,11 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
           debugPrint('👋 [PhoneLoginScreen] Returning User detected. Sending OTP...');
           
           if (existingName != null) {
-            CustomSnackbar.show(
-              context,
-              message: 'Welcome back, $existingName! Sending OTP...',
-              type: SnackbarType.info,
-            );
+            // CustomSnackbar.show(
+            //   context,
+            //   message: 'Welcome back, $existingName! Sending OTP...',
+            //   type: SnackbarType.info,
+            // );
           }
 
           // Send OTP
@@ -103,8 +105,7 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
             );
 
             // Navigate to OTP Screen (UserRegistrationScreen)
-            // Pass isNewUser=false and name=null (or existing name if we want to display it, but logic says skip input)
-             if (widget.role == 'user') {
+            if (widget.role == 'user') {
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -116,8 +117,6 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
                 ),
               );
             } else {
-              // For drivers, we might keep the old flow or update similarly
-              // Assuming driver flow is similar for now, or keeping as is
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -161,89 +160,140 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text('Login as ${widget.role == 'user' ? 'User' : 'Driver'}'),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          onPressed: () {
+            if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            } else {
+              // If we can't pop (e.g. after sign out), go to RoleSelectionScreen
+              Navigator.pushReplacementNamed(context, '/role-selection');
+            }
+          },
+        ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              'Enter your mobile number',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Enter your mobile number',
+                style: GoogleFonts.outfit(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textPrimary,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'We will send you a confirmation code',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey,
+              const SizedBox(height: 8),
+              Text(
+                'We need to verify your identity',
+                style: GoogleFonts.outfit(
+                  fontSize: 16,
+                  color: AppTheme.textSecondary,
+                ),
               ),
-            ),
-            const SizedBox(height: 32),
-            Row(
-              children: [
-                Container(
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: _selectedCountryCode,
-                      items: _countryCodes.map((String code) {
-                        return DropdownMenuItem<String>(
-                          value: code,
-                          child: Text(code),
-                        );
-                      }).toList(),
-                      onChanged: (String? newValue) {
-                        setState(() {
-                          _selectedCountryCode = newValue!;
-                        });
-                      },
+              const SizedBox(height: 40),
+              
+              // Phone Input Row
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppTheme.borderColor),
+                ),
+                child: Row(
+                  children: [
+                    // Country Code Dropdown
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: const BoxDecoration(
+                        border: Border(right: BorderSide(color: AppTheme.borderColor)),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: _selectedCountryCode,
+                          icon: const Icon(Icons.keyboard_arrow_down, color: AppTheme.textSecondary),
+                          style: GoogleFonts.outfit(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textPrimary,
+                          ),
+                          items: _countryCodes.map((String code) {
+                            return DropdownMenuItem<String>(
+                              value: code,
+                              child: Text(code),
+                            );
+                          }).toList(),
+                          onChanged: (String? newValue) {
+                            setState(() {
+                              _selectedCountryCode = newValue!;
+                            });
+                          },
+                        ),
+                      ),
+                    ),
+                    
+                    // Phone Number Input
+                    Expanded(
+                      child: TextField(
+                        controller: _phoneController,
+                        keyboardType: TextInputType.phone,
+                        style: GoogleFonts.outfit(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textPrimary,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: 'Phone Number',
+                          hintStyle: GoogleFonts.outfit(color: AppTheme.textSecondary),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              
+              const Spacer(),
+              
+              // Continue Button
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  onPressed: _isLoading ? null : _onContinue,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryColor,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: TextField(
-                    controller: _phoneController,
-                    keyboardType: TextInputType.phone,
-                    decoration: const InputDecoration(
-                      labelText: 'Phone Number',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: _isLoading ? null : _onContinue,
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+                  child: _isLoading 
+                    ? const SizedBox(
+                        height: 24, 
+                        width: 24, 
+                        child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white)
+                      )
+                    : Text(
+                        'Continue',
+                        style: GoogleFonts.outfit(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                 ),
               ),
-              child: _isLoading 
-                ? const SizedBox(
-                    height: 20, 
-                    width: 20, 
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)
-                  )
-                : const Text(
-                    'Continue',
-                    style: TextStyle(fontSize: 18),
-                  ),
-            ),
-          ],
+              const SizedBox(height: 16),
+            ],
+          ),
         ),
       ),
     );

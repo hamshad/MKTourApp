@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:skyline/core/api_service.dart';
 import 'package:skyline/features/driver/driver_home_screen.dart';
 import 'package:skyline/core/widgets/custom_snackbar.dart';
+import 'package:skyline/core/theme.dart';
 
 class DriverRegistrationScreen extends StatefulWidget {
   final String phoneNumber;
@@ -15,8 +17,6 @@ class DriverRegistrationScreen extends StatefulWidget {
 class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
   final TextEditingController _otpController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
-  // final TextEditingController _licenseController = TextEditingController(); // Removed as per JSON requirement
-  // final TextEditingController _vehicleTypeController = TextEditingController(); // Replaced by dropdown
   final TextEditingController _vehicleModelController = TextEditingController();
   final TextEditingController _vehicleNumberController = TextEditingController();
   final TextEditingController _vehicleColorController = TextEditingController();
@@ -112,165 +112,220 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('Driver Verification'),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          'Driver Registration',
+          style: GoogleFonts.outfit(
+            color: AppTheme.textPrimary,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // OTP Section
+            _buildSectionHeader('Verification'),
+            const SizedBox(height: 8),
             Text(
-              'Verifying ${widget.phoneNumber}',
-              style: const TextStyle(fontSize: 18, color: Colors.grey),
+              'Enter the code sent to ${widget.phoneNumber}',
+              style: GoogleFonts.outfit(color: AppTheme.textSecondary, fontSize: 14),
             ),
-            const SizedBox(height: 24),
-            _buildSectionTitle('Verification'),
-            Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Enter OTP',
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Colors.grey),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: _otpController,
-                      keyboardType: TextInputType.number,
-                      maxLength: 6,
-                      decoration: const InputDecoration(
-                        hintText: 'XXXXXX',
-                        border: OutlineInputBorder(),
-                        counterText: '',
-                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-                      ),
-                    ),
-                  ],
+            const SizedBox(height: 16),
+            Container(
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceColor,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppTheme.borderColor),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: TextField(
+                controller: _otpController,
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+                style: GoogleFonts.outfit(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 8,
                 ),
+                decoration: const InputDecoration(
+                  hintText: '000000',
+                  border: InputBorder.none,
+                  counterText: '',
+                  hintStyle: TextStyle(color: Colors.grey, letterSpacing: 8),
+                ),
+                textAlign: TextAlign.center,
               ),
             ),
-            const SizedBox(height: 24),
-            _buildSectionTitle('Personal Details'),
-            Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    TextField(
-                      controller: _nameController,
-                      decoration: const InputDecoration(
-                        labelText: 'Full Name',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.person_outline),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            _buildSectionTitle('Vehicle Information'),
-            Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    DropdownButtonFormField<String>(
-                      value: _selectedVehicleType,
-                      decoration: const InputDecoration(
-                        labelText: 'Vehicle Type',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.directions_car_outlined),
-                      ),
-                      items: _vehicleTypes.map((type) {
-                        return DropdownMenuItem(
-                          value: type,
-                          child: Text(_capitalize(type)),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        setState(() {
-                          _selectedVehicleType = value;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _vehicleModelController,
-                      decoration: const InputDecoration(
-                        labelText: 'Vehicle Model (e.g., Toyota Camry)',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.model_training),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _vehicleNumberController,
-                      decoration: const InputDecoration(
-                        labelText: 'Vehicle Number (e.g., ABC-1234)',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.pin_outlined),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _vehicleColorController,
-                      decoration: const InputDecoration(
-                        labelText: 'Vehicle Color (e.g., Silver)',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.color_lens_outlined),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+
             const SizedBox(height: 32),
-            ElevatedButton(
-              onPressed: _isLoading ? null : _completeRegistration,
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                backgroundColor: Theme.of(context).primaryColor,
-                foregroundColor: Colors.white,
-                elevation: 4,
-              ),
-              child: _isLoading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Text(
-                      'Submit for Approval',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
+            
+            // Personal Details
+            _buildSectionHeader('Personal Details'),
+            const SizedBox(height: 16),
+            _buildTextField(
+              controller: _nameController,
+              label: 'Full Name',
+              icon: Icons.person_outline,
             ),
+
+            const SizedBox(height: 32),
+
+            // Vehicle Details
+            _buildSectionHeader('Vehicle Information'),
+            const SizedBox(height: 16),
+            
+            // Vehicle Type Dropdown
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppTheme.borderColor),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _selectedVehicleType,
+                  isExpanded: true,
+                  hint: Row(
+                    children: [
+                      const Icon(Icons.directions_car_outlined, color: AppTheme.textSecondary),
+                      const SizedBox(width: 12),
+                      Text(
+                        'Select Vehicle Type',
+                        style: GoogleFonts.outfit(color: AppTheme.textSecondary, fontSize: 16),
+                      ),
+                    ],
+                  ),
+                  items: _vehicleTypes.map((type) {
+                    return DropdownMenuItem(
+                      value: type,
+                      child: Row(
+                        children: [
+                          const Icon(Icons.directions_car_outlined, color: AppTheme.textPrimary),
+                          const SizedBox(width: 12),
+                          Text(
+                            _capitalize(type),
+                            style: GoogleFonts.outfit(color: AppTheme.textPrimary),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (value) => setState(() => _selectedVehicleType = value),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            
+            _buildTextField(
+              controller: _vehicleModelController,
+              label: 'Vehicle Model (e.g., Toyota Camry)',
+              icon: Icons.model_training,
+            ),
+            const SizedBox(height: 16),
+            
+            Row(
+              children: [
+                Expanded(
+                  child: _buildTextField(
+                    controller: _vehicleNumberController,
+                    label: 'Vehicle Number',
+                    icon: Icons.pin_outlined,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildTextField(
+                    controller: _vehicleColorController,
+                    label: 'Color',
+                    icon: Icons.color_lens_outlined,
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 40),
+
+            // Submit Button
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton(
+                onPressed: _isLoading ? null : _completeRegistration,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColor,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: _isLoading
+                    ? const SizedBox(
+                        height: 24,
+                        width: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                      )
+                    : Text(
+                        'Submit Application',
+                        style: GoogleFonts.outfit(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+              ),
+            ),
+            const SizedBox(height: 24),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildSectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0, left: 4.0),
-      child: Text(
-        title,
-        style: const TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
-          color: Colors.black87,
+  Widget _buildSectionHeader(String title) {
+    return Text(
+      title,
+      style: GoogleFonts.outfit(
+        fontSize: 18,
+        fontWeight: FontWeight.bold,
+        color: AppTheme.textPrimary,
+      ),
+    );
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+  }) {
+    return TextFormField(
+      controller: controller,
+      style: GoogleFonts.outfit(color: AppTheme.textPrimary),
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, color: AppTheme.textSecondary),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppTheme.borderColor),
         ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppTheme.borderColor),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppTheme.primaryColor, width: 2),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       ),
     );
   }

@@ -22,6 +22,7 @@ import 'features/driver/driver_profile_screen.dart';
 import 'features/driver/driver_earnings_screen.dart';
 import 'features/driver/driver_activity_screen.dart';
 import 'features/driver/driver_ride_detail_screen.dart';
+import 'features/auth/role_selection_screen.dart';
 
 void main() {
   runApp(
@@ -45,6 +46,7 @@ class RideEaseApp extends StatelessWidget {
       theme: AppTheme.lightTheme,
       home: const SplashScreen(),
       routes: {
+        '/role-selection': (context) => const RoleSelectionScreen(),
         '/login': (context) => const LoginScreen(),
         '/signup': (context) => const SignupScreen(),
         '/onboarding': (context) => const IntroScreen(),
