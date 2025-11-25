@@ -3,7 +3,8 @@ import 'package:flutter/foundation.dart'; // For debugPrint
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'constants.dart';
-import 'package:skyline/core/constants/api_constants.dart';
+
+import 'constants/api_constants.dart';
 
 class ApiService {
   final String baseUrl = AppConstants.apiBaseUrl;

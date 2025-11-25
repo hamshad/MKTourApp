@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:skyline/features/auth/user_registration_screen.dart';
-import 'package:skyline/features/auth/driver_registration_screen.dart';
-import 'package:skyline/features/auth/name_input_screen.dart';
-import 'package:skyline/core/api_service.dart';
-import 'package:skyline/core/widgets/custom_snackbar.dart';
-import 'package:skyline/core/theme.dart';
+import 'package:mktours/features/auth/user_registration_screen.dart';
+
+import '../../core/api_service.dart';
+import '../../core/theme.dart';
+import '../../core/widgets/custom_snackbar.dart';
+import 'driver_registration_screen.dart';
+import 'name_input_screen.dart';
+
 
 class PhoneLoginScreen extends StatefulWidget {
   final String role; // 'user' or 'driver'

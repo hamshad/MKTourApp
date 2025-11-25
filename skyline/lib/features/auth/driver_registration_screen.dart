@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:skyline/core/api_service.dart';
-import 'package:skyline/features/driver/driver_home_screen.dart';
-import 'package:skyline/core/widgets/custom_snackbar.dart';
-import 'package:skyline/core/theme.dart';
+import '../../core/api_service.dart';
+import '../../core/theme.dart';
+import '../../core/widgets/custom_snackbar.dart';
+import '../driver/driver_home_screen.dart';
 
 class DriverRegistrationScreen extends StatefulWidget {
   final String phoneNumber;

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:skyline/core/theme.dart';
+import '../theme.dart';
 
 enum SnackbarType { success, error, warning, info }
 

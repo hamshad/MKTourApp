@@ -12,7 +12,6 @@ import 'features/home/home_screen.dart';
 import 'features/booking/destination_search_screen.dart';
 import 'features/booking/vehicle_selection_panel.dart';
 import 'features/booking/confirm_booking_screen.dart';
-import 'features/ride/ride_assigned_screen.dart';
 import 'features/ride/driver_assigned_screen.dart';
 import 'features/ride/ride_complete_screen.dart';
 import 'features/driver/driver_home_screen.dart';

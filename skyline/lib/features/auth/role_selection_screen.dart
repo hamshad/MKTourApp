@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:skyline/features/auth/phone_login_screen.dart';
-import 'package:skyline/core/theme.dart';
+import 'package:mktours/features/auth/phone_login_screen.dart';
+
+
+import '../../core/theme.dart';
 
 class RoleSelectionScreen extends StatelessWidget {
   const RoleSelectionScreen({super.key});

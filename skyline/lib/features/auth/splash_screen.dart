@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:mktours/features/auth/role_selection_screen.dart';
 import 'dart:async';
-import 'package:skyline/features/auth/role_selection_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -69,7 +69,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
               const SizedBox(height: 32),
               
               Text(
-                'RideEase',
+                'MK-Tours',
                 style: Theme.of(context).textTheme.displayLarge,
               ),
               
