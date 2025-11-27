@@ -37,7 +37,7 @@ class RoleSelectionScreen extends StatelessWidget {
               const SizedBox(height: 24),
               
               Text(
-                'Welcome to Skyline',
+                'Welcome to MK-Tours',
                 style: GoogleFonts.outfit(
                   fontSize: 32,
                   fontWeight: FontWeight.bold,

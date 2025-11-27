@@ -1,5 +1,5 @@
 class ApiConstants {
-  static const String baseUrl = 'http://192.168.1.17:5000'; // TODO: Replace with actual base URL
+  static const String baseUrl = 'http://192.168.1.23:5000'; // TODO: Replace with actual base URL
 
   // Auth Endpoints
   static const String sendOtp = '$baseUrl/auth/send-otp';
