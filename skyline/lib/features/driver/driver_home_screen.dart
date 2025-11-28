@@ -27,16 +27,22 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     setState(() {
       if (_status == 'offline') {
         _status = 'online';
-        // Simulate incoming request after 3 seconds
-        Future.delayed(const Duration(seconds: 3), () {
-          if (mounted && _status == 'online') {
-            setState(() => _status = 'request');
-          }
-        });
       } else {
         _status = 'offline';
       }
     });
+  }
+
+  void _simulateRequest() {
+    if (_status == 'online') {
+      setState(() => _status = 'request');
+    } else {
+      CustomSnackbar.show(
+        context,
+        message: 'You must be online to receive requests',
+        type: SnackbarType.warning,
+      );
+    }
   }
 
   void _handleRideAction() {
@@ -166,48 +172,71 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              child: Column(
                 children: [
-                  // Earnings Pill
-                  GestureDetector(
-                    onTap: () => Navigator.pushNamed(context, '/driver-earnings'),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(24),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.1),
-                            blurRadius: 10,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // Earnings Pill
+                      GestureDetector(
+                        onTap: () => Navigator.pushNamed(context, '/driver-earnings'),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(24),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.1),
+                                blurRadius: 10,
+                              ),
+                            ],
                           ),
-                        ],
+                          child: const Row(
+                            children: [
+                              Icon(Icons.account_balance_wallet, color: AppTheme.primaryColor),
+                              SizedBox(width: 8),
+                              Text(
+                                '£142.50',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.account_balance_wallet, color: AppTheme.primaryColor),
-                          SizedBox(width: 8),
-                          Text(
-                            '£142.50',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
+                      
+                      // Profile Button
+                      CircleAvatar(
+                        backgroundColor: Colors.white,
+                        child: IconButton(
+                          icon: const Icon(Icons.person, color: Colors.black),
+                          onPressed: () => Navigator.pushNamed(context, '/driver-profile'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_status == 'online') ...[
+                    const SizedBox(height: 16),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: ElevatedButton.icon(
+                        onPressed: _simulateRequest,
+                        icon: const Icon(Icons.play_arrow, size: 16),
+                        label: const Text('Simulate Request'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: AppTheme.primaryColor,
+                          elevation: 4,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
                           ),
-                        ],
+                        ),
                       ),
                     ),
-                  ),
-                  
-                  // Profile Button
-                  CircleAvatar(
-                    backgroundColor: Colors.white,
-                    child: IconButton(
-                      icon: const Icon(Icons.person, color: Colors.black),
-                      onPressed: () => Navigator.pushNamed(context, '/driver-profile'),
-                    ),
-                  ),
+                  ],
                 ],
               ),
             ),

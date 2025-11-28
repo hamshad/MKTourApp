@@ -107,15 +107,16 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> getRideStatus() async {
+  Future<Map<String, dynamic>> getRideStatus(String rideId) async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/ride-status'));
+      final response = await http.get(Uri.parse('$baseUrl/ride-status/$rideId'));
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       } else {
         throw Exception('Failed to get status');
       }
     } catch (e) {
+      // Mock status for demo
       return {
         'status': 'driver_assigned',
         'location': {'lat': 51.5074, 'lng': -0.1278}

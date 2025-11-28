@@ -37,7 +37,7 @@ class _DriverAssignedScreenState extends State<DriverAssignedScreen> {
     final apiService = ApiService();
     _statusTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
       try {
-        final status = await apiService.getRideStatus();
+        final status = await apiService.getRideStatus(widget.bookingData['bookingId'] ?? 'unknown');
         if (mounted) {
           setState(() {
             _currentStatus = status['status'] ?? 'driver_assigned';

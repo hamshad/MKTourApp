@@ -103,6 +103,59 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                     
                     const SizedBox(height: 32),
                     
+                    // Payment Method Section
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 24),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[50],
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppTheme.borderColor),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.grey[200]!),
+                            ),
+                            child: const Icon(Icons.credit_card, size: 24),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Payment Method',
+                                  style: TextStyle(
+                                    color: AppTheme.textSecondary,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                const Text(
+                                  'Visa ****4242',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              // Mock change payment
+                            },
+                            child: const Text('Change'),
+                          ),
+                        ],
+                      ),
+                    ),
+
                     // Fare Breakdown Card
                     Container(
                       padding: const EdgeInsets.all(20),
@@ -146,13 +199,33 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                                   color: AppTheme.textPrimary,
                                 ),
                               ),
-                              Text(
-                                '£${(13.00 + _selectedTip).toStringAsFixed(2)}',
-                                style: const TextStyle(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppTheme.textPrimary,
-                                ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    '£${(13.00 + _selectedTip).toStringAsFixed(2)}',
+                                    style: const TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppTheme.textPrimary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      Icon(Icons.check_circle, size: 14, color: Colors.green[600]),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'Paid',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.green[600],
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ),
                             ],
                           ),

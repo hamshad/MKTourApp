@@ -10,6 +10,7 @@ import '../../core/api_service.dart';
 import 'widgets/vehicle_selection_widget.dart';
 import 'package:latlong2/latlong.dart' as latLng;
 import '../ride/ride_detail_screen.dart';
+import '../ride/ride_assigned_screen.dart';
 
 class DestinationSearchScreen extends StatefulWidget {
   const DestinationSearchScreen({super.key});
@@ -231,11 +232,16 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
       if (mounted) {
         setState(() => _isLoading = false);
         // Navigate to Ride Detail Screen
-        // Navigator.pushReplacementNamed(context, '/ride-detail', arguments: response['data']['_id']);
-         Navigator.pushReplacement(
+        // Navigate to Ride Assigned Screen
+        Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) => RideDetailScreen(rideId: response['data']['_id']),
+            builder: (context) => RideAssignedScreen(
+              rideId: response['data']['_id'],
+              pickup: pickupLocation,
+              dropoff: dropoffLocation,
+              fare: (response['data']['fare'] ?? 15.50).toDouble(),
+            ),
           ),
         );
       }
