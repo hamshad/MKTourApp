@@ -119,10 +119,15 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
                 ),
               );
             } else {
+              // For returning driver, pass isNewUser: false
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => DriverRegistrationScreen(phoneNumber: fullPhoneNumber),
+                  builder: (context) => DriverRegistrationScreen(
+                    phoneNumber: fullPhoneNumber,
+                    isNewUser: false,
+                    name: existingName,
+                  ),
                 ),
               );
             }

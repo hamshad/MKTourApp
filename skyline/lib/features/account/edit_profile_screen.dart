@@ -1,8 +1,37 @@
 import 'package:flutter/material.dart';
 import '../../core/theme.dart';
 
-class EditProfileScreen extends StatelessWidget {
+import 'package:provider/provider.dart';
+import '../../core/auth_provider.dart';
+
+class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
+
+  @override
+  State<EditProfileScreen> createState() => _EditProfileScreenState();
+}
+
+class _EditProfileScreenState extends State<EditProfileScreen> {
+  late TextEditingController _nameController;
+  late TextEditingController _emailController;
+  late TextEditingController _phoneController;
+
+  @override
+  void initState() {
+    super.initState();
+    final user = context.read<AuthProvider>().user;
+    _nameController = TextEditingController(text: user?['name'] ?? '');
+    _emailController = TextEditingController(text: user?['email'] ?? '');
+    _phoneController = TextEditingController(text: user?['phone'] ?? '');
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -60,18 +89,18 @@ class EditProfileScreen extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 32),
-            _buildTextField('Full Name', 'John Doe'),
+            _buildTextField('Full Name', _nameController),
             const SizedBox(height: 20),
-            _buildTextField('Email', 'john.doe@example.com'),
+            _buildTextField('Email', _emailController),
             const SizedBox(height: 20),
-            _buildTextField('Phone Number', '+44 7700 900000'),
+            _buildTextField('Phone Number', _phoneController),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildTextField(String label, String initialValue) {
+  Widget _buildTextField(String label, TextEditingController controller) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -85,7 +114,7 @@ class EditProfileScreen extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         TextFormField(
-          initialValue: initialValue,
+          controller: controller,
           decoration: InputDecoration(
             filled: true,
             fillColor: AppTheme.surfaceColor,

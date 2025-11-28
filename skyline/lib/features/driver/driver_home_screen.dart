@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
+
 import 'package:latlong2/latlong.dart';
 import 'package:sliding_up_panel/sliding_up_panel.dart';
 import '../../core/theme.dart';
+import '../../core/widgets/platform_map.dart';
 import 'driver_request_panel.dart';
 import 'driver_navigation_panel.dart';
 import '../../core/widgets/custom_snackbar.dart';
@@ -129,42 +130,34 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       body: Stack(
         children: [
           // Map
-          FlutterMap(
-            options: MapOptions(
-              initialCenter: _currentLocation,
-              initialZoom: 14.0,
-            ),
-            children: [
-              TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.example.skyline',
-              ),
-              MarkerLayer(
-                markers: [
-                  Marker(
-                    point: _currentLocation,
-                    width: 40,
-                    height: 40,
-                    child: const Icon(Icons.directions_car, color: AppTheme.primaryColor, size: 40),
-                  ),
-                  if (_status == 'pickup' || _status == 'in_progress')
-                    const Marker(
-                      point: LatLng(51.5074, -0.1278), // Destination/Pickup
-                      width: 40,
-                      height: 40,
-                      child: Icon(Icons.location_on, color: Colors.red, size: 40),
-                    ),
-                ],
+          // Map
+          PlatformMap(
+            initialLat: _currentLocation.latitude,
+            initialLng: _currentLocation.longitude,
+            markers: [
+              MapMarker(
+                id: 'driver',
+                lat: _currentLocation.latitude,
+                lng: _currentLocation.longitude,
+                child: const Icon(Icons.directions_car, color: AppTheme.primaryColor, size: 40),
+                title: 'Driver',
               ),
               if (_status == 'pickup' || _status == 'in_progress')
-                PolylineLayer(
-                  polylines: [
-                    Polyline(
-                      points: [_currentLocation, const LatLng(51.5074, -0.1278)],
-                      strokeWidth: 4.0,
-                      color: AppTheme.primaryColor,
-                    ),
-                  ],
+                MapMarker(
+                  id: 'destination',
+                  lat: 51.5074,
+                  lng: -0.1278,
+                  child: const Icon(Icons.location_on, color: Colors.red, size: 40),
+                  title: 'Destination',
+                ),
+            ],
+            polylines: [
+              if (_status == 'pickup' || _status == 'in_progress')
+                MapPolyline(
+                  id: 'route',
+                  points: [_currentLocation, const LatLng(51.5074, -0.1278)],
+                  color: AppTheme.primaryColor,
+                  width: 4.0,
                 ),
             ],
           ),

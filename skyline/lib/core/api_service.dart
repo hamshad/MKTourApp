@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart'; // For debugPrint
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -18,13 +19,22 @@ class ApiService {
       );
 
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        final responseData = jsonDecode(response.body);
+        if (responseData['success'] == true && responseData['token'] != null) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('auth_token', responseData['token']);
+        }
+        return responseData;
       } else {
         throw Exception('Failed to login: ${response.body}');
       }
     } catch (e) {
       // Return mock success if server is unreachable for demo purposes
       print('API Error: $e. Returning mock success.');
+      // Mock token saving
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('auth_token', 'mock_token_fallback');
+      
       return {
         'success': true,
         'token': 'mock_token_fallback',
@@ -47,12 +57,21 @@ class ApiService {
       );
 
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        final responseData = jsonDecode(response.body);
+        if (responseData['success'] == true && responseData['token'] != null) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('auth_token', responseData['token']);
+        }
+        return responseData;
       } else {
         throw Exception('Failed to signup: ${response.body}');
       }
     } catch (e) {
       print('API Error: $e. Returning mock success.');
+      // Mock token saving
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('auth_token', 'mock_token_fallback');
+      
       return {
         'success': true,
         'token': 'mock_token_fallback',
@@ -269,6 +288,256 @@ class ApiService {
       debugPrint('🟠 [ApiService] Exception caught: $e');
       debugPrint('🔵 ------------------------------------------------------------------');
       throw Exception('Failed to verify OTP: $e');
+    }
+  }
+  Future<Map<String, dynamic>> getUserProfile() async {
+    debugPrint('🔵 ------------------------------------------------------------------');
+    debugPrint('🔵 [ApiService] getUserProfile called');
+    debugPrint('🔵 [Request] URL: ${ApiConstants.userProfile}');
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+
+      if (token == null) {
+        throw Exception('No auth token found');
+      }
+
+      debugPrint('🔵 [Request] Headers: Authorization: Bearer ${token.substring(0, 10)}...');
+
+      final response = await http.get(
+        Uri.parse(ApiConstants.userProfile),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
+      debugPrint('🟣 [Response] Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        debugPrint('🟢 [ApiService] getUserProfile Success');
+        debugPrint('🔵 ------------------------------------------------------------------');
+        return jsonDecode(response.body);
+      } else {
+        debugPrint('🔴 [ApiService] getUserProfile Failed: ${response.body}');
+        debugPrint('🔵 ------------------------------------------------------------------');
+        throw Exception('Failed to get user profile: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('🟠 [ApiService] Exception caught: $e');
+      debugPrint('🔵 ------------------------------------------------------------------');
+      throw Exception('Failed to get user profile: $e');
+    }
+  }
+  Future<Map<String, dynamic>> createRide(Map<String, dynamic> rideData) async {
+    debugPrint('🔵 ------------------------------------------------------------------');
+    debugPrint('🔵 [ApiService] createRide called');
+    debugPrint('🔵 [Request] URL: ${ApiConstants.createRide}');
+    debugPrint('🔵 [Request] Body: $rideData');
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+
+      if (token == null) {
+        throw Exception('No auth token found');
+      }
+
+      final response = await http.post(
+        Uri.parse(ApiConstants.createRide),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(rideData),
+      );
+
+      debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
+      debugPrint('🟣 [Response] Body: ${response.body}');
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        debugPrint('🟢 [ApiService] createRide Success');
+        debugPrint('🔵 ------------------------------------------------------------------');
+        return jsonDecode(response.body);
+      } else {
+        debugPrint('🔴 [ApiService] createRide Failed: ${response.body}');
+        debugPrint('🔵 ------------------------------------------------------------------');
+        throw Exception('Failed to create ride: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('🟠 [ApiService] Exception caught: $e');
+      debugPrint('🔵 ------------------------------------------------------------------');
+      throw Exception('Failed to create ride: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>> getRideDetails(String rideId) async {
+    debugPrint('🔵 ------------------------------------------------------------------');
+    debugPrint('🔵 [ApiService] getRideDetails called');
+    final url = ApiConstants.getRideDetails(rideId);
+    debugPrint('🔵 [Request] URL: $url');
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+
+      if (token == null) {
+        throw Exception('No auth token found');
+      }
+
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
+      debugPrint('🟣 [Response] Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        debugPrint('🟢 [ApiService] getRideDetails Success');
+        debugPrint('🔵 ------------------------------------------------------------------');
+        return jsonDecode(response.body);
+      } else {
+        debugPrint('🔴 [ApiService] getRideDetails Failed: ${response.body}');
+        debugPrint('🔵 ------------------------------------------------------------------');
+        throw Exception('Failed to get ride details: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('🟠 [ApiService] Exception caught: $e');
+      debugPrint('🔵 ------------------------------------------------------------------');
+      throw Exception('Failed to get ride details: $e');
+    }
+  }
+  Future<Map<String, dynamic>> getDriverProfile() async {
+    debugPrint('🔵 ------------------------------------------------------------------');
+    debugPrint('🔵 [ApiService] getDriverProfile called');
+    debugPrint('🔵 [Request] URL: ${ApiConstants.driverProfile}');
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+
+      if (token == null) {
+        throw Exception('No auth token found');
+      }
+
+      debugPrint('🔵 [Request] Headers: Authorization: Bearer ${token.substring(0, 10)}...');
+
+      final response = await http.get(
+        Uri.parse(ApiConstants.driverProfile),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
+      debugPrint('🟣 [Response] Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        debugPrint('🟢 [ApiService] getDriverProfile Success');
+        debugPrint('🔵 ------------------------------------------------------------------');
+        return jsonDecode(response.body);
+      } else {
+        debugPrint('🔴 [ApiService] getDriverProfile Failed: ${response.body}');
+        debugPrint('🔵 ------------------------------------------------------------------');
+        throw Exception('Failed to get driver profile: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('🟠 [ApiService] Exception caught: $e');
+      debugPrint('🔵 ------------------------------------------------------------------');
+      throw Exception('Failed to get driver profile: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>> uploadVehicleImages(List<File> images) async {
+    debugPrint('🔵 ------------------------------------------------------------------');
+    debugPrint('🔵 [ApiService] uploadVehicleImages called');
+    debugPrint('🔵 [Request] URL: ${ApiConstants.uploadVehicleImages}');
+    debugPrint('🔵 [Request] Image Count: ${images.length}');
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+
+      if (token == null) {
+        throw Exception('No auth token found');
+      }
+
+      var request = http.MultipartRequest('POST', Uri.parse(ApiConstants.uploadVehicleImages));
+      request.headers['Authorization'] = 'Bearer $token';
+
+      for (var image in images) {
+        request.files.add(await http.MultipartFile.fromPath('vehicleImages', image.path));
+      }
+
+      debugPrint('🔵 [Request] Sending multipart request...');
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
+      debugPrint('🟣 [Response] Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        debugPrint('🟢 [ApiService] uploadVehicleImages Success');
+        debugPrint('🔵 ------------------------------------------------------------------');
+        return jsonDecode(response.body);
+      } else {
+        debugPrint('🔴 [ApiService] uploadVehicleImages Failed: ${response.body}');
+        debugPrint('🔵 ------------------------------------------------------------------');
+        throw Exception('Failed to upload vehicle images: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('🟠 [ApiService] Exception caught: $e');
+      debugPrint('🔵 ------------------------------------------------------------------');
+      throw Exception('Failed to upload vehicle images: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>> uploadDriverLicense(File licenseDocument) async {
+    debugPrint('🔵 ------------------------------------------------------------------');
+    debugPrint('🔵 [ApiService] uploadDriverLicense called');
+    debugPrint('🔵 [Request] URL: ${ApiConstants.uploadLicense}');
+    debugPrint('🔵 [Request] File: ${licenseDocument.path}');
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+
+      if (token == null) {
+        throw Exception('No auth token found');
+      }
+
+      var request = http.MultipartRequest('POST', Uri.parse(ApiConstants.uploadLicense));
+      request.headers['Authorization'] = 'Bearer $token';
+      
+      request.files.add(await http.MultipartFile.fromPath('document', licenseDocument.path));
+
+      debugPrint('🔵 [Request] Sending multipart request...');
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
+      debugPrint('🟣 [Response] Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        debugPrint('🟢 [ApiService] uploadDriverLicense Success');
+        debugPrint('🔵 ------------------------------------------------------------------');
+        return jsonDecode(response.body);
+      } else {
+        debugPrint('🔴 [ApiService] uploadDriverLicense Failed: ${response.body}');
+        debugPrint('🔵 ------------------------------------------------------------------');
+        throw Exception('Failed to upload driver license: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('🟠 [ApiService] Exception caught: $e');
+      debugPrint('🔵 ------------------------------------------------------------------');
+      throw Exception('Failed to upload driver license: $e');
     }
   }
 }

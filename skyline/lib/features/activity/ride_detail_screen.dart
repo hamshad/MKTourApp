@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/theme.dart';
+import '../../core/widgets/platform_map.dart';
 
 class RideDetailScreen extends StatelessWidget {
   final String destination;
@@ -33,16 +34,16 @@ class RideDetailScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Map Snapshot Placeholder
-            Container(
+            // Map View
+            SizedBox(
               height: 200,
               width: double.infinity,
-              color: AppTheme.surfaceColor,
-              child: Center(
-                child: Icon(
-                  Icons.map,
-                  size: 64,
-                  color: AppTheme.textSecondary.withValues(alpha: 0.5),
-                ),
+              child: PlatformMap(
+                initialLat: 37.7749,
+                initialLng: -122.4194,
+                onTap: (lat, lng) {
+                  debugPrint('Map tapped at: $lat, $lng');
+                },
               ),
             ),
             

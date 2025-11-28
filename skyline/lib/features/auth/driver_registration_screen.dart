@@ -7,8 +7,15 @@ import '../driver/driver_home_screen.dart';
 
 class DriverRegistrationScreen extends StatefulWidget {
   final String phoneNumber;
+  final bool isNewUser;
+  final String? name;
 
-  const DriverRegistrationScreen({super.key, required this.phoneNumber});
+  const DriverRegistrationScreen({
+    super.key, 
+    required this.phoneNumber,
+    this.isNewUser = true,
+    this.name,
+  });
 
   @override
   State<DriverRegistrationScreen> createState() => _DriverRegistrationScreenState();
@@ -26,6 +33,14 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
   String? _selectedVehicleType;
   final List<String> _vehicleTypes = ['sedan', 'suv', 'hatchback', 'van'];
 
+  @override
+  void initState() {
+    super.initState();
+    if (widget.name != null) {
+      _nameController.text = widget.name!;
+    }
+  }
+
   String _capitalize(String s) => s[0].toUpperCase() + s.substring(1);
 
   Future<void> _completeRegistration() async {
@@ -38,17 +53,20 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
       return;
     }
 
-    if (_nameController.text.isEmpty || 
-        _selectedVehicleType == null || 
-        _vehicleModelController.text.isEmpty || 
-        _vehicleNumberController.text.isEmpty || 
-        _vehicleColorController.text.isEmpty) {
-      CustomSnackbar.show(
-        context,
-        message: 'Please fill all fields',
-        type: SnackbarType.warning,
-      );
-      return;
+    // Only validate registration fields if it's a new user
+    if (widget.isNewUser) {
+      if (_nameController.text.isEmpty || 
+          _selectedVehicleType == null || 
+          _vehicleModelController.text.isEmpty || 
+          _vehicleNumberController.text.isEmpty || 
+          _vehicleColorController.text.isEmpty) {
+        CustomSnackbar.show(
+          context,
+          message: 'Please fill all fields',
+          type: SnackbarType.warning,
+        );
+        return;
+      }
     }
 
     setState(() {
@@ -56,18 +74,22 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
     });
 
     try {
-      final vehicleDetails = {
-        "type": _selectedVehicleType,
-        "model": _vehicleModelController.text,
-        "number": _vehicleNumberController.text,
-        "color": _vehicleColorController.text
-      };
+      Map<String, dynamic>? vehicleDetails;
+      
+      if (widget.isNewUser) {
+        vehicleDetails = {
+          "type": _selectedVehicleType,
+          "model": _vehicleModelController.text,
+          "number": _vehicleNumberController.text,
+          "color": _vehicleColorController.text
+        };
+      }
 
       final response = await _apiService.verifyOtp(
         phone: widget.phoneNumber,
         otp: _otpController.text,
         role: 'driver',
-        name: _nameController.text,
+        name: widget.isNewUser ? _nameController.text : null,
         vehicleDetails: vehicleDetails,
       );
 
@@ -80,7 +102,7 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
       if (response['success'] == true) {
         CustomSnackbar.show(
           context,
-          message: 'Registration Successful!',
+          message: widget.isNewUser ? 'Registration Successful!' : 'Login Successful!',
           type: SnackbarType.success,
         );
         
@@ -92,7 +114,7 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
       } else {
         CustomSnackbar.show(
           context,
-          message: response['message'] ?? 'Registration Failed',
+          message: response['message'] ?? 'Verification Failed',
           type: SnackbarType.error,
         );
       }
@@ -121,7 +143,7 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          'Driver Registration',
+          widget.isNewUser ? 'Driver Registration' : 'Driver Login',
           style: GoogleFonts.outfit(
             color: AppTheme.textPrimary,
             fontWeight: FontWeight.w600,
@@ -167,91 +189,93 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
               ),
             ),
 
-            const SizedBox(height: 32),
-            
-            // Personal Details
-            _buildSectionHeader('Personal Details'),
-            const SizedBox(height: 16),
-            _buildTextField(
-              controller: _nameController,
-              label: 'Full Name',
-              icon: Icons.person_outline,
-            ),
-
-            const SizedBox(height: 32),
-
-            // Vehicle Details
-            _buildSectionHeader('Vehicle Information'),
-            const SizedBox(height: 16),
-            
-            // Vehicle Type Dropdown
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppTheme.borderColor),
+            if (widget.isNewUser) ...[
+              const SizedBox(height: 32),
+              
+              // Personal Details
+              _buildSectionHeader('Personal Details'),
+              const SizedBox(height: 16),
+              _buildTextField(
+                controller: _nameController,
+                label: 'Full Name',
+                icon: Icons.person_outline,
               ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: _selectedVehicleType,
-                  isExpanded: true,
-                  hint: Row(
-                    children: [
-                      const Icon(Icons.directions_car_outlined, color: AppTheme.textSecondary),
-                      const SizedBox(width: 12),
-                      Text(
-                        'Select Vehicle Type',
-                        style: GoogleFonts.outfit(color: AppTheme.textSecondary, fontSize: 16),
-                      ),
-                    ],
+
+              const SizedBox(height: 32),
+
+              // Vehicle Details
+              _buildSectionHeader('Vehicle Information'),
+              const SizedBox(height: 16),
+              
+              // Vehicle Type Dropdown
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppTheme.borderColor),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: _selectedVehicleType,
+                    isExpanded: true,
+                    hint: Row(
+                      children: [
+                        const Icon(Icons.directions_car_outlined, color: AppTheme.textSecondary),
+                        const SizedBox(width: 12),
+                        Text(
+                          'Select Vehicle Type',
+                          style: GoogleFonts.outfit(color: AppTheme.textSecondary, fontSize: 16),
+                        ),
+                      ],
+                    ),
+                    items: _vehicleTypes.map((type) {
+                      return DropdownMenuItem(
+                        value: type,
+                        child: Row(
+                          children: [
+                            const Icon(Icons.directions_car_outlined, color: AppTheme.textPrimary),
+                            const SizedBox(width: 12),
+                            Text(
+                              _capitalize(type),
+                              style: GoogleFonts.outfit(color: AppTheme.textPrimary),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (value) => setState(() => _selectedVehicleType = value),
                   ),
-                  items: _vehicleTypes.map((type) {
-                    return DropdownMenuItem(
-                      value: type,
-                      child: Row(
-                        children: [
-                          const Icon(Icons.directions_car_outlined, color: AppTheme.textPrimary),
-                          const SizedBox(width: 12),
-                          Text(
-                            _capitalize(type),
-                            style: GoogleFonts.outfit(color: AppTheme.textPrimary),
-                          ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                  onChanged: (value) => setState(() => _selectedVehicleType = value),
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-            
-            _buildTextField(
-              controller: _vehicleModelController,
-              label: 'Vehicle Model (e.g., Toyota Camry)',
-              icon: Icons.model_training,
-            ),
-            const SizedBox(height: 16),
-            
-            Row(
-              children: [
-                Expanded(
-                  child: _buildTextField(
-                    controller: _vehicleNumberController,
-                    label: 'Vehicle Number',
-                    icon: Icons.pin_outlined,
+              const SizedBox(height: 16),
+              
+              _buildTextField(
+                controller: _vehicleModelController,
+                label: 'Vehicle Model (e.g., Toyota Camry)',
+                icon: Icons.model_training,
+              ),
+              const SizedBox(height: 16),
+              
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildTextField(
+                      controller: _vehicleNumberController,
+                      label: 'Vehicle Number',
+                      icon: Icons.pin_outlined,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _buildTextField(
-                    controller: _vehicleColorController,
-                    label: 'Color',
-                    icon: Icons.color_lens_outlined,
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: _buildTextField(
+                      controller: _vehicleColorController,
+                      label: 'Color',
+                      icon: Icons.color_lens_outlined,
+                    ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
+            ],
 
             const SizedBox(height: 40),
 
@@ -276,7 +300,7 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
                       )
                     : Text(
-                        'Submit Application',
+                        widget.isNewUser ? 'Submit Application' : 'Verify & Login',
                         style: GoogleFonts.outfit(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
