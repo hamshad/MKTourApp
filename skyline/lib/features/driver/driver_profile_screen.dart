@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
@@ -9,6 +10,7 @@ import '../../core/theme.dart';
 import '../../core/auth_provider.dart';
 import '../auth/phone_login_screen.dart';
 import 'edit_driver_profile_screen.dart';
+import '../../core/widgets/pdf_viewer_screen.dart';
 
 class DriverProfileScreen extends StatefulWidget {
   const DriverProfileScreen({super.key});
@@ -388,13 +390,79 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     );
   }
 
-  Future<void> _launchURL(String urlString) async {
-    final Uri url = Uri.parse(urlString);
-    // Use inAppBrowserView for better UX with documents
-    if (!await launchUrl(url, mode: LaunchMode.inAppBrowserView)) {
+  Future<void> _launchURL(String urlString, {String title = 'Document'}) async {
+    debugPrint('🔵 [_launchURL] Attempting to launch: $urlString');
+    try {
+      final Uri uri = Uri.parse(urlString);
+      bool isPdf = uri.path.toLowerCase().endsWith('.pdf');
+      debugPrint('🔵 [_launchURL] Initial extension check: isPdf=$isPdf');
+
+      if (!isPdf) {
+        // Check for PDF signature (magic bytes) and Content-Type
+        try {
+          debugPrint('🔵 [_launchURL] Checking file signature/headers...');
+          final response = await http.get(
+            uri, 
+            headers: {'Range': 'bytes=0-9'} // Fetch first 10 bytes
+          );
+          
+          debugPrint('🔵 [_launchURL] Head/Range response status: ${response.statusCode}');
+          debugPrint('🔵 [_launchURL] Content-Type: ${response.headers['content-type']}');
+
+          if (response.statusCode == 200 || response.statusCode == 206) {
+            // Check magic bytes for PDF: %PDF-
+            // We use bodyBytes to check the raw bytes
+            final bytes = response.bodyBytes;
+            debugPrint('🔵 [_launchURL] First ${bytes.length} bytes: $bytes');
+            
+            if (bytes.length >= 4 && 
+                bytes[0] == 0x25 && // %
+                bytes[1] == 0x50 && // P
+                bytes[2] == 0x44 && // D
+                bytes[3] == 0x46) { // F
+              isPdf = true;
+              debugPrint('🟢 [_launchURL] PDF magic bytes detected!');
+            }
+            
+            // Also check Content-Type header as backup
+            if (!isPdf && response.headers['content-type']?.toLowerCase().contains('application/pdf') == true) {
+              isPdf = true;
+              debugPrint('🟢 [_launchURL] PDF Content-Type detected!');
+            }
+          }
+        } catch (e) {
+          debugPrint('🔴 [_launchURL] Error checking file type: $e');
+        }
+      }
+
+      if (isPdf) {
+        debugPrint('🟢 [_launchURL] Opening as PDF in internal viewer');
+        if (mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => PdfViewerScreen(url: urlString, title: title),
+            ),
+          );
+        }
+      } else {
+        debugPrint('🟡 [_launchURL] Not a PDF, launching externally');
+        // For non-PDF documents (doc, docx), launch externally
+        // inAppBrowserView often fails for direct file downloads/viewing
+        if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+          debugPrint('🔴 [_launchURL] Failed to launch external URL');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Could not open document')),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('🔴 [_launchURL] Critical error launching URL: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open document')),
+          const SnackBar(content: Text('Invalid URL')),
         );
       }
     }
@@ -758,7 +826,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                         licenseDoc != null ? 'Verified' : 'Action Required',
                         onTap: () {
                           if (licenseDoc != null) {
-                            _launchURL(licenseDoc);
+                            _launchURL(licenseDoc, title: 'Driver License');
                           } else {
                             _uploadLicense();
                           }
