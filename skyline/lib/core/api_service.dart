@@ -541,4 +541,48 @@ class ApiService {
       throw Exception('Failed to upload driver license: $e');
     }
   }
+
+  Future<Map<String, dynamic>> updateDriverStatus(bool isOnline) async {
+    debugPrint('🔵 ------------------------------------------------------------------');
+    debugPrint('🔵 [ApiService] updateDriverStatus called');
+    debugPrint('🔵 [Request] URL: ${ApiConstants.updateDriverStatus}');
+    debugPrint('🔵 [Request] Body: {"isOnline": $isOnline}');
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+
+      if (token == null) {
+        throw Exception('No auth token found');
+      }
+
+      debugPrint('🔵 [Request] Headers: Authorization: Bearer ${token.substring(0, 10)}...');
+
+      final response = await http.patch(
+        Uri.parse(ApiConstants.updateDriverStatus),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'isOnline': isOnline}),
+      );
+
+      debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
+      debugPrint('🟣 [Response] Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        debugPrint('🟢 [ApiService] updateDriverStatus Success');
+        debugPrint('🔵 ------------------------------------------------------------------');
+        return jsonDecode(response.body);
+      } else {
+        debugPrint('🔴 [ApiService] updateDriverStatus Failed: ${response.body}');
+        debugPrint('🔵 ------------------------------------------------------------------');
+        throw Exception('Failed to update driver status: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('🟠 [ApiService] Exception caught: $e');
+      debugPrint('🔵 ------------------------------------------------------------------');
+      throw Exception('Failed to update driver status: $e');
+    }
+  }
 }

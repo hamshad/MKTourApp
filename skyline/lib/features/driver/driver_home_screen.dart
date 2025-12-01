@@ -7,6 +7,7 @@ import '../../core/widgets/platform_map.dart';
 import 'driver_request_panel.dart';
 import 'driver_navigation_panel.dart';
 import '../../core/widgets/custom_snackbar.dart';
+import '../../core/network/api_service.dart';
 
 class DriverHomeScreen extends StatefulWidget {
   const DriverHomeScreen({super.key});
@@ -23,14 +24,52 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   // Mock location
   LatLng _currentLocation = const LatLng(51.5085, -0.1260);
 
-  void _toggleOnline() {
-    setState(() {
-      if (_status == 'offline') {
-        _status = 'online';
+  final ApiService _apiService = ApiService();
+
+  Future<void> _toggleOnline() async {
+    final bool isGoingOnline = _status == 'offline';
+    
+    try {
+      debugPrint('🔵 [DriverHomeScreen] Toggling status. Current: $_status, Target: ${isGoingOnline ? 'online' : 'offline'}');
+      
+      // Show loading indicator if needed, or just optimistically update
+      // For now, we'll wait for the API response to be sure
+      
+      final response = await _apiService.updateDriverStatus(isGoingOnline);
+      
+      if (response['success'] == true) {
+        setState(() {
+          _status = isGoingOnline ? 'online' : 'offline';
+        });
+        
+        if (mounted) {
+          CustomSnackbar.show(
+            context,
+            message: response['message'] ?? (isGoingOnline ? 'You are now Online' : 'You are now Offline'),
+            type: SnackbarType.success,
+          );
+        }
+        debugPrint('🟢 [DriverHomeScreen] Status updated successfully to $_status');
       } else {
-        _status = 'offline';
+        if (mounted) {
+          CustomSnackbar.show(
+            context,
+            message: 'Failed to update status: ${response['message']}',
+            type: SnackbarType.error,
+          );
+        }
+        debugPrint('🔴 [DriverHomeScreen] Failed to update status');
       }
-    });
+    } catch (e) {
+      if (mounted) {
+        CustomSnackbar.show(
+          context,
+          message: 'Error updating status: $e',
+          type: SnackbarType.error,
+        );
+      }
+      debugPrint('🔴 [DriverHomeScreen] Error updating status: $e');
+    }
   }
 
   void _simulateRequest() {

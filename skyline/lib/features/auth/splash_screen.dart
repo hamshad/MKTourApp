@@ -63,11 +63,19 @@ class _SplashScreenState extends State<SplashScreen> {
             ),
             const SizedBox(height: 32),
             
+            Image.asset(
+              'lib/assets/images/Logo-01.png',
+              width: 200,
+              height: 100,
+              fit: BoxFit.contain,
+            ),
+            
+            const SizedBox(height: 12),
+
             Text(
               'MK-Tours',
               style: Theme.of(context).textTheme.displayLarge,
             ),
-            
             const SizedBox(height: 12),
             
             Text(

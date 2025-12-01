@@ -1,5 +1,5 @@
 class ApiConstants {
-  static const String baseUrl = 'http://192.168.1.12:5000'; // TODO: Replace with actual base URL
+  static const String baseUrl = 'http://192.168.1.16:5000'; // TODO: Replace with actual base URL
 
   // Auth Endpoints
   static const String sendOtp = '$baseUrl/auth/send-otp';
@@ -16,6 +16,7 @@ class ApiConstants {
   static const String driverProfile = '$baseUrl/drivers/me';
   static const String uploadVehicleImages = '$baseUrl/drivers/upload-vehicle-images';
   static const String uploadLicense = '$baseUrl/drivers/upload-license';
+  static const String updateDriverStatus = '$baseUrl/drivers/status';
 
   // Ride Endpoints
   static const String createRide = '$baseUrl/rides/create';

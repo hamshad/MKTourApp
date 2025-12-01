@@ -29,7 +29,7 @@ class _HomeScreenState extends State<HomeScreen> {
         currentIndex: _selectedIndex,
         onTap: (index) => setState(() => _selectedIndex = index),
         type: BottomNavigationBarType.fixed,
-        selectedItemColor: Colors.black,
+        selectedItemColor: const Color(0xFFFF6B35),
         unselectedItemColor: Colors.grey,
         showUnselectedLabels: true,
         selectedLabelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
@@ -60,14 +60,26 @@ class _HomeScreenState extends State<HomeScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Header
-            const Text(
-              'MK-Tours',
-              style: TextStyle(
-                fontSize: 36,
-                fontWeight: FontWeight.bold,
-                color: Colors.black,
-              ),
+            Row(
+              children: [
+                Image.asset(
+                  'lib/assets/images/Logo-01.png',
+                  height: 40,
+                  fit: BoxFit.contain,
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'MK-Tours',
+                  style: TextStyle(
+                    fontSize: 36,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black,
+                  ),
+                ),
+              ],
             ),
+
+
             
             const SizedBox(height: 24),
 
@@ -102,7 +114,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       child: Row(
                         children: const [
-                          Icon(Icons.access_time_filled, size: 16),
+                          Icon(Icons.access_time_filled, size: 16, ),
                           SizedBox(width: 4),
                           Text(
                             'Now',
@@ -245,7 +257,7 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Stack(
             alignment: Alignment.center,
             children: [
-              Icon(iconData, size: 32, color: Colors.black),
+              Icon(iconData, size: 32, color: Color(0xFFFF6B35)),
               if (promo)
                 Positioned(
                   top: 0,
