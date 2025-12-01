@@ -23,7 +23,15 @@ import 'features/driver/driver_activity_screen.dart';
 import 'features/driver/driver_ride_detail_screen.dart';
 import 'features/auth/role_selection_screen.dart';
 
-void main() {
+import 'core/services/socket_service.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize Socket Service
+  final socketService = SocketService();
+  await socketService.initSocket();
+  
   runApp(
     MultiProvider(
       providers: [

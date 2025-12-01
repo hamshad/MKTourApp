@@ -124,6 +124,26 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  Future<bool> updateProfilePicture(File image) async {
+    try {
+      final response = await _apiService.updateDriverProfilePicture(image);
+      if (response['success'] == true && response['data'] != null) {
+         // Update local user data with new profile picture
+         if (response['data']['profilePicture'] != null) {
+            // Create a new map to ensure immutability isn't an issue if _user was const
+            final updatedUser = Map<String, dynamic>.from(_user ?? {});
+            updatedUser['profilePicture'] = response['data']['profilePicture'];
+            _user = updatedUser;
+            notifyListeners();
+         }
+         return true;
+      }
+    } catch (e) {
+      print('Error updating profile picture: $e');
+    }
+    return false;
+  }
+
   Future<void> logout() async {
     _isAuthenticated = false;
     _user = null;

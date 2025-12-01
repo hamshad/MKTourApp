@@ -585,4 +585,44 @@ class ApiService {
       throw Exception('Failed to update driver status: $e');
     }
   }
+  Future<Map<String, dynamic>> updateDriverProfilePicture(File image) async {
+    debugPrint('🔵 ------------------------------------------------------------------');
+    debugPrint('🔵 [ApiService] updateDriverProfilePicture called');
+    debugPrint('🔵 [Request] URL: ${ApiConstants.updateDriver}');
+    
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+
+      if (token == null) {
+        throw Exception('No auth token found');
+      }
+
+      var request = http.MultipartRequest('PATCH', Uri.parse(ApiConstants.updateDriver));
+      request.headers['Authorization'] = 'Bearer $token';
+      
+      request.files.add(await http.MultipartFile.fromPath('profilePicture', image.path));
+
+      debugPrint('🔵 [Request] Sending multipart request...');
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
+      debugPrint('🟣 [Response] Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        debugPrint('🟢 [ApiService] updateDriverProfilePicture Success');
+        debugPrint('🔵 ------------------------------------------------------------------');
+        return jsonDecode(response.body);
+      } else {
+        debugPrint('🔴 [ApiService] updateDriverProfilePicture Failed: ${response.body}');
+        debugPrint('🔵 ------------------------------------------------------------------');
+        throw Exception('Failed to update profile picture: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('🟠 [ApiService] Exception caught: $e');
+      debugPrint('🔵 ------------------------------------------------------------------');
+      throw Exception('Failed to update profile picture: $e');
+    }
+  }
 }

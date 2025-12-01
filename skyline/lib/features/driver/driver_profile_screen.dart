@@ -114,6 +114,70 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     }
   }
 
+  void _showImageSourceActionSheet() {
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Wrap(
+            children: <Widget>[
+              ListTile(
+                leading: const Icon(Icons.photo_library),
+                title: const Text('Photo Library'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _pickProfileImage(ImageSource.gallery);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_camera),
+                title: const Text('Camera'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _pickProfileImage(ImageSource.camera);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _pickProfileImage(ImageSource source) async {
+    try {
+      final XFile? image = await _picker.pickImage(source: source);
+      if (image != null) {
+        if (!mounted) return;
+        setState(() => _isLoading = true);
+        final file = File(image.path);
+        
+        final success = await Provider.of<AuthProvider>(context, listen: false)
+            .updateProfilePicture(file);
+        
+        if (mounted) {
+          setState(() => _isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(success ? 'Profile picture updated successfully' : 'Failed to update profile picture'),
+              backgroundColor: success ? Colors.green : Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error picking image: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _launchURL(String urlString) async {
     final Uri url = Uri.parse(urlString);
     if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
@@ -175,21 +239,29 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                     children: [
                       Stack(
                         children: [
-                          const CircleAvatar(
+                          CircleAvatar(
                             radius: 50,
                             backgroundColor: AppTheme.surfaceColor,
-                            child: Icon(Icons.person, size: 60, color: AppTheme.textSecondary),
+                            backgroundImage: driver['profilePicture'] != null
+                                ? NetworkImage(driver['profilePicture'])
+                                : null,
+                            child: driver['profilePicture'] == null
+                                ? const Icon(Icons.person, size: 60, color: AppTheme.textSecondary)
+                                : null,
                           ),
                           Positioned(
                             bottom: 0,
                             right: 0,
-                            child: Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: const BoxDecoration(
-                                color: AppTheme.primaryColor,
-                                shape: BoxShape.circle,
+                            child: GestureDetector(
+                              onTap: _showImageSourceActionSheet,
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: const BoxDecoration(
+                                  color: AppTheme.primaryColor,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.edit, color: Colors.white, size: 16),
                               ),
-                              child: const Icon(Icons.edit, color: Colors.white, size: 16),
                             ),
                           ),
                         ],
