@@ -25,15 +25,19 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   LatLng _currentLocation = const LatLng(51.5085, -0.1260);
 
   final ApiService _apiService = ApiService();
+  bool _isLoading = false;
 
   Future<void> _toggleOnline() async {
+    if (_isLoading) return;
+
     final bool isGoingOnline = _status == 'offline';
+    
+    setState(() {
+      _isLoading = true;
+    });
     
     try {
       debugPrint('🔵 [DriverHomeScreen] Toggling status. Current: $_status, Target: ${isGoingOnline ? 'online' : 'offline'}');
-      
-      // Show loading indicator if needed, or just optimistically update
-      // For now, we'll wait for the API response to be sure
       
       final response = await _apiService.updateDriverStatus(isGoingOnline);
       
@@ -69,6 +73,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         );
       }
       debugPrint('🔴 [DriverHomeScreen] Error updating status: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -387,15 +397,24 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                   ],
                 ),
                 child: Center(
-                  child: Text(
-                    _status == 'online' ? 'GO OFFLINE' : 'GO ONLINE',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.2,
-                    ),
-                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : Text(
+                          _status == 'online' ? 'GO OFFLINE' : 'GO ONLINE',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
                 ),
               ),
             ),

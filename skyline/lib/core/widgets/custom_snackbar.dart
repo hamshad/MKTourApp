@@ -5,6 +5,8 @@ import '../theme.dart';
 enum SnackbarType { success, error, warning, info }
 
 class CustomSnackbar {
+  static OverlayEntry? _currentOverlayEntry;
+
   static void show(
     BuildContext context, {
     required String message,
@@ -12,6 +14,14 @@ class CustomSnackbar {
     String? title,
     Duration duration = const Duration(seconds: 4),
   }) {
+    // Remove existing snackbar if present
+    if (_currentOverlayEntry != null) {
+      if (_currentOverlayEntry!.mounted) {
+        _currentOverlayEntry!.remove();
+      }
+      _currentOverlayEntry = null;
+    }
+
     late OverlayEntry overlayEntry;
 
     overlayEntry = OverlayEntry(
@@ -24,10 +34,14 @@ class CustomSnackbar {
           if (overlayEntry.mounted) {
             overlayEntry.remove();
           }
+          if (_currentOverlayEntry == overlayEntry) {
+            _currentOverlayEntry = null;
+          }
         },
       ),
     );
 
+    _currentOverlayEntry = overlayEntry;
     Overlay.of(context).insert(overlayEntry);
   }
 }
