@@ -15,6 +15,7 @@ class ApiConstants {
   static const String driverLogin = '$baseUrl/driver/login';
   static const String driverProfile = '$baseUrl/drivers/me';
   static const String uploadVehicleImages = '$baseUrl/drivers/upload-vehicle-images';
+  static const String deleteVehicleImage = '$baseUrl/drivers/delete-vehicle-image';
   static const String uploadLicense = '$baseUrl/drivers/upload-license';
   static const String updateDriverStatus = '$baseUrl/drivers/status';
   static const String updateDriver = '$baseUrl/drivers/update';

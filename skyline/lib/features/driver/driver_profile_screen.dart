@@ -231,9 +231,10 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     }
   }
 
-  void _showFullScreenImage(List<String> images, int initialIndex) {
+  void _showFullScreenImage(List<String> images, int initialIndex, {List<String>? publicIds}) {
     PageController pageController = PageController(initialPage: initialIndex);
     int currentIndex = initialIndex;
+    bool isDeleting = false;
 
     showDialog(
       context: context,
@@ -265,12 +266,79 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                 Positioned(
                   top: 40,
                   right: 20,
-                  child: IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white, size: 30),
-                    onPressed: () => Navigator.pop(context),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (publicIds != null && publicIds.length > currentIndex && !isDeleting)
+                        IconButton(
+                          icon: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.5),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.delete_outline, color: Colors.red, size: 24),
+                          ),
+                          onPressed: () async {
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: const Text('Delete Image'),
+                                content: const Text('Are you sure you want to delete this image?'),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context, false),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context, true),
+                                    style: TextButton.styleFrom(foregroundColor: Colors.red),
+                                    child: const Text('Delete'),
+                                  ),
+                                ],
+                              ),
+                            );
+
+                            if (confirm == true) {
+                              setState(() => isDeleting = true);
+                              if (!mounted) return;
+                              
+                              final success = await Provider.of<AuthProvider>(context, listen: false)
+                                  .deleteVehicleImage(publicIds[currentIndex]);
+                              
+                              if (mounted) {
+                                setState(() => isDeleting = false);
+                                if (success) {
+                                  Navigator.pop(context); // Close fullscreen to refresh
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Image deleted successfully'),
+                                      backgroundColor: Colors.green,
+                                    ),
+                                  );
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Failed to delete image'),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                }
+                              }
+                            }
+                          },
+                        ),
+                      const SizedBox(width: 16),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white, size: 30),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
                   ),
                 ),
-                if (images.length > 1) ...[
+                if (isDeleting)
+                  const Center(child: CircularProgressIndicator(color: Colors.white)),
+                if (images.length > 1 && !isDeleting) ...[
                   if (currentIndex > 0)
                     Positioned(
                       left: 10,
@@ -377,6 +445,10 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
           final rawVehicleImages = driver['vehicleImages'];
           final List<String> vehicleImages = (rawVehicleImages is List) 
               ? rawVehicleImages.map((e) => e.toString()).toList() 
+              : [];
+          final rawPublicIds = driver['vehicleImagePublicIds'];
+          final List<String> vehicleImagePublicIds = (rawPublicIds is List)
+              ? rawPublicIds.map((e) => e.toString()).toList()
               : [];
           final licenseDoc = driver['licenseDocument'] as String?;
 
@@ -617,7 +689,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                               itemCount: vehicleImages.length,
                               itemBuilder: (context, index) {
                                 return GestureDetector(
-                                  onTap: () => _showFullScreenImage(vehicleImages, index),
+                                  onTap: () => _showFullScreenImage(vehicleImages, index, publicIds: vehicleImagePublicIds),
                                   child: Container(
                                     decoration: BoxDecoration(
                                       borderRadius: BorderRadius.circular(12),

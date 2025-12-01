@@ -500,6 +500,49 @@ class ApiService {
     }
   }
 
+  Future<Map<String, dynamic>> deleteVehicleImage(String publicId) async {
+    debugPrint('🔵 ------------------------------------------------------------------');
+    debugPrint('🔵 [ApiService] deleteVehicleImage called');
+    debugPrint('🔵 [Request] URL: ${ApiConstants.deleteVehicleImage}');
+    debugPrint('🔵 [Request] Public ID: $publicId');
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+
+      if (token == null) {
+        throw Exception('No auth token found');
+      }
+
+      final uri = Uri.parse(ApiConstants.deleteVehicleImage).replace(queryParameters: {'publicId': publicId});
+      
+      final response = await http.delete(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
+      debugPrint('🟣 [Response] Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        debugPrint('🟢 [ApiService] deleteVehicleImage Success');
+        debugPrint('🔵 ------------------------------------------------------------------');
+        return jsonDecode(response.body);
+      } else {
+        debugPrint('🔴 [ApiService] deleteVehicleImage Failed: ${response.body}');
+        debugPrint('🔵 ------------------------------------------------------------------');
+        throw Exception('Failed to delete vehicle image: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('🟠 [ApiService] Exception caught: $e');
+      debugPrint('🔵 ------------------------------------------------------------------');
+      throw Exception('Failed to delete vehicle image: $e');
+    }
+  }
+
   Future<Map<String, dynamic>> uploadDriverLicense(File licenseDocument) async {
     debugPrint('🔵 ------------------------------------------------------------------');
     debugPrint('🔵 [ApiService] uploadDriverLicense called');

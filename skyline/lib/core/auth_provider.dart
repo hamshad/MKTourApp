@@ -84,6 +84,38 @@ class AuthProvider with ChangeNotifier {
     return false;
   }
 
+  Future<bool> deleteVehicleImage(String publicId) async {
+    try {
+      final response = await _apiService.deleteVehicleImage(publicId);
+      if (response['success'] == true) {
+         // Update local user data
+         if (_user != null && _user!['vehicleImages'] != null) {
+            final updatedUser = Map<String, dynamic>.from(_user!);
+            final List<dynamic> images = List.from(updatedUser['vehicleImages']);
+            final List<dynamic> publicIds = List.from(updatedUser['vehicleImagePublicIds'] ?? []);
+            
+            // Find index of publicId to remove corresponding image URL
+            final index = publicIds.indexOf(publicId);
+            if (index != -1) {
+              if (index < images.length) {
+                images.removeAt(index);
+              }
+              publicIds.removeAt(index);
+              
+              updatedUser['vehicleImages'] = images;
+              updatedUser['vehicleImagePublicIds'] = publicIds;
+              _user = updatedUser;
+              notifyListeners();
+            }
+         }
+         return true;
+      }
+    } catch (e) {
+      print('Error deleting vehicle image: $e');
+    }
+    return false;
+  }
+
   Future<bool> uploadDriverLicense(File license) async {
     try {
       final response = await _apiService.uploadDriverLicense(license);
