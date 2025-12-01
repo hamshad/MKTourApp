@@ -625,4 +625,46 @@ class ApiService {
       throw Exception('Failed to update profile picture: $e');
     }
   }
+
+  Future<Map<String, dynamic>> updateDriverProfile(Map<String, dynamic> data) async {
+    debugPrint('🔵 ------------------------------------------------------------------');
+    debugPrint('🔵 [ApiService] updateDriverProfile called');
+    debugPrint('🔵 [Request] URL: ${ApiConstants.updateDriver}');
+    debugPrint('🔵 [Request] Body: $data');
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+
+      if (token == null) {
+        throw Exception('No auth token found');
+      }
+
+      final response = await http.patch(
+        Uri.parse(ApiConstants.updateDriver),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(data),
+      );
+
+      debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
+      debugPrint('🟣 [Response] Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        debugPrint('🟢 [ApiService] updateDriverProfile Success');
+        debugPrint('🔵 ------------------------------------------------------------------');
+        return jsonDecode(response.body);
+      } else {
+        debugPrint('🔴 [ApiService] updateDriverProfile Failed: ${response.body}');
+        debugPrint('🔵 ------------------------------------------------------------------');
+        throw Exception('Failed to update driver profile: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('🟠 [ApiService] Exception caught: $e');
+      debugPrint('🔵 ------------------------------------------------------------------');
+      throw Exception('Failed to update driver profile: $e');
+    }
+  }
 }

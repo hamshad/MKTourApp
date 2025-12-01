@@ -144,6 +144,21 @@ class AuthProvider with ChangeNotifier {
     return false;
   }
 
+  Future<bool> updateDriverProfile(Map<String, dynamic> data) async {
+    try {
+      final response = await _apiService.updateDriverProfile(data);
+      if (response['success'] == true && response['data'] != null) {
+         // Update local user data
+         _user = response['data'];
+         notifyListeners();
+         return true;
+      }
+    } catch (e) {
+      print('Error updating driver profile: $e');
+    }
+    return false;
+  }
+
   Future<void> logout() async {
     _isAuthenticated = false;
     _user = null;

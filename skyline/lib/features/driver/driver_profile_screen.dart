@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme.dart';
 import '../../core/auth_provider.dart';
 import '../auth/phone_login_screen.dart';
+import 'edit_driver_profile_screen.dart';
 
 class DriverProfileScreen extends StatefulWidget {
   const DriverProfileScreen({super.key});
@@ -198,6 +199,20 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
         foregroundColor: Colors.black,
         elevation: 0,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.edit),
+            onPressed: () {
+              final driver = Provider.of<AuthProvider>(context, listen: false).user;
+              if (driver != null) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => EditDriverProfileScreen(driverData: driver),
+                  ),
+                ).then((_) => _fetchProfile());
+              }
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _fetchProfile,
