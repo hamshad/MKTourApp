@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme.dart';
@@ -18,7 +19,10 @@ class DriverProfileScreen extends StatefulWidget {
 
 class _DriverProfileScreenState extends State<DriverProfileScreen> {
   bool _isLoading = false;
+  bool _isVehicleUploading = false;
   final ImagePicker _picker = ImagePicker();
+  final PageController _pageController = PageController();
+  int _currentImageIndex = 0;
 
   @override
   void initState() {
@@ -52,7 +56,23 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
         return;
       }
 
-      setState(() => _isLoading = true);
+      // Check size limit (3MB per image)
+      for (var image in images) {
+        final file = File(image.path);
+        final sizeInBytes = await file.length();
+        if (sizeInBytes > 3 * 1024 * 1024) { // 3MB
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Each image must be less than 3MB'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+      }
+
+      setState(() => _isVehicleUploading = true);
       final files = images.map((xFile) => File(xFile.path)).toList();
       
       if (!mounted) return;
@@ -60,7 +80,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
           .uploadVehicleImages(files);
       
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() => _isVehicleUploading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(success ? 'Vehicle images uploaded successfully' : 'Failed to upload images'),
@@ -70,7 +90,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() => _isVehicleUploading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error picking images: $e'),
@@ -83,11 +103,29 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
 
   Future<void> _uploadLicense() async {
     try {
-      final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
-      if (image != null) {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'doc', 'docx'],
+      );
+
+      if (result != null) {
+        final file = File(result.files.single.path!);
+        
+        // Check size limit (5MB)
+        final sizeInBytes = await file.length();
+        if (sizeInBytes > 5 * 1024 * 1024) { // 5MB
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Document must be less than 5MB'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+
         if (!mounted) return;
         setState(() => _isLoading = true);
-        final file = File(image.path);
         
         final success = await Provider.of<AuthProvider>(context, listen: false)
             .uploadDriverLicense(file);
@@ -149,9 +187,23 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     try {
       final XFile? image = await _picker.pickImage(source: source);
       if (image != null) {
+        final file = File(image.path);
+
+        // Check size limit (5MB)
+        final sizeInBytes = await file.length();
+        if (sizeInBytes > 5 * 1024 * 1024) { // 5MB
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Profile picture must be less than 5MB'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+
         if (!mounted) return;
         setState(() => _isLoading = true);
-        final file = File(image.path);
         
         final success = await Provider.of<AuthProvider>(context, listen: false)
             .updateProfilePicture(file);
@@ -179,9 +231,99 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     }
   }
 
+  void _showFullScreenImage(List<String> images, int initialIndex) {
+    PageController pageController = PageController(initialPage: initialIndex);
+    int currentIndex = initialIndex;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: EdgeInsets.zero,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                PageView.builder(
+                  controller: pageController,
+                  itemCount: images.length,
+                  onPageChanged: (index) {
+                    setState(() => currentIndex = index);
+                  },
+                  itemBuilder: (context, index) {
+                    return InteractiveViewer(
+                      minScale: 0.5,
+                      maxScale: 4.0,
+                      child: Image.network(
+                        images[index],
+                        fit: BoxFit.contain,
+                      ),
+                    );
+                  },
+                ),
+                Positioned(
+                  top: 40,
+                  right: 20,
+                  child: IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white, size: 30),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ),
+                if (images.length > 1) ...[
+                  if (currentIndex > 0)
+                    Positioned(
+                      left: 10,
+                      child: IconButton(
+                        icon: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.5),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.chevron_left, color: Colors.white, size: 30),
+                        ),
+                        onPressed: () {
+                          pageController.previousPage(
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOut,
+                          );
+                        },
+                      ),
+                    ),
+                  if (currentIndex < images.length - 1)
+                    Positioned(
+                      right: 10,
+                      child: IconButton(
+                        icon: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.5),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.chevron_right, color: Colors.white, size: 30),
+                        ),
+                        onPressed: () {
+                          pageController.nextPage(
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOut,
+                          );
+                        },
+                      ),
+                    ),
+                ],
+              ],
+            ),
+          );
+        }
+      ),
+    );
+  }
+
   Future<void> _launchURL(String urlString) async {
     final Uri url = Uri.parse(urlString);
-    if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+    // Use inAppBrowserView for better UX with documents
+    if (!await launchUrl(url, mode: LaunchMode.inAppBrowserView)) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Could not open document')),
@@ -226,115 +368,143 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
           }
 
           final driver = authProvider.user;
-          debugPrint('🔵 [DriverProfileScreen] Driver Data: $driver');
           
           if (driver == null) {
             return const Center(child: Text('Failed to load profile'));
           }
 
           final vehicle = driver['vehicle'] ?? {};
-          debugPrint('🔵 [DriverProfileScreen] Vehicle Data: $vehicle');
-          
           final rawVehicleImages = driver['vehicleImages'];
-          debugPrint('🔵 [DriverProfileScreen] Raw Vehicle Images: $rawVehicleImages (${rawVehicleImages.runtimeType})');
-          
           final List<String> vehicleImages = (rawVehicleImages is List) 
               ? rawVehicleImages.map((e) => e.toString()).toList() 
               : [];
-              
           final licenseDoc = driver['licenseDocument'] as String?;
 
           return SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             child: Column(
               children: [
                 // Profile Header
-                Center(
-                  child: Column(
-                    children: [
-                      Stack(
-                        children: [
-                          CircleAvatar(
-                            radius: 50,
-                            backgroundColor: AppTheme.surfaceColor,
-                            backgroundImage: driver['profilePicture'] != null
-                                ? NetworkImage(driver['profilePicture'])
-                                : null,
-                            child: driver['profilePicture'] == null
-                                ? const Icon(Icons.person, size: 60, color: AppTheme.textSecondary)
-                                : null,
-                          ),
-                          Positioned(
-                            bottom: 0,
-                            right: 0,
-                            child: GestureDetector(
-                              onTap: _showImageSourceActionSheet,
-                              child: Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: const BoxDecoration(
-                                  color: AppTheme.primaryColor,
-                                  shape: BoxShape.circle,
+                Column(
+                  children: [
+                    Stack(
+                      children: [
+                        GestureDetector(
+                          onTap: driver['profilePicture'] != null 
+                              ? () => _showFullScreenImage([driver['profilePicture']], 0) 
+                              : null,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(color: AppTheme.primaryColor, width: 3),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.1),
+                                  blurRadius: 20,
+                                  offset: const Offset(0, 10),
                                 ),
-                                child: const Icon(Icons.edit, color: Colors.white, size: 16),
+                              ],
+                            ),
+                            child: CircleAvatar(
+                              radius: 60,
+                              backgroundColor: AppTheme.surfaceColor,
+                              backgroundImage: driver['profilePicture'] != null
+                                  ? NetworkImage(driver['profilePicture'])
+                                  : null,
+                              child: driver['profilePicture'] == null
+                                  ? const Icon(Icons.person, size: 60, color: AppTheme.textSecondary)
+                                  : null,
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: GestureDetector(
+                            onTap: _showImageSourceActionSheet,
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: AppTheme.primaryColor,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 2),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.2),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
                               ),
+                              child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      driver['name'] ?? 'Driver Name',
+                      style: const TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.textPrimary,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.surfaceColor,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: AppTheme.borderColor),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.star_rounded, size: 20, color: Colors.amber),
+                          const SizedBox(width: 6),
+                          Text(
+                            '${driver['rating'] ?? 5.0} Rating',
+                            style: const TextStyle(
+                              color: AppTheme.textPrimary,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 16),
-                      Text(
-                        driver['name'] ?? 'Driver Name',
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.textPrimary,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Active since ${driver['createdAt'] != null ? DateTime.parse(driver['createdAt']).year : 'N/A'}',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: AppTheme.textSecondary,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: AppTheme.accentColor.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.star, size: 16, color: AppTheme.accentColor),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${driver['rating'] ?? 0} Rating',
-                              style: const TextStyle(
-                                color: AppTheme.accentColor,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
                 
                 const SizedBox(height: 32),
                 
                 // Stats Grid
-                Row(
-                  children: [
-                    _buildStatCard('Total Rides', '${driver['totalRides'] ?? 0}', Icons.directions_car),
-                    const SizedBox(width: 16),
-                    _buildStatCard('Acceptance', '98%', Icons.check_circle), // Mock data for now
-                    const SizedBox(width: 16),
-                    _buildStatCard('Cancel Rate', '1%', Icons.cancel), // Mock data for now
-                  ],
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 20,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildStatItem('${driver['totalRides'] ?? 0}', 'Rides', Icons.local_taxi),
+                      Container(width: 1, height: 40, color: AppTheme.borderColor),
+                      _buildStatItem('98%', 'Acceptance', Icons.check_circle_outline),
+                      Container(width: 1, height: 40, color: AppTheme.borderColor),
+                      _buildStatItem('4.9', 'Rating', Icons.thumb_up_outlined),
+                    ],
+                  ),
                 ),
                 
                 const SizedBox(height: 32),
@@ -344,173 +514,219 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text(
-                      'Vehicle Information',
+                      'Vehicle Details',
                       style: TextStyle(
-                        fontSize: 18,
+                        fontSize: 20,
                         fontWeight: FontWeight.bold,
                         color: AppTheme.textPrimary,
                       ),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.upload_file, color: AppTheme.primaryColor),
+                    TextButton.icon(
                       onPressed: _uploadVehicleImages,
-                      tooltip: 'Upload Vehicle Images',
+                      icon: const Icon(Icons.add_photo_alternate_outlined, size: 20),
+                      label: const Text('Add Photos'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppTheme.primaryColor,
+                      ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 16),
                 Container(
-                  padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppTheme.borderColor),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: AppTheme.borderColor.withValues(alpha: 0.5)),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
+                        color: Colors.black.withValues(alpha: 0.03),
+                        blurRadius: 15,
+                        offset: const Offset(0, 5),
                       ),
                     ],
                   ),
-                  child: Column(
+                  child: Stack(
                     children: [
-                      Row(
+                      Column(
                         children: [
-                          GestureDetector(
-                            onTap: vehicleImages.isNotEmpty 
-                                ? () => _launchURL(vehicleImages.first)
-                                : null,
-                            child: Container(
-                              width: 60,
-                              height: 60,
-                              decoration: BoxDecoration(
-                                color: AppTheme.surfaceColor,
-                                borderRadius: BorderRadius.circular(12),
-                                image: vehicleImages.isNotEmpty
-                                    ? DecorationImage(
-                                        image: NetworkImage(vehicleImages.first),
-                                        fit: BoxFit.cover,
-                                      )
-                                    : null,
-                              ),
-                              child: vehicleImages.isEmpty
-                                  ? const Icon(Icons.local_taxi, size: 32, color: AppTheme.textSecondary)
-                                  : null,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                          Padding(
+                            padding: const EdgeInsets.all(20),
+                            child: Row(
                               children: [
-                                Text(
-                                  vehicle['model'] ?? 'No Vehicle',
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppTheme.textPrimary,
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.primaryColor.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: const Icon(Icons.directions_car_filled, color: AppTheme.primaryColor, size: 32),
+                                ),
+                                const SizedBox(width: 20),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        vehicle['model'] ?? 'No Vehicle',
+                                        style: const TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppTheme.textPrimary,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '${vehicle['color'] ?? ''} ${vehicle['type'] ?? ''}'.trim(),
+                                        style: const TextStyle(color: AppTheme.textSecondary, fontSize: 15),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                Text(
-                                  '${vehicle['color'] ?? ''} • ${vehicle['type'] ?? ''}',
-                                  style: const TextStyle(color: AppTheme.textSecondary),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.surfaceColor,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: AppTheme.borderColor),
+                                  ),
+                                  child: Text(
+                                    vehicle['number'] ?? 'N/A',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 1,
+                                      fontSize: 15,
+                                    ),
+                                  ),
                                 ),
                               ],
                             ),
                           ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: Colors.grey[200],
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              vehicle['number'] ?? 'N/A',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 1,
+                          if (vehicleImages.isNotEmpty) ...[
+                            const Divider(height: 1),
+                            const SizedBox(height: 16),
+                            GridView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 3,
+                                crossAxisSpacing: 10,
+                                mainAxisSpacing: 10,
+                                childAspectRatio: 1,
                               ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (vehicleImages.length > 1) ...[
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          height: 60,
-                          child: ListView.builder(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: vehicleImages.length - 1,
-                            itemBuilder: (context, index) {
-                              return GestureDetector(
-                                onTap: () => _launchURL(vehicleImages[index + 1]),
-                                child: Container(
-                                  width: 60,
-                                  margin: const EdgeInsets.only(right: 8),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(8),
-                                    image: DecorationImage(
-                                      image: NetworkImage(vehicleImages[index + 1]),
-                                      fit: BoxFit.cover,
+                              itemCount: vehicleImages.length,
+                              itemBuilder: (context, index) {
+                                return GestureDetector(
+                                  onTap: () => _showFullScreenImage(vehicleImages, index),
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(12),
+                                      image: DecorationImage(
+                                        image: NetworkImage(vehicleImages[index]),
+                                        fit: BoxFit.cover,
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withValues(alpha: 0.1),
+                                          blurRadius: 4,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                ),
-                              );
-                            },
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                        ],
+                      ),
+                      if (_isVehicleUploading)
+                        Positioned.fill(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.7),
+                              borderRadius: BorderRadius.circular(24),
+                            ),
+                            child: const Center(
+                              child: CircularProgressIndicator(),
+                            ),
                           ),
                         ),
-                      ],
                     ],
                   ),
                 ),
                 
                 const SizedBox(height: 32),
                 
-                // Documents
-                _buildMenuItem(
-                  Icons.description, 
-                  'Documents', 
-                  licenseDoc != null ? 'License Uploaded' : 'Upload License',
-                  onTap: _uploadLicense,
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
+                // Documents & Settings
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Documents & Settings',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: AppTheme.borderColor.withValues(alpha: 0.5)),
+                  ),
+                  child: Column(
                     children: [
-                      if (licenseDoc != null)
-                        IconButton(
-                          icon: const Icon(Icons.visibility, color: AppTheme.primaryColor),
-                          onPressed: () => _launchURL(licenseDoc),
-                          tooltip: 'View License',
-                        ),
-                      Icon(
-                        licenseDoc != null ? Icons.check_circle : Icons.upload, 
-                        color: licenseDoc != null ? Colors.green : AppTheme.primaryColor
+                      _buildMenuItem(
+                        Icons.description_outlined, 
+                        'Driver License', 
+                        licenseDoc != null ? 'Verified' : 'Action Required',
+                        onTap: () {
+                          if (licenseDoc != null) {
+                            _launchURL(licenseDoc);
+                          } else {
+                            _uploadLicense();
+                          }
+                        },
+                        trailing: licenseDoc != null 
+                            ? Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: const Text('View', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 12)),
+                              )
+                            : const Icon(Icons.upload_file, color: AppTheme.primaryColor),
+                        showDivider: true,
+                      ),
+                      _buildMenuItem(Icons.account_balance_wallet_outlined, 'Payout Settings', 'Bank Account', showDivider: true),
+                      _buildMenuItem(Icons.settings_outlined, 'App Settings', 'Navigation, Sound', showDivider: true),
+                      _buildMenuItem(
+                        Icons.logout_rounded, 
+                        'Log Out', 
+                        '', 
+                        isDestructive: true,
+                        onTap: () async {
+                          await Provider.of<AuthProvider>(context, listen: false).logout();
+                          if (!context.mounted) return;
+                          Navigator.pushAndRemoveUntil(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const PhoneLoginScreen(role: 'driver'),
+                            ),
+                            (route) => false,
+                          );
+                        },
+                        showDivider: false,
                       ),
                     ],
                   ),
                 ),
-                _buildMenuItem(Icons.payment, 'Payout Settings', 'Bank Account'),
-                _buildMenuItem(Icons.settings, 'App Settings', 'Navigation, Sound'),
-                _buildMenuItem(
-                  Icons.logout, 
-                  'Log Out', 
-                  '', 
-                  isDestructive: true,
-                  onTap: () async {
-                    // Use AuthProvider to logout
-                    await Provider.of<AuthProvider>(context, listen: false).logout();
-                    
-                    // Navigate to login screen
-                    if (!context.mounted) return;
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const PhoneLoginScreen(role: 'driver'),
-                      ),
-                      (route) => false,
-                    );
-                  },
-                ),
+                const SizedBox(height: 40),
               ],
             ),
           );
@@ -519,38 +735,35 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     );
   }
 
-  Widget _buildStatCard(String label, String value, IconData icon) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
-        decoration: BoxDecoration(
-          color: AppTheme.surfaceColor,
-          borderRadius: BorderRadius.circular(16),
+  Widget _buildStatItem(String value, String label, IconData icon) {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: AppTheme.surfaceColor,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, size: 24, color: AppTheme.primaryColor),
         ),
-        child: Column(
-          children: [
-            Icon(icon, size: 24, color: AppTheme.primaryColor),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 12,
-                color: AppTheme.textSecondary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
+        const SizedBox(height: 8),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: AppTheme.textPrimary,
+          ),
         ),
-      ),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 13,
+            color: AppTheme.textSecondary,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
     );
   }
 
@@ -561,33 +774,44 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     bool isDestructive = false,
     VoidCallback? onTap,
     Widget? trailing,
+    bool showDivider = false,
   }) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: isDestructive ? Colors.red.withValues(alpha: 0.1) : AppTheme.surfaceColor,
-          borderRadius: BorderRadius.circular(12),
+    return Column(
+      children: [
+        ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          leading: Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: isDestructive ? Colors.red.withValues(alpha: 0.1) : AppTheme.surfaceColor,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(
+              icon,
+              color: isDestructive ? Colors.red : AppTheme.textPrimary,
+              size: 22,
+            ),
+          ),
+          title: Text(
+            title,
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 16,
+              color: isDestructive ? Colors.red : AppTheme.textPrimary,
+            ),
+          ),
+          subtitle: subtitle.isNotEmpty
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(subtitle, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+                )
+              : null,
+          trailing: trailing ?? const Icon(Icons.chevron_right_rounded, color: AppTheme.textSecondary, size: 20),
+          onTap: onTap ?? () {},
         ),
-        child: Icon(
-          icon,
-          color: isDestructive ? Colors.red : AppTheme.textPrimary,
-          size: 20,
-        ),
-      ),
-      title: Text(
-        title,
-        style: TextStyle(
-          fontWeight: FontWeight.w600,
-          color: isDestructive ? Colors.red : AppTheme.textPrimary,
-        ),
-      ),
-      subtitle: subtitle.isNotEmpty
-          ? Text(subtitle, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12))
-          : null,
-      trailing: trailing ?? const Icon(Icons.chevron_right, color: AppTheme.textSecondary),
-      onTap: onTap ?? () {},
+        if (showDivider)
+          const Divider(height: 1, indent: 70, endIndent: 20),
+      ],
     );
   }
 }
