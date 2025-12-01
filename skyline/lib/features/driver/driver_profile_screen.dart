@@ -147,12 +147,22 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
           }
 
           final driver = authProvider.user;
+          debugPrint('🔵 [DriverProfileScreen] Driver Data: $driver');
+          
           if (driver == null) {
             return const Center(child: Text('Failed to load profile'));
           }
 
           final vehicle = driver['vehicle'] ?? {};
-          final vehicleImages = driver['vehicleImages'] as List<dynamic>? ?? [];
+          debugPrint('🔵 [DriverProfileScreen] Vehicle Data: $vehicle');
+          
+          final rawVehicleImages = driver['vehicleImages'];
+          debugPrint('🔵 [DriverProfileScreen] Raw Vehicle Images: $rawVehicleImages (${rawVehicleImages.runtimeType})');
+          
+          final List<String> vehicleImages = (rawVehicleImages is List) 
+              ? rawVehicleImages.map((e) => e.toString()).toList() 
+              : [];
+              
           final licenseDoc = driver['licenseDocument'] as String?;
 
           return SingleChildScrollView(
@@ -400,9 +410,8 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                   '', 
                   isDestructive: true,
                   onTap: () async {
-                    // Clear auth token
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.remove('auth_token');
+                    // Use AuthProvider to logout
+                    await Provider.of<AuthProvider>(context, listen: false).logout();
                     
                     // Navigate to login screen
                     if (!context.mounted) return;
