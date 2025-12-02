@@ -124,44 +124,7 @@ class ApiService {
     }
   }
   
-  static Future<Map<String, dynamic>> completeRide({
-    required String bookingId,
-    required int rating,
-    required double tip,
-    required String feedback,
-  }) async {
-    try {
-      final response = await http.post(
-        Uri.parse('${AppConstants.apiBaseUrl}/complete-ride'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'bookingId': bookingId,
-          'rating': rating,
-          'tip': tip,
-          'feedback': feedback,
-        }),
-      );
-      
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else {
-        throw Exception('Failed to complete ride');
-      }
-    } catch (e) {
-      print('API Error: $e. Returning mock completion.');
-      return {
-        'success': true,
-        'fare': {
-          'base': 2.50,
-          'distance': 8.20,
-          'time': 2.30,
-          'subtotal': 13.00,
-          'tip': tip,
-          'total': 13.00 + tip,
-        },
-      };
-    }
-  }
+  // Removed conflicting static completeRide method
   Future<Map<String, dynamic>> sendOtp(String phone) async {
     debugPrint('🔵 ------------------------------------------------------------------');
     debugPrint('🔵 [ApiService] sendOtp called');
@@ -390,6 +353,73 @@ class ApiService {
 
   Future<Map<String, dynamic>> cancelRide(String rideId) async {
     return await _postRequest(ApiConstants.cancelRide(rideId), {});
+  }
+
+  Future<Map<String, dynamic>> rateRide({
+    required String bookingId,
+    required int rating,
+    required double tip,
+    required String feedback,
+  }) async {
+    // Assuming there's an endpoint for rating, or we use a generic 'rate' endpoint
+    // For now, I'll use a hypothetical endpoint or just reuse complete-ride if that was the intention, 
+    // but typically rating is separate. I'll assume '/rate-ride' for now or just mock it if needed.
+    // Given the previous code used 'complete-ride' endpoint for this, I will use that but as a separate method name to avoid conflict.
+    // Actually, let's check ApiConstants.
+    // If ApiConstants doesn't have it, I'll use a direct string or add it.
+    // The previous static method used '${AppConstants.apiBaseUrl}/complete-ride'.
+    // I will use that same URL.
+    
+    return await _postRequest('${AppConstants.apiBaseUrl}/complete-ride', {
+      'bookingId': bookingId,
+      'rating': rating,
+      'tip': tip,
+      'feedback': feedback,
+    });
+  }
+
+  Future<Map<String, dynamic>> _postRequest(String url, Map<String, dynamic> body) async {
+    debugPrint('🔵 ------------------------------------------------------------------');
+    debugPrint('🔵 [ApiService] POST Request');
+    debugPrint('🔵 [Request] URL: $url');
+    debugPrint('🔵 [Request] Body: $body');
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+
+      if (token == null) {
+        throw Exception('No auth token found');
+      }
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(body),
+      );
+
+      debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
+      debugPrint('🟣 [Response] Body: ${response.body}');
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return jsonDecode(response.body);
+      } else {
+        debugPrint('🔴 [ApiService] Request Failed: ${response.body}');
+        return {
+          'success': false,
+          'message': 'Request failed: ${response.statusCode}',
+        };
+      }
+    } catch (e) {
+      debugPrint('🟠 [ApiService] Exception: $e');
+      return {
+        'success': false,
+        'message': 'Error: $e',
+      };
+    }
   }
 
   Future<Map<String, dynamic>> getRideDetails(String rideId) async {

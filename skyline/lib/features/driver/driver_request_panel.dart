@@ -14,115 +14,150 @@ class DriverRequestPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 20,
-            offset: const Offset(0, -5),
-          ),
-        ],
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text(
-            'New Ride Request',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: AppTheme.textPrimary,
+          // Drag Handle
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
           ),
-          const SizedBox(height: 8),
-          const Text(
-            '2 mins away • 0.5 mi',
-            style: TextStyle(
-              fontSize: 14,
-              color: AppTheme.textSecondary,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
           
-          // Passenger Info
+          // Header
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const CircleAvatar(
-                radius: 30,
-                backgroundColor: AppTheme.surfaceColor,
-                child: Icon(Icons.person, size: 30, color: AppTheme.textSecondary),
+              Text(
+                'New Ride Request',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textPrimary,
+                ),
               ),
-              const SizedBox(width: 16),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Sarah Jenkins',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.textPrimary,
-                    ),
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor,
+                  borderRadius: BorderRadius.all(Radius.circular(20)),
+                ),
+                child: Text(
+                  '2 mins away',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
                   ),
-                  Row(
-                    children: [
-                      const Icon(Icons.star, size: 14, color: Colors.amber),
-                      const SizedBox(width: 4),
-                      Text(
-                        '4.8',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: AppTheme.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const Spacer(),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const Text(
-                    '£14.50',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.textPrimary,
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: AppTheme.surfaceColor,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: const Text(
-                      'Standard',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ],
           ),
-          
-          const SizedBox(height: 24),
-          const Divider(),
           const SizedBox(height: 24),
           
-          // Route
+          // Passenger Info Card
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.grey[50],
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.grey[200]!),
+            ),
+            child: Row(
+              children: [
+                const CircleAvatar(
+                  radius: 28,
+                  backgroundColor: Colors.white,
+                  backgroundImage: NetworkImage('https://i.pravatar.cc/150?img=32'), // Mock image
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Sarah Jenkins',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(Icons.star, size: 16, color: Colors.amber),
+                          const SizedBox(width: 4),
+                          Text(
+                            '4.8',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[600],
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '• 50+ rides',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[500],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    const Text(
+                      '£14.50',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.primaryColor,
+                      ),
+                    ),
+                    Text(
+                      'Est. Fare',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[500],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          
+          const SizedBox(height: 24),
+          
+          // Route Details
           Row(
             children: [
               Column(
                 children: [
-                  const Icon(Icons.my_location, color: Colors.blue, size: 16),
-                  Container(height: 24, width: 2, color: Colors.grey[300]),
-                  const Icon(Icons.location_on, color: Colors.red, size: 16),
+                  const Icon(Icons.my_location, color: AppTheme.primaryColor, size: 20),
+                  Container(
+                    height: 30,
+                    width: 2,
+                    margin: const EdgeInsets.symmetric(vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(1),
+                    ),
+                  ),
+                  const Icon(Icons.location_on, color: Colors.red, size: 20),
                 ],
               ),
               const SizedBox(width: 16),
@@ -132,12 +167,32 @@ class DriverRequestPanel extends StatelessWidget {
                   children: [
                     Text(
                       'Current Location',
-                      style: TextStyle(fontWeight: FontWeight.w500),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 16,
+                      ),
+                    ),
+                    Text(
+                      '0.5 mi away',
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 13,
+                      ),
                     ),
                     SizedBox(height: 24),
                     Text(
                       'Heathrow Terminal 5',
-                      style: TextStyle(fontWeight: FontWeight.w500),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 16,
+                      ),
+                    ),
+                    Text(
+                      '23 mi trip',
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 13,
+                      ),
                     ),
                   ],
                 ),
@@ -145,25 +200,26 @@ class DriverRequestPanel extends StatelessWidget {
             ],
           ),
           
-          const SizedBox(height: 32),
+          const Spacer(),
           
-          // Actions
+          // Action Buttons
           Row(
             children: [
               Expanded(
                 child: OutlinedButton(
                   onPressed: onDecline,
                   style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    side: const BorderSide(color: Colors.red),
+                    padding: const EdgeInsets.symmetric(vertical: 18),
+                    side: BorderSide(color: Colors.red.withOpacity(0.5), width: 2),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(16),
                     ),
                   ),
                   child: const Text(
                     'Decline',
                     style: TextStyle(
                       color: Colors.red,
+                      fontSize: 16,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -171,26 +227,32 @@ class DriverRequestPanel extends StatelessWidget {
               ),
               const SizedBox(width: 16),
               Expanded(
+                flex: 2,
                 child: ElevatedButton(
                   onPressed: onAccept,
                   style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    padding: const EdgeInsets.symmetric(vertical: 18),
                     backgroundColor: AppTheme.primaryColor,
+                    elevation: 8,
+                    shadowColor: AppTheme.primaryColor.withOpacity(0.4),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(16),
                     ),
                   ),
                   child: const Text(
                     'Accept Ride',
                     style: TextStyle(
                       color: Colors.white,
+                      fontSize: 18,
                       fontWeight: FontWeight.bold,
+                      letterSpacing: 0.5,
                     ),
                   ),
                 ),
               ),
             ],
           ),
+          const SizedBox(height: 16),
         ],
       ),
     );

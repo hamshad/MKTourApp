@@ -13,6 +13,7 @@ class RideCompleteScreen extends StatefulWidget {
 }
 
 class _RideCompleteScreenState extends State<RideCompleteScreen> {
+  final ApiService _apiService = ApiService(); // Instantiate ApiService
   int _rating = 0;
   double _selectedTip = 0;
   final TextEditingController _feedbackController = TextEditingController();
@@ -30,7 +31,7 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
     setState(() => _isSubmitting = true);
     
     try {
-      await ApiService.completeRide(
+      await _apiService.rateRide(
         bookingId: widget.rideData['bookingId'] ?? '',
         rating: _rating,
         tip: _selectedTip,
