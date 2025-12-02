@@ -55,66 +55,41 @@ class _ActivityScreenState extends State<ActivityScreen> {
             unselectedLabelColor: AppTheme.textSecondary,
             indicatorColor: AppTheme.primaryColor,
             tabs: [
-              Tab(text: 'Past'),
-              Tab(text: 'Upcoming'),
+              Tab(text: 'Current'),
+              Tab(text: 'Completed'),
             ],
           ),
         ),
         body: TabBarView(
           children: [
-            _buildActivityList(context, isPast: true),
-            _buildActivityList(context, isPast: false),
+            _buildActivityList(context, isCompleted: false),
+            _buildActivityList(context, isCompleted: true),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildActivityList(BuildContext context, {required bool isPast}) {
-    // For now, we only have "Past" rides from the API (status: completed/canceled/pending)
-    // "Upcoming" could be filtered by status 'scheduled' or date > now if API supported it.
-    // Assuming the API returns all history mixed, we'll just show them in "Past" for this demo
-    // or filter if we had a status field for upcoming.
-    
-    if (!isPast) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.calendar_today,
-              size: 64,
-              color: AppTheme.textSecondary.withValues(alpha: 0.3),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'No upcoming rides',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Schedule a ride to see it here',
-              style: TextStyle(
-                fontSize: 14,
-                color: AppTheme.textSecondary,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
+  Widget _buildActivityList(BuildContext context, {required bool isCompleted}) {
     return Consumer<AuthProvider>(
       builder: (context, authProvider, child) {
         if (_isLoading && authProvider.rideHistory.isEmpty) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        final rides = authProvider.rideHistory;
+        // Filter rides based on status
+        final allRides = authProvider.rideHistory;
+        final rides = allRides.where((ride) {
+          final status = (ride['status'] as String?)?.toLowerCase() ?? '';
+          if (isCompleted) {
+            return status == 'completed' || status == 'cancelled';
+          } else {
+            return status == 'pending' || 
+                   status == 'accepted' || 
+                   status == 'started' || 
+                   status == 'driver_assigned';
+          }
+        }).toList();
 
         if (rides.isEmpty) {
            return Center(
@@ -122,13 +97,13 @@ class _ActivityScreenState extends State<ActivityScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
-                  Icons.history,
+                  isCompleted ? Icons.history : Icons.directions_car,
                   size: 64,
                   color: AppTheme.textSecondary.withValues(alpha: 0.3),
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'No ride history',
+                  isCompleted ? 'No completed rides' : 'No current rides',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
@@ -167,10 +142,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
               return _buildActivityItem(
                 context,
                 date: formattedDate,
-                destination: dropoff, // Showing dropoff as main destination
+                destination: dropoff,
                 price: price,
-                status: status.toString().toUpperCase(),
-                isCanceled: status == 'canceled',
+                status: status.toString(),
                 rideData: ride,
               );
             },
@@ -180,18 +154,36 @@ class _ActivityScreenState extends State<ActivityScreen> {
     );
   }
 
+  Color _getStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'completed':
+        return Colors.green;
+      case 'cancelled':
+        return Colors.red;
+      case 'pending':
+        return Colors.orange;
+      case 'accepted':
+      case 'driver_assigned':
+        return Colors.blue;
+      case 'started':
+        return Colors.purple;
+      default:
+        return Colors.grey;
+    }
+  }
+
   Widget _buildActivityItem(
     BuildContext context, {
     required String date,
     required String destination,
     required String price,
     required String status,
-    required bool isCanceled,
     required Map<String, dynamic> rideData,
   }) {
+    final statusColor = _getStatusColor(status);
+
     return InkWell(
       onTap: () {
-        // Pass full ride data if RideDetailScreen supports it, or adapt
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -251,15 +243,15 @@ class _ActivityScreenState extends State<ActivityScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: isCanceled ? Colors.red.withValues(alpha: 0.1) : Colors.green.withValues(alpha: 0.1),
+              color: statusColor.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(4),
             ),
             child: Text(
-              status,
+              status.toUpperCase(),
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
-                color: isCanceled ? Colors.red : Colors.green,
+                color: statusColor,
               ),
             ),
           ),

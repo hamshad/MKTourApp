@@ -57,15 +57,21 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
       final pickup = _rideData!['pickupLocation'];
       final dropoff = _rideData!['dropoffLocation'];
 
-      if (pickup != null && pickup['coordinates'] != null) {
+      if (pickup is Map && pickup['coordinates'] != null) {
         // GeoJSON is [lng, lat]
-        pickupLng = (pickup['coordinates'][0] as num).toDouble();
-        pickupLat = (pickup['coordinates'][1] as num).toDouble();
+        final coords = pickup['coordinates'];
+        if (coords is List && coords.length >= 2) {
+          pickupLng = (coords[0] as num).toDouble();
+          pickupLat = (coords[1] as num).toDouble();
+        }
       }
 
-      if (dropoff != null && dropoff['coordinates'] != null) {
-        dropoffLng = (dropoff['coordinates'][0] as num).toDouble();
-        dropoffLat = (dropoff['coordinates'][1] as num).toDouble();
+      if (dropoff is Map && dropoff['coordinates'] != null) {
+        final coords = dropoff['coordinates'];
+        if (coords is List && coords.length >= 2) {
+          dropoffLng = (coords[0] as num).toDouble();
+          dropoffLat = (coords[1] as num).toDouble();
+        }
       }
     }
 
@@ -98,13 +104,13 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
       );
     }
 
-    final driver = _rideData?['driver'];
-    final vehicle = driver?['vehicle'];
+    final driver = (_rideData?['driver'] is Map) ? _rideData!['driver'] : null;
+    final vehicle = (driver != null && driver['vehicle'] is Map) ? driver['vehicle'] : null;
     final dateStr = _rideData?['createdAt'];
     final status = _rideData?['status']?.toString().toUpperCase() ?? 'UNKNOWN';
     final price = _rideData?['fare'] != null ? '£${_rideData!['fare']}' : '£0.00';
-    final destination = _rideData?['dropoffLocation']?['address'] ?? 'Unknown Destination';
-    final pickupAddress = _rideData?['pickupLocation']?['address'] ?? 'Unknown Pickup';
+    final destination = _rideData?['dropoffLocation'] is Map ? _rideData!['dropoffLocation']['address'] ?? 'Unknown Destination' : 'Unknown Destination';
+    final pickupAddress = _rideData?['pickupLocation'] is Map ? _rideData!['pickupLocation']['address'] ?? 'Unknown Pickup' : 'Unknown Pickup';
 
     return Scaffold(
       backgroundColor: Colors.white,
