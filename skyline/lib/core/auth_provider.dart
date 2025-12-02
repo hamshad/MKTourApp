@@ -51,6 +51,9 @@ class AuthProvider with ChangeNotifier {
       }
     } catch (e) {
       print('Error fetching user profile: $e');
+      if (e.toString().contains("User not found") || e.toString().contains("Unauthorized")) {
+        await logout();
+      }
     }
   }
 
@@ -64,6 +67,9 @@ class AuthProvider with ChangeNotifier {
       }
     } catch (e) {
       print('Error fetching driver profile: $e');
+      if (e.toString().contains("User not found") || e.toString().contains("Driver not found") || e.toString().contains("Unauthorized")) {
+        await logout();
+      }
     }
   }
 
