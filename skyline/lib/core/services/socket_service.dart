@@ -27,20 +27,22 @@ class SocketService {
       return;
     }
 
-    debugPrint('🔵 [SocketService] Connecting to ${ApiConstants.baseUrl}...');
-
+    debugPrint('🔵 [SocketService] Connecting to ${ApiConstants.baseUrl} with token: ${token.substring(0, 10)}...');
+    
     _socket = IO.io(
       ApiConstants.baseUrl,
       IO.OptionBuilder()
           .setTransports(['websocket'])
-          .enableAutoConnect()
+          .disableAutoConnect() // Disable auto connect to control when it connects
           .setExtraHeaders({'Authorization': 'Bearer $token'})
           .build(),
     );
+    
+    _socket!.connect();
 
     _socket!.onConnect((_) {
       _isConnected = true;
-      debugPrint('🟢 [SocketService] Connected');
+      debugPrint('🟢 [SocketService] Connected to ${ApiConstants.baseUrl}');
     });
 
     _socket!.onDisconnect((_) {
@@ -55,6 +57,25 @@ class SocketService {
 
     _socket!.onError((data) {
       debugPrint('🔴 [SocketService] Error: $data');
+    });
+    
+    _socket!.on('connect_timeout', (data) {
+       debugPrint('🔴 [SocketService] Connection Timeout: $data');
+    });
+
+    // Listen for driver status confirmation
+    _socket!.on('driver:status', (data) {
+      debugPrint('📩 [SocketService] Received driver:status: $data');
+    });
+
+    // Listen for location update confirmation
+    _socket!.on('driver:locationUpdated', (data) {
+      debugPrint('📩 [SocketService] Received driver:locationUpdated: $data');
+    });
+
+    // Wildcard listener to debug ALL incoming events
+    _socket!.onAny((event, data) {
+      debugPrint('📨 [SocketService] INCOMING EVENT: $event, Data: $data');
     });
   }
 

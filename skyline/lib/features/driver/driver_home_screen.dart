@@ -1,4 +1,7 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../core/auth_provider.dart';
 
 import 'package:latlong2/latlong.dart';
 import 'package:sliding_up_panel/sliding_up_panel.dart';
@@ -8,6 +11,7 @@ import '../../core/widgets/platform_map.dart';
 import 'driver_request_panel.dart';
 import 'driver_navigation_panel.dart';
 import '../../core/widgets/custom_snackbar.dart';
+import '../../core/services/socket_service.dart';
 
 class DriverHomeScreen extends StatefulWidget {
   const DriverHomeScreen({super.key});
@@ -23,9 +27,119 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   
   // Mock location
   LatLng _currentLocation = const LatLng(51.5085, -0.1260);
+  Timer? _locationTimer;
 
   final ApiService _apiService = ApiService();
   bool _isLoading = false;
+  final SocketService _socketService = SocketService();
+
+  @override
+  void initState() {
+    super.initState();
+    _initDriver();
+  }
+
+  Future<void> _initDriver() async {
+    await _ensureUserLoaded();
+    if (mounted) {
+      await _initSocketAndListeners();
+    }
+  }
+
+  Future<void> _ensureUserLoaded() async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    if (authProvider.user == null) {
+      debugPrint('⚠️ [DriverHomeScreen] User is null, fetching profile...');
+      await authProvider.fetchDriverProfile();
+    }
+  }
+
+  Future<void> _initSocketAndListeners() async {
+    await _socketService.initSocket();
+    if (mounted) {
+      _setupSocketListeners();
+      // If already online, emit goOnline
+      if (_status == 'online') {
+        _emitDriverOnline();
+        _startLocationUpdates();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _socketService.off('ride:newRequest');
+    _locationTimer?.cancel();
+    super.dispose();
+  }
+
+  void _emitDriverOnline() {
+    final user = Provider.of<AuthProvider>(context, listen: false).user;
+    debugPrint('🔍 [DriverHomeScreen] User Object: $user'); // Debug print to inspect user structure
+    
+    if (user != null) {
+      // Try to find ID in common fields
+      final driverId = user['_id'] ?? user['id'] ?? user['userId'];
+      
+      if (driverId != null) {
+        debugPrint('📤 [DriverHomeScreen] Emitting driver:goOnline for $driverId');
+        _socketService.emit('driver:goOnline', {'driverId': driverId});
+      } else {
+        debugPrint('⚠️ [DriverHomeScreen] Cannot emit driver:goOnline: Driver ID not found in user object');
+      }
+    } else {
+      debugPrint('⚠️ [DriverHomeScreen] Cannot emit driver:goOnline: User object is null');
+    }
+  }
+
+  void _startLocationUpdates() {
+    _locationTimer?.cancel();
+    _locationTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
+      if (_status == 'online') {
+        final user = Provider.of<AuthProvider>(context, listen: false).user;
+        if (user != null) {
+           final driverId = user['_id'] ?? user['id'] ?? user['userId'];
+           
+           if (driverId != null) {
+              debugPrint('📤 [DriverHomeScreen] Emitting driver:locationUpdate for $driverId');
+              _socketService.emit('driver:locationUpdate', {
+                'driverId': driverId,
+                'latitude': _currentLocation.latitude,
+                'longitude': _currentLocation.longitude,
+              });
+           }
+        }
+      }
+    });
+  }
+
+  void _setupSocketListeners() {
+    debugPrint('👂 [DriverHomeScreen] Setting up socket listeners...');
+    _socketService.on('ride:newRequest', (data) {
+      debugPrint('🔔 [DriverHomeScreen] New Ride Request Received: $data');
+      if (mounted) {
+        _handleNewRideRequest(data);
+      }
+    });
+  }
+
+  void _handleNewRideRequest(dynamic data) {
+    // Only show request if driver is online and available
+    if (_status == 'online') {
+      setState(() {
+        _status = 'request';
+      });
+      
+      // Show notification
+      CustomSnackbar.show(
+        context,
+        message: 'New Ride Request! 🚗',
+        type: SnackbarType.success,
+      );
+    } else {
+      debugPrint('⚠️ [DriverHomeScreen] Received request but status is $_status');
+    }
+  }
 
   Future<void> _toggleOnline() async {
     if (_isLoading) return;
@@ -52,6 +166,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             message: response['message'] ?? (isGoingOnline ? 'You are now Online' : 'You are now Offline'),
             type: SnackbarType.success,
           );
+          
+          if (isGoingOnline) {
+             _emitDriverOnline();
+             _startLocationUpdates();
+          } else {
+             _locationTimer?.cancel();
+             // Optional: emit driver:goOffline
+          }
         }
         debugPrint('🟢 [DriverHomeScreen] Status updated successfully to $_status');
       } else {
@@ -271,18 +393,47 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                     const SizedBox(height: 16),
                     Align(
                       alignment: Alignment.centerRight,
-                      child: ElevatedButton.icon(
-                        onPressed: _simulateRequest,
-                        icon: const Icon(Icons.play_arrow, size: 16),
-                        label: const Text('Simulate Request'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: AppTheme.primaryColor,
-                          elevation: 4,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          ElevatedButton.icon(
+                            onPressed: _simulateRequest,
+                            icon: const Icon(Icons.play_arrow, size: 16),
+                            label: const Text('Simulate Request'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              foregroundColor: AppTheme.primaryColor,
+                              elevation: 4,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                            ),
                           ),
-                        ),
+                          const SizedBox(height: 8),
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              final isConnected = _socketService.isConnected;
+                              CustomSnackbar.show(
+                                context,
+                                message: isConnected ? 'Socket Connected ✅' : 'Socket Disconnected ❌',
+                                type: isConnected ? SnackbarType.success : SnackbarType.error,
+                              );
+                              if (!isConnected) {
+                                _socketService.initSocket();
+                              }
+                            },
+                            icon: const Icon(Icons.wifi, size: 16),
+                            label: const Text('Check Connection'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              foregroundColor: Colors.black,
+                              elevation: 4,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],

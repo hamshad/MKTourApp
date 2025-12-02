@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'api_service.dart';
+import 'services/socket_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthProvider with ChangeNotifier {
@@ -20,6 +21,7 @@ class AuthProvider with ChangeNotifier {
       if (response['success']) {
         _isAuthenticated = true;
         _user = response['user'];
+        await SocketService().initSocket();
         notifyListeners();
         return true;
       }
@@ -35,6 +37,7 @@ class AuthProvider with ChangeNotifier {
       if (response['success']) {
         _isAuthenticated = true;
         _user = response['user'];
+        await SocketService().initSocket();
         notifyListeners();
         return true;
       }
@@ -50,6 +53,7 @@ class AuthProvider with ChangeNotifier {
       if (response['success'] == true && response['data'] != null) {
         _user = response['data'];
         _isAuthenticated = true;
+        await SocketService().initSocket();
         notifyListeners();
       }
     } catch (e) {
@@ -66,6 +70,7 @@ class AuthProvider with ChangeNotifier {
       if (response['success'] == true && response['data'] != null) {
         _user = response['data']; // Reusing _user for driver data as well
         _isAuthenticated = true;
+        await SocketService().initSocket();
         notifyListeners();
       }
     } catch (e) {
@@ -241,6 +246,7 @@ class AuthProvider with ChangeNotifier {
     _lastRideHistoryFetch = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('auth_token');
+    SocketService().disconnect();
     notifyListeners();
   }
 }
