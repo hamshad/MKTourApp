@@ -48,6 +48,8 @@ dependencies:
   socket_io_client: ^2.0.3+1
   file_picker: ^8.0.0
   syncfusion_flutter_pdfviewer: ^24.1.41
+  cached_network_image: ^3.3.1
+  flutter_cache_manager: ^3.3.1
 
 dev_dependencies:
   flutter_test:

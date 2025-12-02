@@ -11,6 +11,7 @@ import '../../core/auth_provider.dart';
 import '../auth/phone_login_screen.dart';
 import 'edit_driver_profile_screen.dart';
 import '../../core/widgets/pdf_viewer_screen.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class DriverProfileScreen extends StatefulWidget {
   const DriverProfileScreen({super.key});
@@ -258,9 +259,17 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                     return InteractiveViewer(
                       minScale: 0.5,
                       maxScale: 4.0,
-                      child: Image.network(
-                        images[index],
+                      child: CachedNetworkImage(
+                        imageUrl: images[index],
                         fit: BoxFit.contain,
+                        placeholder: (context, url) => const Center(
+                          child: CircularProgressIndicator(color: Colors.white),
+                        ),
+                        errorWidget: (context, url, error) => const Icon(
+                          Icons.error_outline,
+                          color: Colors.white,
+                          size: 48,
+                        ),
                       ),
                     );
                   },
@@ -549,7 +558,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                               radius: 60,
                               backgroundColor: AppTheme.surfaceColor,
                               backgroundImage: driver['profilePicture'] != null
-                                  ? NetworkImage(driver['profilePicture'])
+                                  ? CachedNetworkImageProvider(driver['profilePicture'])
                                   : null,
                               child: driver['profilePicture'] == null
                                   ? const Icon(Icons.person, size: 60, color: AppTheme.textSecondary)
@@ -762,7 +771,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                                     decoration: BoxDecoration(
                                       borderRadius: BorderRadius.circular(12),
                                       image: DecorationImage(
-                                        image: NetworkImage(vehicleImages[index]),
+                                        image: CachedNetworkImageProvider(vehicleImages[index]),
                                         fit: BoxFit.cover,
                                       ),
                                       boxShadow: [
