@@ -4,6 +4,7 @@ import 'package:latlong2/latlong.dart';
 import 'dart:async';
 import '../../core/theme.dart';
 import '../../core/api_service.dart';
+import '../../core/services/socket_service.dart';
 import 'ride_complete_screen.dart';
 
 class RideAssignedScreen extends StatefulWidget {
@@ -25,63 +26,80 @@ class RideAssignedScreen extends StatefulWidget {
 }
 
 class _RideAssignedScreenState extends State<RideAssignedScreen> {
-  // final ApiService _apiService = ApiService();
+  final SocketService _socketService = SocketService();
   String _rideStatus = 'searching';
-  Timer? _statusTimer;
   
   final LatLng _userLocation = const LatLng(51.5074, -0.1278);
-  final LatLng _driverLocation = const LatLng(51.5080, -0.1280);
+  LatLng _driverLocation = const LatLng(51.5080, -0.1280); // Mutable to update
 
-  // Mock Driver Data
-  final Map<String, dynamic> _driver = {
-    'name': 'John Doe',
-    'vehicle': 'Toyota Prius',
-    'plate': 'AB12 CDE',
-    'rating': 4.8
-  };
+  // Driver Data
+  Map<String, dynamic> _driver = {};
+  String _otp = '';
 
   @override
   void initState() {
     super.initState();
-    // Poll for status updates every 3 seconds
-    _statusTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
-      _updateRideStatus();
+    _setupSocketListeners();
+  }
+
+  void _setupSocketListeners() {
+    // Ensure socket is connected
+    _socketService.initSocket();
+
+    // Listen for ride acceptance
+    _socketService.on('ride:accepted', (data) {
+      if (mounted) {
+        debugPrint('🚗 [RideAssignedScreen] Ride Accepted: $data');
+        setState(() {
+          _rideStatus = 'driver_assigned';
+          _driver = data['driver'] ?? {};
+          _otp = data['otp'] ?? ''; // Assuming OTP comes in this event or we have it from booking
+          // Update driver location if provided
+          if (data['driver']?['location'] != null) {
+            final coords = data['driver']['location']['coordinates'];
+            _driverLocation = LatLng(coords[1], coords[0]);
+          }
+        });
+      }
+    });
+
+    // Listen for driver location updates
+    _socketService.on('driver:locationChanged', (data) {
+      if (mounted && (_rideStatus == 'driver_assigned' || _rideStatus == 'in_progress')) {
+        debugPrint('📍 [RideAssignedScreen] Driver Location Updated: $data');
+        setState(() {
+          final coords = data['location']['coordinates'];
+          _driverLocation = LatLng(coords[1], coords[0]);
+        });
+      }
+    });
+
+    // Listen for ride start
+    _socketService.on('ride:started', (data) {
+      if (mounted) {
+        debugPrint('🚀 [RideAssignedScreen] Ride Started');
+        setState(() {
+          _rideStatus = 'in_progress';
+        });
+      }
+    });
+
+    // Listen for ride completion
+    _socketService.on('ride:completed', (data) {
+      if (mounted) {
+        debugPrint('✅ [RideAssignedScreen] Ride Completed');
+        setState(() {
+          _rideStatus = 'completed';
+        });
+      }
     });
   }
 
   @override
   void dispose() {
-    _statusTimer?.cancel();
+    // Clean up listeners if needed, or rely on SocketService to handle it
+    // _socketService.off('ride:accepted'); // Optional: implement off in SocketService if strict cleanup needed
     super.dispose();
-  }
-
-  Future<void> _updateRideStatus() async {
-    // In a real app, we would fetch status from API
-    // final status = await _apiService.getRideStatus(widget.rideId);
-    // if (mounted && status['status'] != null) {
-    //   setState(() {
-    //     _rideStatus = status['status'];
-    //   });
-    // }
-  }
-
-  void _simulateNextStatus() {
-    setState(() {
-      switch (_rideStatus) {
-        case 'searching':
-          _rideStatus = 'driver_assigned';
-          break;
-        case 'driver_assigned':
-          _rideStatus = 'driver_arrived';
-          break;
-        case 'driver_arrived':
-          _rideStatus = 'in_progress';
-          break;
-        case 'in_progress':
-          _rideStatus = 'completed';
-          break;
-      }
-    });
   }
 
   String _getStatusText() {
@@ -267,19 +285,51 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
                       ),
                     ),
                   
+                  // OTP Display
+                  if (_otp.isNotEmpty && _rideStatus == 'driver_assigned')
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 16),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: AppTheme.accentColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppTheme.accentColor.withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Text('OTP: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                          Text(
+                            _otp,
+                            style: const TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.accentColor,
+                              letterSpacing: 2,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
                   Row(
                     children: [
                       CircleAvatar(
                         radius: 30,
                         backgroundColor: Theme.of(context).primaryColor,
-                        child: Text(
-                          _driver['name'][0],
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+                        backgroundImage: _driver['profilePicture'] != null 
+                            ? NetworkImage(_driver['profilePicture']) 
+                            : null,
+                        child: _driver['profilePicture'] == null 
+                            ? Text(
+                                (_driver['name'] ?? 'D')[0],
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              )
+                            : null,
                       ),
                       const SizedBox(width: 16),
                       Expanded(
@@ -287,7 +337,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              _driver['name'],
+                              _driver['name'] ?? 'Driver',
                               style: const TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 18,
@@ -297,7 +347,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
                               children: [
                                 const Icon(Icons.star, color: Colors.amber, size: 16),
                                 const SizedBox(width: 4),
-                                Text('${_driver['rating']}'),
+                                Text('${_driver['rating'] ?? 5.0}'),
                                 const SizedBox(width: 8),
                                 Container(
                                   width: 4,
@@ -309,7 +359,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
-                                  _driver['vehicle'],
+                                  _driver['vehicle']?['model'] ?? 'Car',
                                   style: TextStyle(color: AppTheme.textSecondary),
                                 ),
                               ],
@@ -349,9 +399,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      _buildInfoColumn('Vehicle', _driver['vehicle']),
-                      _buildInfoColumn('Plate', _driver['plate']),
-                      _buildInfoColumn('Color', 'White'), // Mock color
+                      _buildInfoColumn('Vehicle', _driver['vehicle']?['model'] ?? 'Car'),
+                      _buildInfoColumn('Plate', _driver['vehicle']?['number'] ?? '---'),
+                      _buildInfoColumn('Color', _driver['vehicle']?['color'] ?? '---'),
                     ],
                   ),
                 ],
@@ -359,17 +409,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
             ),
           ),
           
-          // Debug Simulation Button
-          Positioned(
-            bottom: 200,
-            right: 16,
-            child: FloatingActionButton.extended(
-              onPressed: _simulateNextStatus,
-              label: const Text('Simulate'),
-              icon: const Icon(Icons.play_arrow),
-              backgroundColor: Colors.orange,
-            ),
-          ),
+          // Simulation button removed
         ],
       ),
     );
