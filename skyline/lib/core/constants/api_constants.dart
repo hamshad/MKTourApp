@@ -24,4 +24,8 @@ class ApiConstants {
   // Ride Endpoints
   static const String createRide = '$baseUrl/rides/create';
   static String getRideDetails(String id) => '$baseUrl/rides/$id';
+  static String acceptRide(String id) => '$baseUrl/rides/$id/accept';
+  static String startRide(String id) => '$baseUrl/rides/$id/start';
+  static String completeRide(String id) => '$baseUrl/rides/$id/complete';
+  static String cancelRide(String id) => '$baseUrl/rides/$id/cancel';
 }

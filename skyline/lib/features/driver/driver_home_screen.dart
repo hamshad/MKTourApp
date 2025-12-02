@@ -28,6 +28,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   // Mock location
   LatLng _currentLocation = const LatLng(51.5085, -0.1260);
   Timer? _locationTimer;
+  String? _currentRideId;
 
   final ApiService _apiService = ApiService();
   bool _isLoading = false;
@@ -128,6 +129,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     if (_status == 'online') {
       setState(() {
         _status = 'request';
+        _currentRideId = data['rideId'] ?? data['_id']; // Store ride ID
       });
       
       // Show notification
@@ -216,29 +218,79 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     }
   }
 
-  void _handleRideAction() {
-    if (_status == 'arrived') {
-      _showOtpDialog();
+  Future<void> _handleRideAction() async {
+    if (_currentRideId == null) {
+      CustomSnackbar.show(context, message: 'Error: No active ride', type: SnackbarType.error);
       return;
     }
 
-    setState(() {
-      switch (_status) {
-        case 'request':
-          _status = 'pickup';
-          break;
-        case 'pickup':
-          _status = 'arrived';
-          break;
-        case 'in_progress':
-          _status = 'complete';
+    setState(() => _isLoading = true);
+
+    try {
+      if (_status == 'request') {
+        // Accept Ride
+        final response = await _apiService.acceptRide(_currentRideId!);
+        if (response['success'] == true) {
+          setState(() => _status = 'pickup');
+          CustomSnackbar.show(context, message: 'Ride Accepted!', type: SnackbarType.success);
+        } else {
+          CustomSnackbar.show(context, message: 'Failed to accept: ${response['message']}', type: SnackbarType.error);
+        }
+      } else if (_status == 'pickup') {
+        // Start Ride (Simulated for now, usually happens after OTP)
+        // In real flow, this might be triggered after "Arrived"
+        setState(() => _status = 'arrived');
+      } else if (_status == 'arrived') {
+        _showOtpDialog();
+      } else if (_status == 'in_progress') {
+        // Complete Ride
+        final response = await _apiService.completeRide(_currentRideId!);
+        if (response['success'] == true) {
+          setState(() => _status = 'complete');
           // Reset to online after short delay
           Future.delayed(const Duration(seconds: 2), () {
-            if (mounted) setState(() => _status = 'online');
+            if (mounted) {
+               setState(() {
+                 _status = 'online';
+                 _currentRideId = null;
+               });
+            }
           });
-          break;
+        } else {
+          CustomSnackbar.show(context, message: 'Failed to complete: ${response['message']}', type: SnackbarType.error);
+        }
       }
-    });
+    } catch (e) {
+      CustomSnackbar.show(context, message: 'Error: $e', type: SnackbarType.error);
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _declineRide() async {
+    if (_currentRideId == null) return;
+    
+    setState(() => _isLoading = true);
+    try {
+      final response = await _apiService.cancelRide(_currentRideId!);
+      // Even if it fails, we reset UI to online to avoid getting stuck
+      setState(() {
+        _status = 'online';
+        _currentRideId = null;
+      });
+      
+      if (response['success'] == true) {
+         CustomSnackbar.show(context, message: 'Ride Declined', type: SnackbarType.info);
+      }
+    } catch (e) {
+       debugPrint('Error declining ride: $e');
+       setState(() {
+        _status = 'online';
+        _currentRideId = null;
+      });
+    } finally {
+      setState(() => _isLoading = false);
+    }
   }
 
   void _showOtpDialog() {
@@ -275,13 +327,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           ElevatedButton(
             onPressed: () {
               if (otpController.text == '1234') { // Mock OTP
-                Navigator.pop(context);
-                setState(() => _status = 'in_progress');
-                CustomSnackbar.show(
-                  context,
-                  message: 'OTP Verified! Trip Started.',
-                  type: SnackbarType.success,
-                );
+                _verifyAndStartRide();
               } else {
                 CustomSnackbar.show(
                   context,
@@ -299,6 +345,36 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _verifyAndStartRide() async {
+      // Mock OTP verification for now
+      // In real app, verify OTP with backend or check against ride data
+      
+      Navigator.pop(context); // Close dialog
+      setState(() => _isLoading = true);
+      
+      try {
+        final response = await _apiService.startRide(_currentRideId!);
+        if (response['success'] == true) {
+          setState(() => _status = 'in_progress');
+          CustomSnackbar.show(
+            context,
+            message: 'OTP Verified! Trip Started.',
+            type: SnackbarType.success,
+          );
+        } else {
+          CustomSnackbar.show(
+            context,
+            message: 'Failed to start ride: ${response['message']}',
+            type: SnackbarType.error,
+          );
+        }
+      } catch (e) {
+         CustomSnackbar.show(context, message: 'Error: $e', type: SnackbarType.error);
+      } finally {
+        setState(() => _isLoading = false);
+      }
   }
 
   @override
@@ -452,7 +528,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
               right: 0,
               child: DriverRequestPanel(
                 onAccept: _handleRideAction,
-                onDecline: () => setState(() => _status = 'online'),
+                onDecline: _declineRide,
               ),
             )
           else

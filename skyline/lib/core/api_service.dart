@@ -337,14 +337,10 @@ class ApiService {
     debugPrint('🔵 [ApiService] createRide called');
     debugPrint('🔵 [Request] URL: ${ApiConstants.createRide}');
     debugPrint('🔵 [Request] Body: $rideData');
-
+    
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('auth_token');
-
-      if (token == null) {
-        throw Exception('No auth token found');
-      }
 
       final response = await http.post(
         Uri.parse(ApiConstants.createRide),
@@ -358,20 +354,42 @@ class ApiService {
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
+      if (response.statusCode == 201) {
         debugPrint('🟢 [ApiService] createRide Success');
         debugPrint('🔵 ------------------------------------------------------------------');
         return jsonDecode(response.body);
       } else {
-        debugPrint('🔴 [ApiService] createRide Failed: ${response.body}');
+        debugPrint('🔴 [ApiService] createRide Failed: ${response.statusCode}');
         debugPrint('🔵 ------------------------------------------------------------------');
-        throw Exception('Failed to create ride: ${response.body}');
+        return {
+          'success': false,
+          'message': 'Failed to create ride request',
+        };
       }
     } catch (e) {
-      debugPrint('🟠 [ApiService] Exception caught: $e');
+      debugPrint('🔴 [ApiService] createRide Error: $e');
       debugPrint('🔵 ------------------------------------------------------------------');
-      throw Exception('Failed to create ride: $e');
+      return {
+        'success': false,
+        'message': 'Error creating ride request: $e',
+      };
     }
+  }
+
+  Future<Map<String, dynamic>> acceptRide(String rideId) async {
+    return await _postRequest(ApiConstants.acceptRide(rideId), {});
+  }
+
+  Future<Map<String, dynamic>> startRide(String rideId) async {
+    return await _postRequest(ApiConstants.startRide(rideId), {});
+  }
+
+  Future<Map<String, dynamic>> completeRide(String rideId) async {
+    return await _postRequest(ApiConstants.completeRide(rideId), {});
+  }
+
+  Future<Map<String, dynamic>> cancelRide(String rideId) async {
+    return await _postRequest(ApiConstants.cancelRide(rideId), {});
   }
 
   Future<Map<String, dynamic>> getRideDetails(String rideId) async {
