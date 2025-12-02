@@ -9,6 +9,7 @@ class ApiConstants {
   static const String userRegister = '$baseUrl/user/register';
   static const String userLogin = '$baseUrl/user/login';
   static const String userProfile = '$baseUrl/users/me';
+  static const String rideHistory = '$baseUrl/users/rides';
 
   // Driver Endpoints
   static const String driverRegister = '$baseUrl/driver/register';

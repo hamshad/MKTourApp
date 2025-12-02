@@ -79,7 +79,7 @@ class _PlatformMapState extends State<PlatformMap> {
       _flutterController.fitCamera(
         fmap.CameraFit.bounds(
           bounds: bounds,
-          padding: const EdgeInsets.all(50),
+          padding: const EdgeInsets.all(100),
         ),
       );
     }

@@ -7,9 +7,12 @@ class AuthProvider with ChangeNotifier {
   final ApiService _apiService = ApiService();
   bool _isAuthenticated = false;
   Map<String, dynamic>? _user;
+  List<dynamic> _rideHistory = [];
+  DateTime? _lastRideHistoryFetch;
 
   bool get isAuthenticated => _isAuthenticated;
   Map<String, dynamic>? get user => _user;
+  List<dynamic> get rideHistory => _rideHistory;
 
   Future<bool> login(String email, String password) async {
     try {
@@ -197,9 +200,45 @@ class AuthProvider with ChangeNotifier {
     return false;
   }
 
+  Future<void> fetchRideHistory({bool forceRefresh = false}) async {
+    // Smart Caching: Return cached data if less than 5 minutes old and not forced
+    if (!forceRefresh && 
+        _rideHistory.isNotEmpty && 
+        _lastRideHistoryFetch != null && 
+        DateTime.now().difference(_lastRideHistoryFetch!) < const Duration(minutes: 5)) {
+      debugPrint('📦 [AuthProvider] Returning cached ride history');
+      return;
+    }
+
+    try {
+      final response = await _apiService.getRideHistory();
+      if (response['success'] == true && response['data'] != null) {
+        _rideHistory = response['data'];
+        _lastRideHistoryFetch = DateTime.now();
+        notifyListeners();
+      }
+    } catch (e) {
+      print('Error fetching ride history: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>?> fetchRideDetails(String rideId) async {
+    try {
+      final response = await _apiService.getRideDetails(rideId);
+      if (response['success'] == true && response['data'] != null) {
+        return response['data'];
+      }
+    } catch (e) {
+      print('Error fetching ride details: $e');
+    }
+    return null;
+  }
+
   Future<void> logout() async {
     _isAuthenticated = false;
     _user = null;
+    _rideHistory = [];
+    _lastRideHistoryFetch = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('auth_token');
     notifyListeners();

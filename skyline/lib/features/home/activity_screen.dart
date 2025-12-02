@@ -1,9 +1,37 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
 import '../../core/theme.dart';
+import '../../core/auth_provider.dart';
 import '../activity/ride_detail_screen.dart';
 
-class ActivityScreen extends StatelessWidget {
+class ActivityScreen extends StatefulWidget {
   const ActivityScreen({super.key});
+
+  @override
+  State<ActivityScreen> createState() => _ActivityScreenState();
+}
+
+class _ActivityScreenState extends State<ActivityScreen> {
+  bool _isInit = true;
+  bool _isLoading = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_isInit) {
+      _fetchRideHistory();
+      _isInit = false;
+    }
+  }
+
+  Future<void> _fetchRideHistory({bool forceRefresh = false}) async {
+    setState(() => _isLoading = true);
+    await Provider.of<AuthProvider>(context, listen: false).fetchRideHistory(forceRefresh: forceRefresh);
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -43,6 +71,11 @@ class ActivityScreen extends StatelessWidget {
   }
 
   Widget _buildActivityList(BuildContext context, {required bool isPast}) {
+    // For now, we only have "Past" rides from the API (status: completed/canceled/pending)
+    // "Upcoming" could be filtered by status 'scheduled' or date > now if API supported it.
+    // Assuming the API returns all history mixed, we'll just show them in "Past" for this demo
+    // or filter if we had a status field for upcoming.
+    
     if (!isPast) {
       return Center(
         child: Column(
@@ -75,18 +108,73 @@ class ActivityScreen extends StatelessWidget {
       );
     }
 
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: 5,
-      separatorBuilder: (context, index) => const Divider(height: 32),
-      itemBuilder: (context, index) {
-        return _buildActivityItem(
-          context,
-          date: 'Today, ${10 - index}:30 AM',
-          destination: index % 2 == 0 ? 'Office' : 'Home',
-          price: '£${12 + index * 2}.50',
-          status: index == 0 ? 'Completed' : 'Canceled',
-          isCanceled: index != 0,
+    return Consumer<AuthProvider>(
+      builder: (context, authProvider, child) {
+        if (_isLoading && authProvider.rideHistory.isEmpty) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final rides = authProvider.rideHistory;
+
+        if (rides.isEmpty) {
+           return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.history,
+                  size: 64,
+                  color: AppTheme.textSecondary.withValues(alpha: 0.3),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'No ride history',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return RefreshIndicator(
+          onRefresh: () => _fetchRideHistory(forceRefresh: true),
+          child: ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: rides.length,
+            separatorBuilder: (context, index) => const Divider(height: 32),
+            itemBuilder: (context, index) {
+              final ride = rides[index];
+              final pickup = ride['pickupLocation']?['address'] ?? 'Unknown Pickup';
+              final dropoff = ride['dropoffLocation']?['address'] ?? 'Unknown Dropoff';
+              final price = ride['fare'] != null ? '£${ride['fare']}' : '£0.00';
+              final status = ride['status'] ?? 'Unknown';
+              final dateStr = ride['createdAt'];
+              String formattedDate = 'Unknown Date';
+              
+              if (dateStr != null) {
+                try {
+                  final date = DateTime.parse(dateStr).toLocal();
+                  formattedDate = DateFormat('MMM d, h:mm a').format(date);
+                } catch (e) {
+                  formattedDate = dateStr;
+                }
+              }
+
+              return _buildActivityItem(
+                context,
+                date: formattedDate,
+                destination: dropoff, // Showing dropoff as main destination
+                price: price,
+                status: status.toString().toUpperCase(),
+                isCanceled: status == 'canceled',
+                rideData: ride,
+              );
+            },
+          ),
         );
       },
     );
@@ -99,17 +187,17 @@ class ActivityScreen extends StatelessWidget {
     required String price,
     required String status,
     required bool isCanceled,
+    required Map<String, dynamic> rideData,
   }) {
     return InkWell(
       onTap: () {
+        // Pass full ride data if RideDetailScreen supports it, or adapt
         Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => RideDetailScreen(
-              destination: destination,
-              date: date,
-              price: price,
-              status: status,
+              rideId: rideData['_id'] ?? '',
+              initialData: rideData,
             ),
           ),
         );
@@ -138,6 +226,8 @@ class ActivityScreen extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                     color: AppTheme.textPrimary,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 4),
                 Text(
