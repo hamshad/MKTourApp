@@ -77,7 +77,7 @@ class DriverRequestPanel extends StatelessWidget {
                 const CircleAvatar(
                   radius: 28,
                   backgroundColor: Colors.white,
-                  backgroundImage: NetworkImage('https://i.pravatar.cc/150?img=32'), // Mock image
+                  child: Icon(Icons.person, size: 30, color: AppTheme.textSecondary),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -91,29 +91,6 @@ class DriverRequestPanel extends StatelessWidget {
                           fontWeight: FontWeight.bold,
                           color: AppTheme.textPrimary,
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          const Icon(Icons.star, size: 16, color: Colors.amber),
-                          const SizedBox(width: 4),
-                          Text(
-                            (rideData?['user']?['rating'] ?? 5.0).toString(),
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey[600],
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            '• ${rideData?['user']?['totalRides'] ?? 0} rides',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey[500],
-                            ),
-                          ),
-                        ],
                       ),
                     ],
                   ),
@@ -168,32 +145,10 @@ class DriverRequestPanel extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Current Location',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 16,
-                      ),
-                    ),
-                    Text(
-                      '0.5 mi away',
-                      style: TextStyle(
-                        color: AppTheme.textSecondary,
-                        fontSize: 13,
-                      ),
-                    ),
-                    SizedBox(height: 24),
-                    Text(
                       rideData?['pickupLocation']?['address'] ?? 'Pickup Location',
                       style: const TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 16,
-                      ),
-                    ),
-                    Text(
-                      '0.5 mi away',
-                      style: TextStyle(
-                        color: AppTheme.textSecondary,
-                        fontSize: 13,
                       ),
                     ),
                     const SizedBox(height: 24),
