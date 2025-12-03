@@ -29,6 +29,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   LatLng _currentLocation = const LatLng(51.5085, -0.1260);
   Timer? _locationTimer;
   String? _currentRideId;
+  Map<String, dynamic>? _rideData;
 
   final ApiService _apiService = ApiService();
   bool _isLoading = false;
@@ -176,7 +177,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     if (_status == 'online') {
       setState(() {
         _status = 'request';
+        _status = 'request';
         _currentRideId = data['rideId'] ?? data['_id']; // Store ride ID
+        _rideData = data;
       });
       
       // Show notification
@@ -284,9 +287,22 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           CustomSnackbar.show(context, message: 'Failed to accept: ${response['message']}', type: SnackbarType.error);
         }
       } else if (_status == 'pickup') {
-        // Start Ride (Simulated for now, usually happens after OTP)
-        // In real flow, this might be triggered after "Arrived"
-        setState(() => _status = 'arrived');
+        // Arrive at Pickup
+        // Get current location
+        final pos = _currentLocation; // Using mock location for now, in real app use Geolocator
+        
+        final response = await _apiService.arriveAtPickup(_currentRideId!, pos.latitude, pos.longitude);
+        
+        if (response['success'] == true) {
+           setState(() => _status = 'arrived');
+           CustomSnackbar.show(context, message: 'You have arrived!', type: SnackbarType.success);
+        } else {
+           String errorMessage = response['message'] ?? 'Failed to arrive';
+           if (response['errors'] != null && response['errors']['distance'] != null) {
+             errorMessage = 'You are ${response['errors']['distance'].toInt()}m away. Must be within ${response['errors']['required']}m.';
+           }
+           CustomSnackbar.show(context, message: errorMessage, type: SnackbarType.error);
+        }
       } else if (_status == 'arrived') {
         _showOtpDialog();
       } else if (_status == 'in_progress') {
@@ -373,12 +389,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           ),
           ElevatedButton(
             onPressed: () {
-              if (otpController.text == '1234') { // Mock OTP
-                _verifyAndStartRide();
+              if (otpController.text.length == 4) {
+                _verifyAndStartRide(otpController.text);
               } else {
                 CustomSnackbar.show(
                   context,
-                  message: 'Invalid OTP. Try 1234',
+                  message: 'Please enter a 4-digit OTP',
                   type: SnackbarType.error,
                 );
               }
@@ -394,7 +410,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     );
   }
 
-  Future<void> _verifyAndStartRide() async {
+  Future<void> _verifyAndStartRide(String otp) async {
       // Mock OTP verification for now
       // In real app, verify OTP with backend or check against ride data
       
@@ -402,7 +418,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       setState(() => _isLoading = true);
       
       try {
-        final response = await _apiService.startRide(_currentRideId!);
+        final response = await _apiService.startRide(_currentRideId!, otp);
         if (response['success'] == true) {
           setState(() => _status = 'in_progress');
           CustomSnackbar.show(
@@ -651,12 +667,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       return _buildOfflineOnlineContent();
     } else if (_status == 'request') {
       return DriverRequestPanel(
+        rideData: _rideData,
         onAccept: _handleRideAction,
         onDecline: _declineRide,
       );
     } else {
       return DriverNavigationPanel(
         status: _status,
+        rideData: _rideData,
         onAction: _handleRideAction,
       );
     }

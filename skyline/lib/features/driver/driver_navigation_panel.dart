@@ -4,11 +4,13 @@ import '../../core/theme.dart';
 class DriverNavigationPanel extends StatelessWidget {
   final String status;
   final VoidCallback onAction;
+  final Map<String, dynamic>? rideData;
 
   const DriverNavigationPanel({
     super.key,
     required this.status,
     required this.onAction,
+    this.rideData,
   });
 
   String get _actionText {
@@ -121,9 +123,9 @@ class DriverNavigationPanel extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Sarah Jenkins',
-                        style: TextStyle(
+                      Text(
+                        rideData?['user']?['name'] ?? 'Passenger',
+                        style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
                           color: AppTheme.textPrimary,
@@ -141,8 +143,8 @@ class DriverNavigationPanel extends StatelessWidget {
                           Expanded(
                             child: Text(
                               status == 'pickup' || status == 'arrived' 
-                                  ? 'Pickup: Heathrow Terminal 5' 
-                                  : 'Drop-off: The Shard',
+                                  ? 'Pickup: ${rideData?['pickupLocation']?['address'] ?? 'Unknown'}' 
+                                  : 'Drop-off: ${rideData?['dropoffLocation']?['address'] ?? 'Unknown'}',
                               style: TextStyle(
                                 fontSize: 13,
                                 color: Colors.grey[700],

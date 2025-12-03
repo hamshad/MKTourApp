@@ -4,11 +4,13 @@ import '../../core/theme.dart';
 class DriverRequestPanel extends StatelessWidget {
   final VoidCallback onAccept;
   final VoidCallback onDecline;
+  final Map<String, dynamic>? rideData;
 
   const DriverRequestPanel({
     super.key,
     required this.onAccept,
     required this.onDecline,
+    this.rideData,
   });
 
   @override
@@ -82,9 +84,9 @@ class DriverRequestPanel extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Sarah Jenkins',
-                        style: TextStyle(
+                      Text(
+                        rideData?['user']?['name'] ?? 'Passenger',
+                        style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
                           color: AppTheme.textPrimary,
@@ -96,7 +98,7 @@ class DriverRequestPanel extends StatelessWidget {
                           const Icon(Icons.star, size: 16, color: Colors.amber),
                           const SizedBox(width: 4),
                           Text(
-                            '4.8',
+                            (rideData?['user']?['rating'] ?? 5.0).toString(),
                             style: TextStyle(
                               fontSize: 14,
                               color: Colors.grey[600],
@@ -105,7 +107,7 @@ class DriverRequestPanel extends StatelessWidget {
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            '• 50+ rides',
+                            '• ${rideData?['user']?['totalRides'] ?? 0} rides',
                             style: TextStyle(
                               fontSize: 14,
                               color: Colors.grey[500],
@@ -119,9 +121,9 @@ class DriverRequestPanel extends StatelessWidget {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    const Text(
-                      '£14.50',
-                      style: TextStyle(
+                    Text(
+                      '£${(rideData?['fare'] ?? 0.0).toStringAsFixed(2)}',
+                      style: const TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
                         color: AppTheme.primaryColor,
@@ -161,7 +163,7 @@ class DriverRequestPanel extends StatelessWidget {
                 ],
               ),
               const SizedBox(width: 16),
-              const Expanded(
+               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -181,14 +183,29 @@ class DriverRequestPanel extends StatelessWidget {
                     ),
                     SizedBox(height: 24),
                     Text(
-                      'Heathrow Terminal 5',
-                      style: TextStyle(
+                      rideData?['pickupLocation']?['address'] ?? 'Pickup Location',
+                      style: const TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 16,
                       ),
                     ),
                     Text(
-                      '23 mi trip',
+                      '0.5 mi away',
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Text(
+                      rideData?['dropoffLocation']?['address'] ?? 'Dropoff Location',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 16,
+                      ),
+                    ),
+                    Text(
+                      '${(rideData?['distance'] ?? 0.0).toStringAsFixed(1)} km trip',
                       style: TextStyle(
                         color: AppTheme.textSecondary,
                         fontSize: 13,

@@ -343,8 +343,17 @@ class ApiService {
     return await _postRequest(ApiConstants.acceptRide(rideId), {});
   }
 
-  Future<Map<String, dynamic>> startRide(String rideId) async {
-    return await _postRequest(ApiConstants.startRide(rideId), {});
+  Future<Map<String, dynamic>> arriveAtPickup(String rideId, double lat, double lng) async {
+    return await _postRequest(ApiConstants.arriveAtPickup(rideId), {
+      'latitude': lat,
+      'longitude': lng,
+    });
+  }
+
+  Future<Map<String, dynamic>> startRide(String rideId, String otp) async {
+    return await _postRequest(ApiConstants.startRide(rideId), {
+      'otp': otp,
+    });
   }
 
   Future<Map<String, dynamic>> completeRide(String rideId) async {

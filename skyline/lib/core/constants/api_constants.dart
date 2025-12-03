@@ -28,4 +28,5 @@ class ApiConstants {
   static String startRide(String id) => '$baseUrl/rides/$id/start';
   static String completeRide(String id) => '$baseUrl/rides/$id/complete';
   static String cancelRide(String id) => '$baseUrl/rides/$id/cancel';
+  static String arriveAtPickup(String id) => '$baseUrl/rides/$id/arrive';
 }

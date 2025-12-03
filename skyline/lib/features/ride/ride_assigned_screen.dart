@@ -5,6 +5,8 @@ import 'package:provider/provider.dart';
 import '../../core/auth_provider.dart';
 import '../../core/theme.dart';
 import '../../core/services/socket_service.dart';
+import '../../core/services/socket_service.dart';
+import '../../core/api_service.dart';
 import 'ride_complete_screen.dart';
 
 class RideAssignedScreen extends StatefulWidget {
@@ -27,6 +29,7 @@ class RideAssignedScreen extends StatefulWidget {
 
 class _RideAssignedScreenState extends State<RideAssignedScreen> {
   final SocketService _socketService = SocketService();
+  final ApiService _apiService = ApiService();
   String _rideStatus = 'searching';
 
   // Locations
@@ -138,6 +141,60 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
         setState(() {
           _rideStatus = 'completed';
         });
+      }
+    });
+
+    _socketService.on('ride:driverArrived', (data) {
+      if (mounted) {
+        debugPrint('🚖 [RideAssignedScreen] Driver Arrived: $data');
+        setState(() {
+          _rideStatus = 'driver_arrived';
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Driver has arrived!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    });
+
+    _socketService.on('ride:otpExpired', (data) {
+      if (mounted) {
+        debugPrint('🔄 [RideAssignedScreen] OTP Expired: $data');
+        setState(() {
+          _otp = data['newOTP'] ?? _otp;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('New OTP: $_otp'),
+            backgroundColor: Colors.blue,
+          ),
+        );
+      }
+    });
+
+    _socketService.on('ride:cancelled', (data) {
+      if (mounted) {
+        debugPrint('❌ [RideAssignedScreen] Ride Cancelled: $data');
+        final reason = data['reason'] ?? 'Unknown reason';
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: const Text('Ride Cancelled'),
+            content: Text('The ride was cancelled.\nReason: $reason'),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context); // Close dialog
+                  Navigator.pop(context); // Go back
+                },
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
       }
     });
 
@@ -348,7 +405,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Estimated Fare: ₹${widget.fare.toStringAsFixed(2)}',
+                Text('Estimated Fare: £${widget.fare.toStringAsFixed(2)}',
                     style: const TextStyle(fontWeight: FontWeight.bold)),
                 // Text('Distance: 5.2 km'), // Mock distance for now
               ],
@@ -358,7 +415,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
               width: double.infinity,
               child: OutlinedButton.icon(
                 onPressed: () {
-                  // Cancel logic
+                  // Cancel logic with reason
+                  _apiService.cancelRide(widget.rideId, reason: "user_cancelled");
+                  Navigator.pop(context);
                 },
                 icon: const Icon(Icons.close),
                 label: const Text('Cancel Request'),
@@ -406,23 +465,42 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
                     border: Border.all(
                         color: AppTheme.accentColor.withValues(alpha: 0.3)),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  child: Column(
                     children: [
-                      const Text('OTP: ',
-                          style: TextStyle(fontWeight: FontWeight.bold)),
-                      Text(
-                        _otp,
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.accentColor,
-                          letterSpacing: 2,
-                        ),
+                      const Text('Share OTP with Driver', 
+                          style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Text('OTP: ',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          Text(
+                            _otp,
+                            style: const TextStyle(
+                              fontSize: 32,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.accentColor,
+                              letterSpacing: 4,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
+                
+              // Large OTP Display Dialog Trigger (Optional, or auto-show)
+              if (_otp.isNotEmpty && _rideStatus == 'driver_assigned')
+                 Padding(
+                   padding: const EdgeInsets.only(bottom: 16.0),
+                   child: Center(
+                     child: Text(
+                       'Share OTP with Driver', 
+                       style: TextStyle(color: AppTheme.textSecondary),
+                     ),
+                   ),
+                 ),
 
               Row(
                 children: [
