@@ -281,17 +281,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     }
   }
 
-  void _simulateRequest() {
-    if (_status == 'online') {
-      setState(() => _status = 'request');
-    } else {
-      CustomSnackbar.show(
-        context,
-        message: 'You must be online to receive requests',
-        type: SnackbarType.warning,
-      );
-    }
-  }
 
   Future<void> _handleRideAction() async {
     if (_currentRideId == null) {
@@ -611,51 +600,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                 ),
                 if (_status == 'online') ...[
                   const SizedBox(height: 16),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        ElevatedButton.icon(
-                          onPressed: _simulateRequest,
-                          icon: const Icon(Icons.play_arrow, size: 16),
-                          label: const Text('Simulate Request'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: AppTheme.primaryColor,
-                            elevation: 4,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        ElevatedButton.icon(
-                          onPressed: () {
-                            final isConnected = _socketService.isConnected;
-                            CustomSnackbar.show(
-                              context,
-                              message: isConnected ? 'Socket Connected ✅' : 'Socket Disconnected ❌',
-                              type: isConnected ? SnackbarType.success : SnackbarType.error,
-                            );
-                            if (!isConnected) {
-                              _socketService.initSocket();
-                            }
-                          },
-                          icon: const Icon(Icons.wifi, size: 16),
-                          label: const Text('Check Connection'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: Colors.black,
-                            elevation: 4,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                 ],
               ],
             ),
