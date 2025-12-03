@@ -18,42 +18,7 @@ class DriverRideDetailScreen extends StatelessWidget {
             expandedHeight: 250,
             pinned: true,
             flexibleSpace: FlexibleSpaceBar(
-              background: FlutterMap(
-                options: MapOptions(
-                  initialCenter: const LatLng(51.5074, -0.1278),
-                  initialZoom: 13.0,
-                ),
-                children: [
-                  TileLayer(
-                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    userAgentPackageName: 'com.example.skyline',
-                  ),
-                  PolylineLayer(
-                    polylines: [
-                      Polyline(
-                        points: [
-                          const LatLng(51.5074, -0.1278),
-                          const LatLng(51.5155, -0.0922),
-                        ],
-                        strokeWidth: 4.0,
-                        color: AppTheme.primaryColor,
-                      ),
-                    ],
-                  ),
-                  MarkerLayer(
-                    markers: [
-                      const Marker(
-                        point: LatLng(51.5074, -0.1278),
-                        child: Icon(Icons.location_on, color: Colors.green, size: 40),
-                      ),
-                      const Marker(
-                        point: LatLng(51.5155, -0.0922),
-                        child: Icon(Icons.location_on, color: Colors.red, size: 40),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+              background: _buildMap(context),
             ),
             leading: CircleAvatar(
               backgroundColor: Colors.white,
@@ -134,12 +99,12 @@ class DriverRideDetailScreen extends StatelessWidget {
                         child: Icon(Icons.person, color: AppTheme.textSecondary),
                       ),
                       const SizedBox(width: 16),
-                      const Column(
+                      Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Sarah Jenkins',
-                            style: TextStyle(
+                            rideData['passenger']?['name'] ?? 'Passenger',
+                            style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                             ),
@@ -148,7 +113,7 @@ class DriverRideDetailScreen extends StatelessWidget {
                             children: [
                               Icon(Icons.star, size: 14, color: Colors.amber),
                               SizedBox(width: 4),
-                              Text('4.8'),
+                              Text('${rideData['passenger']?['rating'] ?? '5.0'}'),
                             ],
                           ),
                         ],
@@ -180,16 +145,16 @@ class DriverRideDetailScreen extends StatelessWidget {
                     Icons.my_location,
                     Colors.green,
                     'Pickup',
-                    '10:30 AM',
-                    'Current Location',
+                    _formatTime(rideData['pickupTime']),
+                    rideData['pickupLocation']?['address'] ?? 'Unknown Location',
                   ),
                   const SizedBox(height: 24),
                   _buildLocationRow(
                     Icons.location_on,
                     Colors.red,
                     'Drop-off',
-                    '10:55 AM',
-                    rideData['destination'] ?? 'Heathrow Terminal 5',
+                    _formatTime(rideData['dropoffTime']),
+                    rideData['dropoffLocation']?['address'] ?? 'Unknown Destination',
                   ),
                   
                   const SizedBox(height: 24),
@@ -297,5 +262,65 @@ class DriverRideDetailScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Widget _buildMap(BuildContext context) {
+    // Parse coordinates
+    // Assuming GeoJSON [lng, lat]
+    final pickupCoords = rideData['pickupLocation']?['coordinates'] ?? [0.0, 0.0];
+    final dropoffCoords = rideData['dropoffLocation']?['coordinates'] ?? [0.0, 0.0];
+    
+    final pickup = LatLng(pickupCoords[1], pickupCoords[0]);
+    final dropoff = LatLng(dropoffCoords[1], dropoffCoords[0]);
+    
+    // Center map
+    final center = LatLng(
+      (pickup.latitude + dropoff.latitude) / 2,
+      (pickup.longitude + dropoff.longitude) / 2,
+    );
+
+    return FlutterMap(
+      options: MapOptions(
+        initialCenter: center,
+        initialZoom: 13.0,
+      ),
+      children: [
+        TileLayer(
+          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          userAgentPackageName: 'com.example.skyline',
+        ),
+        PolylineLayer(
+          polylines: [
+            Polyline(
+              points: [pickup, dropoff],
+              strokeWidth: 4.0,
+              color: AppTheme.primaryColor,
+            ),
+          ],
+        ),
+        MarkerLayer(
+          markers: [
+            Marker(
+              point: pickup,
+              child: const Icon(Icons.location_on, color: Colors.green, size: 40),
+            ),
+            Marker(
+              point: dropoff,
+              child: const Icon(Icons.location_on, color: Colors.red, size: 40),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  String _formatTime(String? isoString) {
+    if (isoString == null) return '--:--';
+    try {
+      final date = DateTime.parse(isoString).toLocal();
+      return "${date.hour}:${date.minute.toString().padLeft(2, '0')}";
+    } catch (e) {
+      return '--:--';
+    }
   }
 }

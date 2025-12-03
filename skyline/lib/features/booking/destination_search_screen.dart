@@ -11,6 +11,7 @@ import 'widgets/vehicle_selection_widget.dart';
 import 'package:latlong2/latlong.dart' as latLng;
 import '../ride/ride_detail_screen.dart';
 import '../ride/ride_assigned_screen.dart';
+import '../../core/services/location_service.dart';
 
 class DestinationSearchScreen extends StatefulWidget {
   const DestinationSearchScreen({super.key});
@@ -26,12 +27,18 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
   final PanelController _panelController = PanelController();
   
   final GeocodingService _geocodingService = GeocodingService();
+  final LocationService _locationService = LocationService();
   Timer? _debounce;
   List<Map<String, dynamic>> _suggestions = [];
   bool _isLoading = false;
   
   // Map State
-  final LatLng _center = const LatLng(51.5074, -0.1278); // Default London
+  LatLng _center = const LatLng(51.5074, -0.1278); // Default London
+  LatLng? _pickupLocation;
+  String _pickupAddress = "Current Location";
+  
+  // Search Focus
+  bool _isPickupFocused = false;
   List<MapMarker> _markers = [];
   List<LatLng> _polylines = [];
   fmap.LatLngBounds? _mapBounds;
@@ -51,6 +58,8 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
   @override
   void initState() {
     super.initState();
+    _getCurrentLocation();
+    
     // Auto-focus dropoff field if not in route view
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_isRouteView) {
@@ -58,7 +67,44 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
       }
     });
     
-    _dropoffController.addListener(_onSearchChanged);
+    _dropoffController.addListener(() => _onSearchChanged(_dropoffController.text));
+    _pickupController.addListener(() => _onSearchChanged(_pickupController.text));
+  }
+
+  Future<void> _getCurrentLocation() async {
+    final position = await _locationService.getCurrentLocation();
+    if (position != null) {
+      setState(() {
+        _center = LatLng(position.latitude, position.longitude);
+        _pickupLocation = _center;
+        
+        // Update pickup marker if exists
+        if (_markers.isNotEmpty && _markers[0].id == 'pickup') {
+          _markers[0] = MapMarker(
+            id: 'pickup',
+            lat: _center.latitude,
+            lng: _center.longitude,
+            child: _markers[0].child,
+            title: 'Pickup',
+          );
+        }
+      });
+      
+      // Reverse geocode to get address
+      try {
+        final results = await _geocodingService.searchAddress("${position.latitude},${position.longitude}");
+        if (results.isNotEmpty) {
+           setState(() {
+             _pickupAddress = results.first['display_name'].toString().split(',')[0];
+             if (_pickupController.text == "Current Location") {
+                _pickupController.text = _pickupAddress;
+             }
+           });
+        }
+      } catch (e) {
+        debugPrint("Error reverse geocoding: $e");
+      }
+    }
   }
 
   @override
@@ -69,10 +115,9 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
     super.dispose();
   }
 
-  void _onSearchChanged() {
+  void _onSearchChanged(String query) {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
     
-    final query = _dropoffController.text;
     if (query.isEmpty) {
       setState(() {
         _suggestions = [];
@@ -95,50 +140,70 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
     });
   }
 
-  void _selectDestination(String name, String address, double lat, double lng) {
+  void _selectLocation(String name, String address, double lat, double lng) {
     setState(() {
-      _dropoffController.text = name;
-      _dropoffFocus.unfocus();
-      _isRouteView = true;
+      if (_isPickupFocused) {
+        _pickupController.text = name;
+        _pickupLocation = LatLng(lat, lng);
+        _center = _pickupLocation!; // Center map on new pickup
+        _isPickupFocused = false;
+        _dropoffFocus.requestFocus(); // Move to dropoff
+      } else {
+        _dropoffController.text = name;
+        _dropoffFocus.unfocus();
+        _isRouteView = true;
+      }
+      
       _suggestions = [];
       
-      // Update Markers
-      _markers = [
-        MapMarker(
-          id: 'pickup',
-          lat: _center.latitude,
-          lng: _center.longitude,
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.black,
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 2),
-            ),
-            child: const Icon(Icons.my_location, color: Colors.white, size: 16),
-          ),
-          title: 'Pickup',
-        ),
-        MapMarker(
-          id: 'dropoff',
-          lat: lat,
-          lng: lng,
-          child: const Icon(Icons.location_on, color: Colors.black, size: 40),
-          title: name,
-        ),
-      ];
-      
-      // Simple straight line for now (mock path)
-      _polylines = [
-        _center,
-        LatLng(lat, lng),
-      ];
-      
-      // Calculate Bounds
-      _mapBounds = fmap.LatLngBounds.fromPoints(_polylines);
+      // If both selected, show route
+      if (_pickupLocation != null && _dropoffController.text.isNotEmpty) {
+         _updateRouteView(lat, lng);
+      }
     });
+  }
 
-    // Minimize panel to show map
-    _panelController.animatePanelToPosition(0.15); // Show bottom summary
+  void _updateRouteView(double dropLat, double dropLng) {
+      if (_pickupLocation == null) return;
+      
+      setState(() {
+        // Update Markers
+        _markers = [
+          MapMarker(
+            id: 'pickup',
+            lat: _pickupLocation!.latitude,
+            lng: _pickupLocation!.longitude,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2),
+              ),
+              child: const Icon(Icons.my_location, color: Colors.white, size: 16),
+            ),
+            title: 'Pickup',
+          ),
+          MapMarker(
+            id: 'dropoff',
+            lat: dropLat,
+            lng: dropLng,
+            child: const Icon(Icons.location_on, color: Colors.black, size: 40),
+            title: _dropoffController.text,
+          ),
+        ];
+        
+        // Simple straight line for now (mock path)
+        _polylines = [
+          _pickupLocation!,
+          LatLng(dropLat, dropLng),
+        ];
+        
+        // Calculate Bounds
+        _mapBounds = fmap.LatLngBounds.fromPoints(_polylines);
+      });
+
+      // Minimize panel to show map
+      _panelController.animatePanelToPosition(0.15); // Show bottom summary
   }
 
   @override
@@ -209,7 +274,7 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
       );
 
       final pickupLocation = {
-        'coordinates': [_center.longitude, _center.latitude],
+        'coordinates': [_pickupLocation?.longitude ?? _center.longitude, _pickupLocation?.latitude ?? _center.latitude],
         'address': _pickupController.text,
       };
 
@@ -330,9 +395,13 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
               Expanded(
                 child: Column(
                   children: [
-                    _buildTextField(_pickupController, 'Pickup location', false),
+                    _buildTextField(_pickupController, 'Pickup location', false, onTap: () {
+                      setState(() => _isPickupFocused = true);
+                    }),
                     const Divider(height: 1),
-                    _buildTextField(_dropoffController, 'Where to?', true),
+                    _buildTextField(_dropoffController, 'Where to?', true, onTap: () {
+                       setState(() => _isPickupFocused = false);
+                    }),
                   ],
                 ),
               ),
@@ -363,10 +432,11 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
     );
   }
 
-  Widget _buildTextField(TextEditingController controller, String hint, bool autoFocus) {
+  Widget _buildTextField(TextEditingController controller, String hint, bool autoFocus, {VoidCallback? onTap}) {
     return TextField(
       controller: controller,
       focusNode: autoFocus ? _dropoffFocus : null,
+      onTap: onTap,
       decoration: InputDecoration(
         hintText: hint,
         hintStyle: TextStyle(color: Colors.grey[500], fontWeight: FontWeight.w500),
@@ -398,7 +468,7 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
           name: name,
           address: address,
           distance: '', 
-          onTap: () => _selectDestination(name, address, lat, lon),
+          onTap: () => _selectLocation(name, address, lat, lon),
         );
       },
     );
@@ -443,7 +513,7 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
             onTap: () {
                final lat = double.tryParse(place['lat'] ?? '51.5074') ?? 51.5074;
                final lng = double.tryParse(place['lng'] ?? '-0.1278') ?? -0.1278;
-               _selectDestination(place['name']!, place['address']!, lat, lng);
+               _selectLocation(place['name']!, place['address']!, lat, lng);
             },
           ),
         )),

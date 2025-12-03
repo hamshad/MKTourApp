@@ -79,7 +79,7 @@ class DriverNavigationPanel extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      '200 ft',
+                      'Navigating',
                       style: TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.bold,
@@ -88,12 +88,16 @@ class DriverNavigationPanel extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      status == 'pickup' ? 'Turn right onto Main St' : 'Turn left onto Broadway',
+                      status == 'pickup' 
+                          ? (rideData?['pickupLocation']?['address'] ?? 'Pickup Location')
+                          : (rideData?['dropoffLocation']?['address'] ?? 'Dropoff Location'),
                       style: const TextStyle(
                         fontSize: 16,
                         color: AppTheme.textSecondary,
                         fontWeight: FontWeight.w500,
+                        overflow: TextOverflow.ellipsis,
                       ),
+                      maxLines: 1,
                     ),
                   ],
                 ),

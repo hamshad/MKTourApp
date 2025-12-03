@@ -12,6 +12,8 @@ import 'driver_request_panel.dart';
 import 'driver_navigation_panel.dart';
 import '../../core/widgets/custom_snackbar.dart';
 import '../../core/services/socket_service.dart';
+import '../../core/services/location_service.dart';
+import 'package:geolocator/geolocator.dart';
 
 class DriverHomeScreen extends StatefulWidget {
   const DriverHomeScreen({super.key});
@@ -25,9 +27,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   String _status = 'offline';
   final PanelController _panelController = PanelController();
   
-  // Mock location
-  LatLng _currentLocation = const LatLng(51.5085, -0.1260);
-  Timer? _locationTimer;
+  // Location
+  final LocationService _locationService = LocationService();
+  LatLng _currentLocation = const LatLng(51.5085, -0.1260); // Fallback
+  StreamSubscription<Position>? _positionStreamSubscription;
+  
   String? _currentRideId;
   Map<String, dynamic>? _rideData;
 
@@ -71,7 +75,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   @override
   void dispose() {
     _socketService.off('ride:newRequest');
-    _locationTimer?.cancel();
+    _positionStreamSubscription?.cancel();
     super.dispose();
   }
 
@@ -94,25 +98,46 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     }
   }
 
-  void _startLocationUpdates() {
-    _locationTimer?.cancel();
-    _locationTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
-      if (_status == 'online') {
-        final user = Provider.of<AuthProvider>(context, listen: false).user;
-        if (user != null) {
-           final driverId = user['_id'] ?? user['id'] ?? user['userId'];
-           
-           if (driverId != null) {
-              debugPrint('📤 [DriverHomeScreen] Emitting driver:locationUpdate for $driverId');
-              _socketService.emit('driver:locationUpdate', {
-                'driverId': driverId,
-                'latitude': _currentLocation.latitude,
-                'longitude': _currentLocation.longitude,
-              });
-           }
+  void _startLocationUpdates() async {
+    _positionStreamSubscription?.cancel();
+    
+    // Get initial location
+    final position = await _locationService.getCurrentLocation();
+    if (position != null && mounted) {
+      setState(() {
+        _currentLocation = LatLng(position.latitude, position.longitude);
+      });
+      _emitLocationUpdate(position.latitude, position.longitude);
+    }
+    
+    // Listen to updates
+    _positionStreamSubscription = _locationService.getPositionStream().listen((position) {
+      if (mounted) {
+        setState(() {
+          _currentLocation = LatLng(position.latitude, position.longitude);
+        });
+        
+        if (_status == 'online' || _status == 'in_progress' || _status == 'pickup') {
+          _emitLocationUpdate(position.latitude, position.longitude);
         }
       }
     });
+  }
+
+  void _emitLocationUpdate(double lat, double lng) {
+      final user = Provider.of<AuthProvider>(context, listen: false).user;
+      if (user != null) {
+         final driverId = user['_id'] ?? user['id'] ?? user['userId'];
+         
+         if (driverId != null) {
+            // debugPrint('📤 [DriverHomeScreen] Emitting driver:locationUpdate for $driverId');
+            _socketService.emit('driver:locationUpdate', {
+              'driverId': driverId,
+              'latitude': lat,
+              'longitude': lng,
+            });
+         }
+      }
   }
 
   void _setupSocketListeners() {
@@ -223,7 +248,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
              _emitDriverOnline();
              _startLocationUpdates();
           } else {
-             _locationTimer?.cancel();
+             _positionStreamSubscription?.cancel();
              // Optional: emit driver:goOffline
           }
         }
@@ -289,7 +314,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       } else if (_status == 'pickup') {
         // Arrive at Pickup
         // Get current location
-        final pos = _currentLocation; // Using mock location for now, in real app use Geolocator
+        final pos = _currentLocation; 
         
         final response = await _apiService.arriveAtPickup(_currentRideId!, pos.latitude, pos.longitude);
         
@@ -485,6 +510,22 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   }
 
   Widget _buildMapBackground() {
+    // Get dynamic destination
+    double destLat = 51.5074;
+    double destLng = -0.1278;
+    
+    if (_rideData != null) {
+      if (_status == 'pickup') {
+         final coords = _rideData!['pickupLocation']?['coordinates'] ?? [0.0, 0.0];
+         destLat = coords[1];
+         destLng = coords[0];
+      } else if (_status == 'in_progress') {
+         final coords = _rideData!['dropoffLocation']?['coordinates'] ?? [0.0, 0.0];
+         destLat = coords[1];
+         destLng = coords[0];
+      }
+    }
+
     return Stack(
       children: [
         PlatformMap(
@@ -501,17 +542,17 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             if (_status == 'pickup' || _status == 'in_progress')
               MapMarker(
                 id: 'destination',
-                lat: 51.5074,
-                lng: -0.1278,
-                child: const Icon(Icons.location_on, color: Colors.red, size: 40),
-                title: 'Destination',
+                lat: destLat,
+                lng: destLng,
+                child: Icon(Icons.location_on, color: _status == 'pickup' ? Colors.green : Colors.red, size: 40),
+                title: _status == 'pickup' ? 'Pickup' : 'Dropoff',
               ),
           ],
           polylines: [
             if (_status == 'pickup' || _status == 'in_progress')
               MapPolyline(
                 id: 'route',
-                points: [_currentLocation, const LatLng(51.5074, -0.1278)],
+                points: [_currentLocation, LatLng(destLat, destLng)],
                 color: AppTheme.primaryColor,
                 width: 4.0,
               ),

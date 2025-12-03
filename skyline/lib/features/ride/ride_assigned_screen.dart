@@ -57,18 +57,27 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
   }
 
   void _initializeLocations() {
-    // Default to London if not provided (mock)
-    final pickupCoords = widget.pickup?['coordinates'] ??
-        [51.5074, -0.1278]; // Lat, Lng
-    final dropoffCoords = widget.dropoff?['coordinates'] ??
-        [51.509865, -0.118092];
+    // Use provided coordinates or default to 0,0 (will be updated by socket/map fit)
+    final pickupCoords = widget.pickup?['coordinates'] ?? [0.0, 0.0]; 
+    final dropoffCoords = widget.dropoff?['coordinates'] ?? [0.0, 0.0];
 
-    // Handle different coordinate formats if necessary (e.g. [lng, lat] from mongo vs [lat, lng])
-    // Assuming [lat, lng] for now based on previous code usage, but standard GeoJSON is [lng, lat].
-    // Let's stick to what was likely working or standard mock:
-    _userLocation = LatLng(pickupCoords[0], pickupCoords[1]);
-    _pickupLocation = LatLng(pickupCoords[0], pickupCoords[1]);
-    _dropoffLocation = LatLng(dropoffCoords[0], dropoffCoords[1]);
+    // MongoDB GeoJSON is [lng, lat], but we need to be careful.
+    // Based on DestinationSearchScreen, we are passing [lng, lat].
+    // LatLng takes (lat, lng).
+    
+    if (widget.pickup != null) {
+       _userLocation = LatLng(pickupCoords[1], pickupCoords[0]);
+       _pickupLocation = LatLng(pickupCoords[1], pickupCoords[0]);
+    } else {
+       _userLocation = const LatLng(0, 0);
+       _pickupLocation = const LatLng(0, 0);
+    }
+    
+    if (widget.dropoff != null) {
+       _dropoffLocation = LatLng(dropoffCoords[1], dropoffCoords[0]);
+    } else {
+       _dropoffLocation = const LatLng(0, 0);
+    }
 
     _updateAnnotations();
   }
@@ -454,7 +463,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
                 ),
 
               // OTP Display
-              if (_otp.isNotEmpty && _rideStatus == 'driver_assigned')
+              if (_otp.isNotEmpty && (_rideStatus == 'driver_assigned' || _rideStatus == 'driver_arrived'))
                 Container(
                   margin: const EdgeInsets.only(bottom: 16),
                   padding: const EdgeInsets.symmetric(
@@ -491,7 +500,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
                 ),
                 
               // Large OTP Display Dialog Trigger (Optional, or auto-show)
-              if (_otp.isNotEmpty && _rideStatus == 'driver_assigned')
+              if (_otp.isNotEmpty && (_rideStatus == 'driver_assigned' || _rideStatus == 'driver_arrived'))
                  Padding(
                    padding: const EdgeInsets.only(bottom: 16.0),
                    child: Center(
