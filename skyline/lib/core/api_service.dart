@@ -8,7 +8,7 @@ import 'constants.dart';
 import 'constants/api_constants.dart';
 
 class ApiService {
-  final String baseUrl = AppConstants.apiBaseUrl;
+  final String baseUrl = ApiConstants.baseUrl;
 
   Future<Map<String, dynamic>> login(String email, String password) async {
     try {
@@ -358,22 +358,13 @@ class ApiService {
   Future<Map<String, dynamic>> rateRide({
     required String bookingId,
     required int rating,
-    required double tip,
     required String feedback,
+    double? tip, // Kept as optional but not sent in body
   }) async {
-    // Assuming there's an endpoint for rating, or we use a generic 'rate' endpoint
-    // For now, I'll use a hypothetical endpoint or just reuse complete-ride if that was the intention, 
-    // but typically rating is separate. I'll assume '/rate-ride' for now or just mock it if needed.
-    // Given the previous code used 'complete-ride' endpoint for this, I will use that but as a separate method name to avoid conflict.
-    // Actually, let's check ApiConstants.
-    // If ApiConstants doesn't have it, I'll use a direct string or add it.
-    // The previous static method used '${AppConstants.apiBaseUrl}/complete-ride'.
-    // I will use that same URL.
-    
-    return await _postRequest('${AppConstants.apiBaseUrl}/complete-ride', {
-      'bookingId': bookingId,
+    // Using the endpoint specified by the user: POST /rides/{rideId}/rate
+    // Body strictly as requested: { "rating": 5, "feedback": "..." }
+    return await _postRequest('$baseUrl/rides/$bookingId/rate', {
       'rating': rating,
-      'tip': tip,
       'feedback': feedback,
     });
   }

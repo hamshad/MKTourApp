@@ -30,25 +30,54 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
   Future<void> _submitRating() async {
     setState(() => _isSubmitting = true);
     
+    debugPrint('🔵 ------------------------------------------------------------------');
+    debugPrint('🔵 [RideCompleteScreen] Submitting rating...');
+    debugPrint('🔵 [RideCompleteScreen] Rating: $_rating, Tip: $_selectedTip');
+    debugPrint('🔵 [RideCompleteScreen] Feedback: ${_feedbackController.text}');
+
     try {
-      await _apiService.rateRide(
+      final response = await _apiService.rateRide(
         bookingId: widget.rideData['bookingId'] ?? '',
         rating: _rating,
-        tip: _selectedTip,
         feedback: _feedbackController.text,
+        tip: _selectedTip,
       );
       
+      debugPrint('🟣 [RideCompleteScreen] API Response: $response');
+
       if (mounted) {
-        print('⭐ RIDE COMPLETE: Rating submitted successfully');
-        print('⭐ RIDE COMPLETE: Rating = $_rating stars, Tip = £$_selectedTip');
-        print('⭐ RIDE COMPLETE: Navigating to /home');
-        Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+        if (response['success'] == true || response['status'] == 'success') { // Handle different potential success flags
+          debugPrint('🟢 [RideCompleteScreen] Rating submitted successfully');
+          
+          // Show success snackbar
+          CustomSnackbar.show(
+            context,
+            message: 'Thank you for your feedback!',
+            type: SnackbarType.success,
+          );
+
+          // Wait a moment for the user to see the success message
+          await Future.delayed(const Duration(seconds: 2));
+
+          if (mounted) {
+            debugPrint('⭐ [RideCompleteScreen] Navigating to /home');
+            Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+          }
+        } else {
+          debugPrint('🔴 [RideCompleteScreen] Rating submission failed: ${response['message']}');
+          CustomSnackbar.show(
+            context,
+            message: response['message'] ?? 'Failed to submit rating',
+            type: SnackbarType.error,
+          );
+        }
       }
     } catch (e) {
+      debugPrint('🔴 [RideCompleteScreen] Exception caught: $e');
       if (mounted) {
         CustomSnackbar.show(
           context,
-          message: 'Failed to submit rating',
+          message: 'Failed to submit rating. Please try again.',
           type: SnackbarType.error,
         );
       }
@@ -287,7 +316,11 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                             icon: Icon(
                               index < _rating ? Icons.star : Icons.star_border,
                               size: 44,
-                              color: index < _rating ? Colors.amber[700] : AppTheme.textSecondary,
+                              color: index < _rating 
+                                  ? (_rating == 1 
+                                      ? Colors.red 
+                                      : (_rating == 5 ? Colors.green : Colors.amber))
+                                  : AppTheme.textSecondary,
                             ),
                           );
                         }),
