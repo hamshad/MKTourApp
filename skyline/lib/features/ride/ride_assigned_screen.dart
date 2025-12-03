@@ -140,6 +140,41 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
         });
       }
     });
+
+    _socketService.on('ride:expired', (data) {
+      if (mounted) {
+        debugPrint('⚠️ [RideAssignedScreen] Ride Expired: $data');
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: const Text('Ride Expired'),
+            content: const Text('Your ride request has expired. Please try again.'),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context); // Close dialog
+                  Navigator.pop(context); // Go back to previous screen (likely home)
+                },
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    });
+
+    _socketService.on('ride:longRunning', (data) {
+      if (mounted) {
+        debugPrint('⏳ [RideAssignedScreen] Ride Long Running: $data');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Your ride is taking longer than expected...'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    });
   }
 
   void _updateAnnotations() {
@@ -228,6 +263,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
         return 'Trip in progress';
       case 'completed':
         return 'Trip completed';
+      case 'expired':
+        return 'Ride expired';
       default:
         return 'Connecting...';
     }

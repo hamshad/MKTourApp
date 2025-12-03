@@ -122,6 +122,53 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         _handleNewRideRequest(data);
       }
     });
+
+    _socketService.on('ride:reminder', (data) {
+      debugPrint('⏰ [DriverHomeScreen] Ride Reminder: $data');
+      if (mounted) {
+        CustomSnackbar.show(
+          context,
+          message: 'Reminder: You have an upcoming ride!',
+          type: SnackbarType.info,
+        );
+      }
+    });
+
+    _socketService.on('ride:longRunning', (data) {
+      debugPrint('⏳ [DriverHomeScreen] Ride Long Running: $data');
+      if (mounted) {
+        CustomSnackbar.show(
+          context,
+          message: 'Ride is taking longer than expected...',
+          type: SnackbarType.warning,
+        );
+      }
+    });
+
+    _socketService.on('ride:cancelled', (data) {
+      debugPrint('❌ [DriverHomeScreen] Ride Cancelled: $data');
+      if (mounted) {
+        final reason = data['reason'] ?? 'User cancelled the ride';
+        setState(() {
+          _status = 'online';
+          _currentRideId = null;
+        });
+        
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Ride Cancelled'),
+            content: Text('The ride was cancelled.\nReason: $reason'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    });
   }
 
   void _handleNewRideRequest(dynamic data) {

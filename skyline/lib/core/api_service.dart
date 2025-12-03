@@ -351,8 +351,10 @@ class ApiService {
     return await _postRequest(ApiConstants.completeRide(rideId), {});
   }
 
-  Future<Map<String, dynamic>> cancelRide(String rideId) async {
-    return await _postRequest(ApiConstants.cancelRide(rideId), {});
+  Future<Map<String, dynamic>> cancelRide(String rideId, {String? reason}) async {
+    return await _postRequest(ApiConstants.cancelRide(rideId), {
+      if (reason != null) 'reason': reason,
+    });
   }
 
   Future<Map<String, dynamic>> rateRide({
