@@ -129,8 +129,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       if (mounted) {
         CustomSnackbar.show(
           context,
-          message: 'Reminder: You have an upcoming ride!',
-          type: SnackbarType.info,
+          message: data['message'] ?? 'Reminder: You have an upcoming ride!',
+          type: SnackbarType.warning,
         );
       }
     });

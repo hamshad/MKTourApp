@@ -100,7 +100,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
         setState(() {
           _rideStatus = 'driver_assigned';
           _driver = data['driver'] ?? {};
-          _otp = data['otp'] ?? '';
+          _otp = data['otp'] ?? data['verificationOTP'] ?? '';
 
           if (data['driver']?['location'] != null) {
             final coords = data['driver']['location']['coordinates'];

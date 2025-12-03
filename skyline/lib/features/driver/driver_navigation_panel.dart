@@ -113,10 +113,15 @@ class DriverNavigationPanel extends StatelessWidget {
             ),
             child: Row(
               children: [
-                const CircleAvatar(
+                CircleAvatar(
                   radius: 24,
                   backgroundColor: Colors.white,
-                  backgroundImage: NetworkImage('https://i.pravatar.cc/150?img=32'),
+                  backgroundImage: rideData?['user']?['profilePicture'] != null 
+                      ? NetworkImage(rideData!['user']['profilePicture']) 
+                      : null,
+                  child: rideData?['user']?['profilePicture'] == null 
+                      ? const Icon(Icons.person, color: AppTheme.textSecondary) 
+                      : null,
                 ),
                 const SizedBox(width: 12),
                 Expanded(

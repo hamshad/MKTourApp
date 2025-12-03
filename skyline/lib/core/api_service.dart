@@ -464,10 +464,16 @@ class ApiService {
         return jsonDecode(response.body);
       } else {
         debugPrint('🔴 [ApiService] Request Failed: ${response.body}');
-        return {
-          'success': false,
-          'message': 'Request failed: ${response.statusCode}',
-        };
+        try {
+          // Try to decode the error body to return specific error messages
+          return jsonDecode(response.body);
+        } catch (e) {
+          // If decoding fails, return generic error
+          return {
+            'success': false,
+            'message': 'Request failed: ${response.statusCode}',
+          };
+        }
       }
     } catch (e) {
       debugPrint('🟠 [ApiService] Exception: $e');

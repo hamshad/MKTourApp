@@ -146,40 +146,20 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                   ),
                 ],
               ),
-              child: Column(
+                  child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    _rideDetails!['status'].toString().toUpperCase(),
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.green,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Vehicle: ${_rideDetails!['vehicleType']}',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          Text(
-                            'Distance: ${_rideDetails!['distance']} km',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                        ],
+                      Text(
+                        _rideDetails!['status'].toString().toUpperCase(),
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: _rideDetails!['status'] == 'cancelled' ? Colors.red : Colors.green,
+                        ),
                       ),
                       Text(
                         '\$${_rideDetails!['fare']}',
@@ -190,7 +170,116 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 16),
+                  
+                  // Cancellation Reason
+                  if (_rideDetails!['status'] == 'cancelled' && _rideDetails!['cancellationReason'] != null) ...[
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.red.shade100),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.info_outline, color: Colors.red, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Reason: ${_rideDetails!['cancellationReason']}',
+                              style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w500),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+
+                  // OTP
+                  if ((_rideDetails!['status'] == 'driver_assigned' || _rideDetails!['status'] == 'driver_arrived') && 
+                      (_rideDetails!['verificationOTP'] != null || _rideDetails!['otp'] != null)) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.blue.shade100),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('OTP', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+                          Text(
+                            _rideDetails!['verificationOTP'] ?? _rideDetails!['otp'] ?? '',
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 4,
+                              color: Colors.blue,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+
+                  // Driver & Vehicle Info
+                  if (_rideDetails!['driver'] != null) ...[
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 24,
+                          backgroundColor: Colors.grey.shade200,
+                          backgroundImage: _rideDetails!['driver']['profilePicture'] != null 
+                              ? NetworkImage(_rideDetails!['driver']['profilePicture']) 
+                              : null,
+                          child: _rideDetails!['driver']['profilePicture'] == null 
+                              ? const Icon(Icons.person, color: Colors.grey) 
+                              : null,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _rideDetails!['driver']['name'] ?? 'Driver',
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                              ),
+                              Row(
+                                children: [
+                                  const Icon(Icons.star, size: 14, color: Colors.amber),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '${_rideDetails!['driver']['rating'] ?? 5.0}',
+                                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              _rideDetails!['driver']['vehicle']?['model'] ?? 'Vehicle',
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            Text(
+                              _rideDetails!['driver']['vehicle']?['number'] ?? '',
+                              style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const Divider(height: 32),
+                  ],
+
                   _buildLocationRow(Icons.my_location, pickup['address']),
                   const SizedBox(height: 16),
                   _buildLocationRow(Icons.location_on, dropoff['address']),
