@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme.dart';
 import '../account/edit_profile_screen.dart';
@@ -66,10 +67,16 @@ class _AccountScreenState extends State<AccountScreen> {
                   ),
                   child: Row(
                     children: [
-                      const CircleAvatar(
+
+                      CircleAvatar(
                         radius: 32,
                         backgroundColor: AppTheme.surfaceColor,
-                        child: Icon(Icons.person, size: 32, color: AppTheme.textSecondary),
+                        backgroundImage: (user?['profilePicture'] != null && user!['profilePicture'].isNotEmpty)
+                            ? CachedNetworkImageProvider(user['profilePicture'])
+                            : null,
+                        child: (user?['profilePicture'] == null || user!['profilePicture'].isEmpty)
+                            ? const Icon(Icons.person, size: 32, color: AppTheme.textSecondary)
+                            : null,
                       ),
                       const SizedBox(width: 16),
                       Column(

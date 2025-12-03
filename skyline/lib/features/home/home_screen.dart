@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import '../../core/auth_provider.dart';
 import '../../core/theme.dart';
 import 'activity_screen.dart';
 import 'account_screen.dart';
@@ -61,20 +64,45 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             // Header
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Image.asset(
-                  'lib/assets/images/Logo-01.png',
-                  height: 40,
-                  fit: BoxFit.contain,
+                Row(
+                  children: [
+                    Image.asset(
+                      'lib/assets/images/Logo-01.png',
+                      height: 40,
+                      fit: BoxFit.contain,
+                    ),
+                    const SizedBox(width: 12),
+                    const Text(
+                      'MK-Tours',
+                      style: TextStyle(
+                        fontSize: 36,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                const Text(
-                  'MK-Tours',
-                  style: TextStyle(
-                    fontSize: 36,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black,
-                  ),
+                Consumer<AuthProvider>(
+                  builder: (context, auth, child) {
+                    final user = auth.user;
+                    final profilePictureUrl = user?['profilePicture'];
+                    
+                    return GestureDetector(
+                      onTap: () => setState(() => _selectedIndex = 2), // Switch to Account tab
+                      child: CircleAvatar(
+                        radius: 20,
+                        backgroundColor: AppTheme.surfaceColor,
+                        backgroundImage: (profilePictureUrl != null && profilePictureUrl.isNotEmpty)
+                            ? CachedNetworkImageProvider(profilePictureUrl)
+                            : null,
+                        child: (profilePictureUrl == null || profilePictureUrl.isEmpty)
+                            ? const Icon(Icons.person, size: 24, color: AppTheme.textSecondary)
+                            : null,
+                      ),
+                    );
+                  },
                 ),
               ],
             ),

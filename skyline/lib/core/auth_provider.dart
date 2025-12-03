@@ -205,6 +205,29 @@ class AuthProvider with ChangeNotifier {
     return false;
   }
 
+  Future<bool> updateUser({
+    required String name,
+    required String email,
+    File? profilePicture,
+  }) async {
+    try {
+      final response = await _apiService.updateUserProfile(
+        name: name,
+        email: email,
+        profilePicture: profilePicture,
+      );
+      
+      if (response['success'] == true && response['data'] != null) {
+        _user = response['data'];
+        notifyListeners();
+        return true;
+      }
+    } catch (e) {
+      print('Error updating user profile: $e');
+    }
+    return false;
+  }
+
   Future<void> fetchRideHistory({bool forceRefresh = false}) async {
     // Smart Caching: Return cached data if less than 5 minutes old and not forced
     if (!forceRefresh && 

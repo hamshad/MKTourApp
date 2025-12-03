@@ -295,6 +295,60 @@ class ApiService {
       throw Exception('Failed to get user profile: $e');
     }
   }
+
+  Future<Map<String, dynamic>> updateUserProfile({
+    required String name,
+    required String email,
+    File? profilePicture,
+  }) async {
+    debugPrint('🔵 ------------------------------------------------------------------');
+    debugPrint('🔵 [ApiService] updateUserProfile called');
+    debugPrint('🔵 [Request] URL: ${ApiConstants.updateUser}');
+    debugPrint('🔵 [Request] Name: $name, Email: $email');
+    if (profilePicture != null) {
+      debugPrint('🔵 [Request] Profile Picture: ${profilePicture.path}');
+    }
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+
+      if (token == null) {
+        throw Exception('No auth token found');
+      }
+
+      var request = http.MultipartRequest('PATCH', Uri.parse(ApiConstants.updateUser));
+      request.headers['Authorization'] = 'Bearer $token';
+      
+      request.fields['name'] = name;
+      request.fields['email'] = email;
+
+      if (profilePicture != null) {
+        request.files.add(await http.MultipartFile.fromPath('profilePicture', profilePicture.path));
+      }
+
+      debugPrint('🔵 [Request] Sending multipart request...');
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
+      debugPrint('🟣 [Response] Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        debugPrint('🟢 [ApiService] updateUserProfile Success');
+        debugPrint('🔵 ------------------------------------------------------------------');
+        return jsonDecode(response.body);
+      } else {
+        debugPrint('🔴 [ApiService] updateUserProfile Failed: ${response.body}');
+        debugPrint('🔵 ------------------------------------------------------------------');
+        throw Exception('Failed to update user profile: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('🟠 [ApiService] Exception caught: $e');
+      debugPrint('🔵 ------------------------------------------------------------------');
+      throw Exception('Failed to update user profile: $e');
+    }
+  }
   Future<Map<String, dynamic>> createRide(Map<String, dynamic> rideData) async {
     debugPrint('🔵 ------------------------------------------------------------------');
     debugPrint('🔵 [ApiService] createRide called');
