@@ -65,16 +65,30 @@ To prevent unauthorized usage of your credit card, you should create **two** sep
 **Key 1: Mobile App Key (Restricted)**
 *   Click the **Pencil icon** to edit the key you just made.
 *   **Name**: `Skyline Mobile App Key`
-*   **Application restrictions**: Select **Android apps** and **iOS apps**.
-    *   *Android*: Add your package name (e.g., `com.mktours.app`) and SHA-1 certificate fingerprint.
-    *   *iOS*: Add your Bundle ID (e.g., `com.mktours.app`).
-*   **API restrictions**: Select *only* "Maps SDK for Android", "Maps SDK for iOS", and "Places API" (if using client-side search).
+*   **Application restrictions**: Select **Android apps**.
+    *   Click **ADD AN ITEM**.
+    *   **Package name**: Enter `com.mktours.app` (or the specific package name provided by your developer).
+    *   **SHA-1 certificate fingerprint**: Enter the fingerprint provided by your developer.
+    *   Click **DONE**.
+*   **Application restrictions** (Switch to iOS): Select **iOS apps** (You may need to create a separate key if you can't select both, but usually you can add multiple items). *Better Practice: Create a separate key for iOS*.
+    *   Let's stick to one key for simplicity if possible, or create two: `Skyline Android Key` and `Skyline iOS Key`.
+    *   For **iOS apps**: Click **ADD AN ITEM**.
+    *   **Bundle ID**: Enter `com.mktours.app`.
+    *   Click **DONE**.
+*   **API restrictions**: Select **Restrict key**.
+    *   Click the dropdown and select *only*: "Maps SDK for Android", "Maps SDK for iOS", and "Places API" (New).
+    *   Click **OK** then **SAVE**.
 
 **Key 2: Backend Server Key (Secret)**
 *   Create a *new* second key.
 *   **Name**: `Skyline Backend Key`
-*   **Application restrictions**: Select **IP addresses** (add your server's public IP).
-*   **API restrictions**: Select *only* "Directions API", "Geocoding API", and "Distance Matrix API" (these should ideally be called from your server to secure your logic).
+*   **Application restrictions**: Select **IP addresses (web servers, cron jobs, etc.)**.
+    *   Click **ADD AN ITEM**.
+    *   Enter your server's public IP address.
+    *   Click **DONE**.
+*   **API restrictions**: Select **Restrict key**.
+    *   Select *only*: "Directions API", "Geocoding API", and "Distance Matrix API".
+    *   Click **OK** then **SAVE**.
 
 ---
 
