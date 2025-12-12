@@ -36,6 +36,10 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
   LatLng? _pickupLocation;
   String _pickupAddress = "Current Location";
   
+  // Route Info
+  String? _routeDistance;
+  String? _routeDuration;
+  
   // Search Focus
   bool _isPickupFocused = false;
   List<MapMarker> _markers = [];
@@ -229,7 +233,9 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
           }
           
           // Store route info for display
-          debugPrint('✅ Route loaded: ${directions['distance_text']}, ETA: ${directions['duration_text']}');
+          _routeDistance = directions['distance_text'];
+          _routeDuration = directions['duration_text'];
+          debugPrint('✅ Route loaded: $_routeDistance, ETA: $_routeDuration');
         });
       } else if (mounted) {
         // Fallback to straight line if API fails
@@ -268,6 +274,72 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
             bounds: _mapBounds,
             onTap: (lat, lng) {},
           ),
+          
+          // Route Info Card (shown when route is displayed)
+          if (_isRouteView && _routeDistance != null && _routeDuration != null)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 70,
+              left: 16,
+              right: 16,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.route,
+                        color: AppTheme.primaryColor,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _routeDistance!,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black,
+                            ),
+                          ),
+                          Text(
+                            'Estimated time: $_routeDuration',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      Icons.verified,
+                      color: AppTheme.successColor,
+                      size: 20,
+                    ),
+                  ],
+                ),
+              ),
+            ),
           
           // Back Button (Always visible)
           Positioned(
