@@ -129,7 +129,7 @@ class PlacesService {
   ) async {
     try {
       final url = Uri.parse(
-        '$_geocodingBaseUrl/../api/directions/json?origin=$originLat,$originLng&destination=$destLat,$destLng&key=$_apiKey',
+        'https://maps.googleapis.com/maps/api/directions/json?origin=$originLat,$originLng&destination=$destLat,$destLng&key=$_apiKey',
       );
 
       debugPrint('📍 PlacesService: Getting directions from ($originLat, $originLng) to ($destLat, $destLng)');
