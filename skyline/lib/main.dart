@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'core/theme.dart';
 import 'core/auth_provider.dart';
+import 'core/config/api_config.dart';
 import 'features/auth/splash_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/signup_screen.dart';
@@ -26,6 +27,9 @@ import 'core/services/socket_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize environment variables
+  await ApiConfig.initialize();
   
   // Initialize Socket Service
   final socketService = SocketService();

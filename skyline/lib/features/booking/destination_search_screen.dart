@@ -3,13 +3,12 @@ import 'package:sliding_up_panel/sliding_up_panel.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:flutter_map/flutter_map.dart' as fmap;
 import '../../core/theme.dart';
-import '../../core/services/geocoding_service.dart';
+import '../../core/services/places_service.dart';
 import '../../core/widgets/platform_map.dart';
 import 'dart:async';
 import '../../core/api_service.dart';
 import 'widgets/vehicle_selection_widget.dart';
-import 'package:latlong2/latlong.dart' as latLng;
-import '../ride/ride_detail_screen.dart';
+import 'package:latlong2/latlong.dart' as lat_lng;
 import '../ride/ride_assigned_screen.dart';
 import '../../core/services/location_service.dart';
 
@@ -26,7 +25,7 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
   final FocusNode _dropoffFocus = FocusNode();
   final PanelController _panelController = PanelController();
   
-  final GeocodingService _geocodingService = GeocodingService();
+  final PlacesService _placesService = PlacesService();
   final LocationService _locationService = LocationService();
   Timer? _debounce;
   List<Map<String, dynamic>> _suggestions = [];
@@ -92,10 +91,10 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
       
       // Reverse geocode to get address
       try {
-        final results = await _geocodingService.searchAddress("${position.latitude},${position.longitude}");
-        if (results.isNotEmpty) {
+        final address = await _placesService.getAddressFromLatLng(position.latitude, position.longitude);
+        if (address != null) {
            setState(() {
-             _pickupAddress = results.first['display_name'].toString().split(',')[0];
+             _pickupAddress = address.split(',')[0];
              if (_pickupController.text == "Current Location") {
                 _pickupController.text = _pickupAddress;
              }
@@ -129,7 +128,7 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
     _debounce = Timer(const Duration(milliseconds: 800), () async {
       setState(() => _isLoading = true);
       
-      final results = await _geocodingService.searchAddress(query);
+      final results = await _placesService.searchPlaces(query);
       
       if (mounted) {
         setState(() {
@@ -140,7 +139,20 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
     });
   }
 
-  void _selectLocation(String name, String address, double lat, double lng) {
+  void _selectLocation(String placeId, String name, String description) async {
+    // Fetch place details to get coordinates
+    final placeDetails = await _placesService.getPlaceDetails(placeId);
+    
+    if (placeDetails == null) {
+      debugPrint('❌ Failed to get place details for: $name');
+      return;
+    }
+    
+    final lat = placeDetails['lat'];
+    final lng = placeDetails['lng'];
+    final address = placeDetails['formatted_address'];
+    debugPrint('📍 Selected place: $name at $address');
+    
     setState(() {
       if (_isPickupFocused) {
         _pickupController.text = name;
@@ -163,7 +175,7 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
     });
   }
 
-  void _updateRouteView(double dropLat, double dropLng) {
+  void _updateRouteView(double dropLat, double dropLng) async {
       if (_pickupLocation == null) return;
       
       setState(() {
@@ -191,16 +203,44 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
             title: _dropoffController.text,
           ),
         ];
-        
-        // Simple straight line for now (mock path)
-        _polylines = [
-          _pickupLocation!,
-          LatLng(dropLat, dropLng),
-        ];
-        
-        // Calculate Bounds
-        _mapBounds = fmap.LatLngBounds.fromPoints(_polylines);
       });
+      
+      // Fetch real route from Directions API
+      debugPrint('🗺️ Fetching route from Directions API...');
+      final directions = await _placesService.getDirections(
+        _pickupLocation!.latitude,
+        _pickupLocation!.longitude,
+        dropLat,
+        dropLng,
+      );
+      
+      if (directions != null && mounted) {
+        final polylinePoints = directions['polyline'] as List<Map<String, double>>;
+        
+        setState(() {
+          // Convert polyline points to LatLng
+          _polylines = polylinePoints.map((point) {
+            return LatLng(point['lat']!, point['lng']!);
+          }).toList();
+          
+          // Calculate Bounds
+          if (_polylines.isNotEmpty) {
+            _mapBounds = fmap.LatLngBounds.fromPoints(_polylines);
+          }
+          
+          // Store route info for display
+          debugPrint('✅ Route loaded: ${directions['distance_text']}, ETA: ${directions['duration_text']}');
+        });
+      } else if (mounted) {
+        // Fallback to straight line if API fails
+        setState(() {
+          _polylines = [
+            _pickupLocation!,
+            LatLng(dropLat, dropLng),
+          ];
+          _mapBounds = fmap.LatLngBounds.fromPoints(_polylines);
+        });
+      }
 
       // Minimize panel to show map
       _panelController.animatePanelToPosition(0.15); // Show bottom summary
@@ -221,7 +261,7 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
               MapPolyline(
                 id: 'route',
                 points: _polylines,
-                color: Colors.black,
+                color: AppTheme.primaryColor, // Coral/Orange theme color
                 width: 4.0,
               ),
             ] : [],
@@ -267,10 +307,10 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
 
     try {
       // Calculate distance
-      final distance = const latLng.Distance().as(
-        latLng.LengthUnit.Kilometer,
-        latLng.LatLng(_center.latitude, _center.longitude),
-        latLng.LatLng(_markers[1].lat, _markers[1].lng),
+      final distance = const lat_lng.Distance().as(
+        lat_lng.LengthUnit.Kilometer,
+        lat_lng.LatLng(_center.latitude, _center.longitude),
+        lat_lng.LatLng(_markers[1].lat, _markers[1].lng),
       );
 
       final pickupLocation = {
@@ -457,18 +497,16 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
       ),
       itemBuilder: (context, index) {
         final place = _suggestions[index];
-        final name = place['display_name'].toString().split(',')[0];
-        final address = place['display_name'].toString();
-        // Fix: Ensure we convert to string before parsing to avoid type errors if value is already double
-        final lat = double.tryParse(place['lat']?.toString() ?? '0') ?? 0.0;
-        final lon = double.tryParse(place['lon']?.toString() ?? '0') ?? 0.0;
+        final placeId = place['place_id'];
+        final name = place['main_text'];
+        final secondaryText = place['secondary_text'];
         
         return _buildDestinationRow(
           icon: Icons.location_on,
           name: name,
-          address: address,
+          address: secondaryText,
           distance: '', 
-          onTap: () => _selectLocation(name, address, lat, lon),
+          onTap: () => _selectLocation(placeId, name, place['description']),
         );
       },
     );
@@ -513,7 +551,28 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
             onTap: () {
                final lat = double.tryParse(place['lat'] ?? '51.5074') ?? 51.5074;
                final lng = double.tryParse(place['lng'] ?? '-0.1278') ?? -0.1278;
-               _selectLocation(place['name']!, place['address']!, lat, lng);
+               
+               // Directly set location for recent places (no API lookup needed)
+               setState(() {
+                 if (_isPickupFocused) {
+                   _pickupController.text = place['name']!;
+                   _pickupLocation = LatLng(lat, lng);
+                   _center = _pickupLocation!;
+                   _isPickupFocused = false;
+                   _dropoffFocus.requestFocus();
+                 } else {
+                   _dropoffController.text = place['name']!;
+                   _dropoffFocus.unfocus();
+                   _isRouteView = true;
+                 }
+                 
+                 _suggestions = [];
+                 
+                 // If both selected, show route
+                 if (_pickupLocation != null && _dropoffController.text.isNotEmpty) {
+                    _updateRouteView(lat, lng);
+                 }
+               });
             },
           ),
         )),
