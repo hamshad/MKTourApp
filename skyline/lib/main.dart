@@ -16,7 +16,6 @@ import 'features/ride/driver_assigned_screen.dart';
 import 'features/ride/ride_complete_screen.dart';
 import 'features/driver/driver_home_screen.dart';
 import 'features/ride/ride_progress_screen.dart';
-
 import 'features/driver/driver_profile_screen.dart';
 import 'features/driver/driver_earnings_screen.dart';
 import 'features/driver/driver_activity_screen.dart';

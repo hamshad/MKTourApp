@@ -1,15 +1,13 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:apple_maps_flutter/apple_maps_flutter.dart' as apple;
-import 'package:flutter_map/flutter_map.dart' as fmap;
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:latlong2/latlong.dart' as latlong;
 
 class MapMarker {
   final String id;
   final double lat;
   final double lng;
-  final Widget? child; // For Flutter Map
-  final String? title; // For Apple Map
+  final Widget? child; // Not used in Google Maps but kept for API compatibility
+  final String? title;
 
   MapMarker({
     required this.id,
@@ -40,7 +38,7 @@ class PlatformMap extends StatefulWidget {
   final Function(double lat, double lng)? onTap;
   final List<MapMarker> markers;
   final List<MapPolyline> polylines;
-  final fmap.LatLngBounds? bounds;
+  final dynamic bounds; // Kept for API compatibility
 
   const PlatformMap({
     super.key,
@@ -57,125 +55,99 @@ class PlatformMap extends StatefulWidget {
 }
 
 class _PlatformMapState extends State<PlatformMap> {
-  apple.AppleMapController? _appleController;
-  final fmap.MapController _flutterController = fmap.MapController();
+  GoogleMapController? _controller;
+  Set<Marker> _googleMarkers = {};
+  Set<Polyline> _googlePolylines = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _updateMapObjects();
+  }
 
   @override
   void didUpdateWidget(PlatformMap oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _updateMapObjects();
+    
     if (widget.bounds != null && widget.bounds != oldWidget.bounds) {
-      _fitBounds(widget.bounds!);
+      _fitBounds();
     }
   }
 
-  void _fitBounds(fmap.LatLngBounds bounds) {
-    if (Platform.isIOS && _appleController != null) {
-      final appleBounds = apple.LatLngBounds(
-        southwest: apple.LatLng(bounds.southWest.latitude, bounds.southWest.longitude),
-        northeast: apple.LatLng(bounds.northEast.latitude, bounds.northEast.longitude),
+  void _updateMapObjects() {
+    // Convert MapMarker to Google Maps Marker
+    _googleMarkers = widget.markers.map((m) {
+      return Marker(
+        markerId: MarkerId(m.id),
+        position: LatLng(m.lat, m.lng),
+        infoWindow: InfoWindow(title: m.title ?? m.id),
       );
-      _appleController!.animateCamera(apple.CameraUpdate.newLatLngBounds(appleBounds, 50));
-    } else if (!Platform.isIOS) {
-      _flutterController.fitCamera(
-        fmap.CameraFit.bounds(
-          bounds: bounds,
-          padding: const EdgeInsets.all(100),
+    }).toSet();
+
+    // Convert MapPolyline to Google Maps Polyline
+    _googlePolylines = widget.polylines.map((p) {
+      return Polyline(
+        polylineId: PolylineId(p.id),
+        points: p.points.map((pt) => LatLng(pt.latitude, pt.longitude)).toList(),
+        color: p.color,
+        width: p.width.toInt(),
+      );
+    }).toSet();
+  }
+
+  void _fitBounds() {
+    if (_controller == null || widget.bounds == null) return;
+
+    try {
+      // Create LatLngBounds for Google Maps
+      final bounds = widget.bounds;
+      final googleBounds = LatLngBounds(
+        southwest: LatLng(
+          bounds.southWest.latitude,
+          bounds.southWest.longitude,
+        ),
+        northeast: LatLng(
+          bounds.northEast.latitude,
+          bounds.northEast.longitude,
         ),
       );
+
+      _controller!.animateCamera(
+        CameraUpdate.newLatLngBounds(googleBounds, 100),
+      );
+    } catch (e) {
+      debugPrint('🗺️ PlatformMap: Error fitting bounds: $e');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    debugPrint('🗺️ PlatformMap: Building. Platform: ${Platform.operatingSystem}');
+    debugPrint('🗺️ PlatformMap: Building with Google Maps');
 
-    if (Platform.isIOS) {
-      debugPrint('🗺️ PlatformMap: Rendering AppleMap');
-      final annotations = widget.markers.map((m) {
-        return apple.Annotation(
-          annotationId: apple.AnnotationId(m.id),
-          position: apple.LatLng(m.lat, m.lng),
-          infoWindow: apple.InfoWindow(title: m.title ?? 'Marker'),
-        );
-      }).toSet();
-
-      final applePolylines = widget.polylines.map((p) {
-        return apple.Polyline(
-          polylineId: apple.PolylineId(p.id),
-          points: p.points.map((pt) => apple.LatLng(pt.latitude, pt.longitude)).toList(),
-          color: p.color,
-          width: p.width.toInt(),
-        );
-      }).toSet();
-
-      return apple.AppleMap(
-        initialCameraPosition: apple.CameraPosition(
-          target: apple.LatLng(widget.initialLat, widget.initialLng),
-          zoom: 14.0,
-        ),
-        annotations: annotations,
-        polylines: applePolylines,
-        onMapCreated: (apple.AppleMapController controller) {
-          debugPrint('🗺️ PlatformMap: AppleMap created successfully');
-          _appleController = controller;
-          if (widget.bounds != null) {
-            _fitBounds(widget.bounds!);
-          }
-        },
-        onTap: (apple.LatLng position) {
-          debugPrint('🗺️ PlatformMap: AppleMap tapped at ${position.latitude}, ${position.longitude}');
-          widget.onTap?.call(position.latitude, position.longitude);
-        },
-        myLocationEnabled: true,
-        myLocationButtonEnabled: true,
-      );
-    } else {
-      debugPrint('🗺️ PlatformMap: Rendering FlutterMap');
-      final flutterMarkers = widget.markers.map((m) {
-        return fmap.Marker(
-          point: latlong.LatLng(m.lat, m.lng),
-          width: 40,
-          height: 40,
-          child: m.child ?? const Icon(Icons.location_on, color: Colors.red, size: 40),
-        );
-      }).toList();
-
-      final flutterPolylines = widget.polylines.map((p) {
-        return fmap.Polyline(
-          points: p.points,
-          color: p.color,
-          strokeWidth: p.width,
-        );
-      }).toList();
-
-      return fmap.FlutterMap(
-        mapController: _flutterController,
-        options: fmap.MapOptions(
-          initialCenter: latlong.LatLng(widget.initialLat, widget.initialLng),
-          initialZoom: 14.0,
-          onTap: (tapPosition, point) {
-            debugPrint('🗺️ PlatformMap: FlutterMap tapped at ${point.latitude}, ${point.longitude}');
-            widget.onTap?.call(point.latitude, point.longitude);
-          },
-          onMapReady: () {
-             if (widget.bounds != null) {
-              _fitBounds(widget.bounds!);
-            }
-          },
-        ),
-        children: [
-          fmap.TileLayer(
-            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-            userAgentPackageName: 'com.mktours.app',
-          ),
-          fmap.MarkerLayer(
-            markers: flutterMarkers,
-          ),
-          fmap.PolylineLayer(
-            polylines: flutterPolylines,
-          ),
-        ],
-      );
-    }
+    return GoogleMap(
+      initialCameraPosition: CameraPosition(
+        target: LatLng(widget.initialLat, widget.initialLng),
+        zoom: 14.0,
+      ),
+      markers: _googleMarkers,
+      polylines: _googlePolylines,
+      onMapCreated: (GoogleMapController controller) {
+        debugPrint('🗺️ PlatformMap: Google Map created successfully');
+        _controller = controller;
+        if (widget.bounds != null) {
+          // Delay to ensure map is fully loaded before fitting bounds
+          Future.delayed(const Duration(milliseconds: 100), _fitBounds);
+        }
+      },
+      onTap: (LatLng position) {
+        debugPrint('🗺️ PlatformMap: Map tapped at ${position.latitude}, ${position.longitude}');
+        widget.onTap?.call(position.latitude, position.longitude);
+      },
+      myLocationEnabled: true,
+      myLocationButtonEnabled: true,
+      mapToolbarEnabled: false,
+      zoomControlsEnabled: false,
+    );
   }
 }
