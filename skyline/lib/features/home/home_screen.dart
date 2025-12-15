@@ -6,6 +6,12 @@ import '../../core/auth_provider.dart';
 import '../../core/theme.dart';
 import 'activity_screen.dart';
 import 'account_screen.dart';
+import '../../core/widgets/platform_map.dart';
+import '../../core/widgets/platform_map.dart';
+import '../../core/services/location_service.dart';
+import '../../core/services/places_service.dart';
+import 'package:latlong2/latlong.dart' as lat_lng;
+import 'dart:async';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -19,9 +25,61 @@ class _HomeScreenState extends State<HomeScreen> {
   final PageController _pageController = PageController(viewportFraction: 0.92);
   int _currentBannerIndex = 0;
 
+  // State variables for enhancements
+  lat_lng.LatLng _currentLocation = const lat_lng.LatLng(51.5074, -0.1278); // Default London
+  final LocationService _locationService = LocationService();
+  final PlacesService _placesService = PlacesService();
+  String? _currentAddress;
+  Timer? _bannerTimer;
+  bool _isMapLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _initLocation();
+    _startBannerTimer();
+  }
+
+  void _initLocation() async {
+    final position = await _locationService.getCurrentLocation();
+    if (position != null && mounted) {
+      setState(() {
+        _currentLocation = lat_lng.LatLng(position.latitude, position.longitude);
+        _isMapLoading = false;
+      });
+      
+      // Fetch Address
+      try {
+        final address = await _placesService.getAddressFromLatLng(position.latitude, position.longitude);
+        if (address != null && mounted) {
+          setState(() {
+            _currentAddress = address.split(',')[0]; // Keep it short
+          });
+        }
+      } catch (e) {
+        debugPrint("Error reverse geocoding: $e");
+      }
+    }
+  }
+
+  void _startBannerTimer() {
+    _bannerTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
+      if (_pageController.hasClients) {
+        int nextPage = _currentBannerIndex + 1;
+        if (nextPage > 2) nextPage = 0;
+        _pageController.animateToPage(
+          nextPage,
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeInOut,
+        );
+      }
+    });
+  }
+
   @override
   void dispose() {
     _pageController.dispose();
+    _bannerTimer?.cancel();
     super.dispose();
   }
 
@@ -65,50 +123,107 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildHomeTab() {
-    return SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _getGreeting(),
-                      style: GoogleFonts.outfit(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'MK-Tours',
-                      style: GoogleFonts.outfit(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black,
-                      ),
-                    ),
-                  ],
+    return Stack(
+      children: [
+        // 1. Live Map Background
+        Positioned.fill(
+          child: PlatformMap(
+            initialLat: _currentLocation.latitude,
+            initialLng: _currentLocation.longitude,
+            markers: [
+              MapMarker(
+                id: 'current_loc',
+                lat: _currentLocation.latitude,
+                lng: _currentLocation.longitude,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFF6B35).withOpacity(0.3),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                  ),
                 ),
-                Consumer<AuthProvider>(
-                  builder: (context, auth, child) {
-                    final user = auth.user;
-                    final profilePictureUrl = user?['profilePicture'];
-                    
-                    return GestureDetector(
-                      onTap: () => setState(() => _selectedIndex = 2), // Switch to Account tab
-                      child: Container(
-                        padding: const EdgeInsets.all(2),
+              ),
+            ],
+          ),
+        ),
+
+        // 2. Gradient Overlay for Header Visibility
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 160,
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.white.withOpacity(0.9),
+                  Colors.white.withOpacity(0.0),
+                ],
+              ),
+            ),
+          ),
+        ),
+
+        // 3. Fixed Header (Greeting & Profile)
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                   Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Consumer<AuthProvider>(
+                          builder: (context, auth, child) {
+                            final user = auth.user;
+                            final name = user?['name'] ?? 'User';
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${_getGreeting()}, $name! ☀️',
+                                  style: GoogleFonts.outfit(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.black54,
+                                    shadows: [
+                                      const Shadow(color: Colors.white, blurRadius: 4),
+                                    ],
+                                  ),
+                                ),
+                                Text(
+                                  'MK-Tours',
+                                  style: GoogleFonts.outfit(
+                                    fontSize: 32,
+                                    fontWeight: FontWeight.bold,
+                                    color: const Color(0xFF2E7D32), // Green shade like image
+                                    height: 1.1,
+                                    shadows: [
+                                      const Shadow(color: Colors.white, blurRadius: 8),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            );
+                          }
+                        ),
+                      ),
+                      
+                      // Notification Bell
+                      Container(
+                        margin: const EdgeInsets.only(left: 8),
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          border: Border.all(color: const Color(0xFFFF6B35), width: 2),
+                          color: Colors.white,
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black.withOpacity(0.1),
@@ -117,306 +232,392 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ],
                         ),
-                        child: CircleAvatar(
-                          radius: 22,
-                          backgroundColor: AppTheme.surfaceColor,
-                          backgroundImage: (profilePictureUrl != null && profilePictureUrl.isNotEmpty)
-                              ? CachedNetworkImageProvider(profilePictureUrl)
-                              : null,
-                          child: (profilePictureUrl == null || profilePictureUrl.isEmpty)
-                              ? const Icon(Icons.person, size: 24, color: AppTheme.textSecondary)
-                              : null,
+                        child: IconButton(
+                          icon: const Icon(Icons.notifications_outlined, color: Colors.black87),
+                          onPressed: () {},
                         ),
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
-            
-            const SizedBox(height: 32),
-
-            // Search Bar
-            GestureDetector(
-              onTap: () => Navigator.pushNamed(context, '/destination-search'),
-              child: Hero(
-                tag: 'search_bar',
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(30),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.08),
-                        blurRadius: 20,
-                        offset: const Offset(0, 8),
                       ),
                     ],
                   ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.search, size: 28, color: Color(0xFFFF6B35)),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Text(
-                          'Where to?',
-                          style: GoogleFonts.outfit(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.grey[400],
+                  
+                  const SizedBox(height: 12),
+                  
+                  // Address Pill
+                  if (_currentAddress != null)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(30),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.08),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.location_on, color: Colors.red, size: 20),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              _currentAddress!,
+                              style: GoogleFonts.outfit(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.black87,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+
+        // 4. Draggable Scrollable Sheet
+        DraggableScrollableSheet(
+          initialChildSize: 0.40,
+          minChildSize: 0.30,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) {
+            return Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 20,
+                    offset: const Offset(0, -5),
+                  ),
+                ],
+              ),
+              child: SingleChildScrollView(
+                controller: scrollController,
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Drag Handle
+                    Center(
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 24),
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[300],
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+
+                    // Search Bar
+                    GestureDetector(
+                      onTap: () => Navigator.pushNamed(context, '/destination-search'),
+                      child: Hero(
+                        tag: 'search_bar',
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[50], // Slightly darker than white for contrast
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.grey[200]!),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.search, size: 28, color: Color(0xFFFF6B35)),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Text(
+                                  'Where to?',
+                                  style: GoogleFonts.outfit(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.grey[500],
+                                  ),
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(20),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.05),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.access_time_filled, size: 14, color: Colors.black87),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      'Now',
+                                      style: GoogleFonts.outfit(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 14,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    const Icon(Icons.keyboard_arrow_down, size: 16, color: Colors.black87),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF5F5F5),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.access_time_filled, size: 14, color: Colors.black87),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Now',
-                              style: GoogleFonts.outfit(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
-                                color: Colors.black87,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            const Icon(Icons.keyboard_arrow_down, size: 16, color: Colors.black87),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 32),
-
-            // Suggestions Header
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Suggestions',
-                  style: GoogleFonts.outfit(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
-                ),
-                TextButton(
-                  onPressed: () {},
-                  child: Text(
-                    'See all',
-                    style: GoogleFonts.outfit(
-                      color: const Color(0xFFFF6B35),
-                      fontWeight: FontWeight.w500,
                     ),
-                  ),
-                ),
-              ],
-            ),
 
-            const SizedBox(height: 16),
+                    const SizedBox(height: 32),
 
-            // Suggestions Grid
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _buildSuggestionCard('Ride', Icons.directions_car, promo: true),
-                _buildSuggestionCard('Package', Icons.local_shipping),
-                _buildSuggestionCard('Reserve', Icons.calendar_today),
-                _buildSuggestionCard('Intercity', Icons.commute),
-              ],
-            ),
-
-            const SizedBox(height: 32),
-
-            // Banner Carousel
-            SizedBox(
-              height: 200,
-              child: PageView(
-                controller: _pageController,
-                onPageChanged: (index) {
-                  setState(() {
-                    _currentBannerIndex = index;
-                  });
-                },
-                children: [
-                  _buildBannerCard(
-                    title: 'Safe and reliable\ncabs for everyday.',
-                    buttonText: 'Book Now',
-                    image: 'https://img.freepik.com/premium-vector/london-black-cab-illustration_637394-1846.jpg',
-                    color: const Color(0xFFFFF3E0),
-                    textColor: Colors.black87,
-                  ),
-                  _buildBannerCard(
-                    title: '50% OFF on your\nfirst 3 rides!',
-                    buttonText: 'Claim Offer',
-                    image: 'https://img.freepik.com/free-vector/taxi-app-concept-illustration_114360-673.jpg',
-                    color: const Color(0xFFE3F2FD),
-                    textColor: Colors.black87,
-                  ),
-                  _buildBannerCard(
-                    title: 'Invite friends &\nearn rewards.',
-                    buttonText: 'Invite',
-                    image: 'https://img.freepik.com/free-vector/refer-friend-concept-illustration_114360-7039.jpg',
-                    color: const Color(0xFFE8F5E9),
-                    textColor: Colors.black87,
-                  ),
-                ],
-              ),
-            ),
-            
-            const SizedBox(height: 12),
-            
-            // Page Indicators
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(3, (index) {
-                return AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  height: 8,
-                  width: _currentBannerIndex == index ? 24 : 8,
-                  decoration: BoxDecoration(
-                    color: _currentBannerIndex == index
-                        ? const Color(0xFFFF6B35)
-                        : Colors.grey[300],
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                );
-              }),
-            ),
-            const SizedBox(height: 32),
-
-            // Recent Activity
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Recent Activity',
-                  style: GoogleFonts.outfit(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
-                ),
-                TextButton(
-                  onPressed: () {},
-                  child: Text(
-                    'See all',
-                    style: GoogleFonts.outfit(
-                      color: const Color(0xFFFF6B35),
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 15,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF5F5F5),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(Icons.location_on, color: Color(0xFFFF6B35)),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    // Suggestions Header
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          'Office',
+                          'Suggestions',
                           style: GoogleFonts.outfit(
-                            fontSize: 16,
+                            fontSize: 20,
                             fontWeight: FontWeight.bold,
                             color: Colors.black87,
                           ),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '2.4 km • 15 min',
-                          style: GoogleFonts.outfit(
-                            fontSize: 13,
-                            color: Colors.grey[500],
+                        TextButton(
+                          onPressed: () {},
+                          child: Text(
+                            'See all',
+                            style: GoogleFonts.outfit(
+                              color: const Color(0xFFFF6B35),
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                         ),
                       ],
                     ),
-                  ),
-                  const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
-                ],
-              ),
-            ),
 
-            const SizedBox(height: 32),
+                    const SizedBox(height: 16),
 
-            // Explore Section
-            Text(
-              'Explore',
-              style: GoogleFonts.outfit(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
+                    // Suggestions Grid
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        _buildSuggestionCard(
+                          'Ride', 
+                          Icons.directions_car, 
+                          promo: true,
+                          onTap: () => Navigator.pushNamed(context, '/destination-search'),
+                        ),
+                        _buildSuggestionCard('Package', Icons.local_shipping),
+                        _buildSuggestionCard('Reserve', Icons.calendar_today),
+                        _buildSuggestionCard('Intercity', Icons.commute),
+                      ],
+                    ),
+
+                    const SizedBox(height: 32),
+
+                    // Banner Carousel
+                    SizedBox(
+                      height: 200,
+                      child: PageView(
+                        controller: _pageController,
+                        onPageChanged: (index) {
+                          setState(() {
+                            _currentBannerIndex = index;
+                          });
+                        },
+                        children: [
+                          _buildBannerCard(
+                            title: 'Safe and reliable\ncabs for everyday.',
+                            buttonText: 'Book Now',
+                            image: 'https://img.freepik.com/premium-vector/london-black-cab-illustration_637394-1846.jpg',
+                            color: const Color(0xFFFFF3E0),
+                            textColor: Colors.black87,
+                          ),
+                          _buildBannerCard(
+                            title: '50% OFF on your\nfirst 3 rides!',
+                            buttonText: 'Claim Offer',
+                            image: 'https://img.freepik.com/free-vector/taxi-app-concept-illustration_114360-673.jpg',
+                            color: const Color(0xFFE3F2FD),
+                            textColor: Colors.black87,
+                          ),
+                          _buildBannerCard(
+                            title: 'Invite friends &\nearn rewards.',
+                            buttonText: 'Invite',
+                            image: 'https://img.freepik.com/free-vector/refer-friend-concept-illustration_114360-7039.jpg',
+                            color: const Color(0xFFE8F5E9),
+                            textColor: Colors.black87,
+                          ),
+                        ],
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 12),
+                    
+                    // Page Indicators
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(3, (index) {
+                        return AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          height: 8,
+                          width: _currentBannerIndex == index ? 24 : 8,
+                          decoration: BoxDecoration(
+                            color: _currentBannerIndex == index
+                                ? const Color(0xFFFF6B35)
+                                : Colors.grey[300],
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        );
+                      }),
+                    ),
+                    const SizedBox(height: 32),
+
+                    // Recent Activity
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Recent Activity',
+                          style: GoogleFonts.outfit(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () {},
+                          child: Text(
+                            'See all',
+                            style: GoogleFonts.outfit(
+                              color: const Color(0xFFFF6B35),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    InkWell(
+                      onTap: () {
+                         // Action for recent activity
+                      },
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.05),
+                              blurRadius: 15,
+                              offset: const Offset(0, 5),
+                            ),
+                          ],
+                          border: Border.all(color: Colors.grey[100]!),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF5F5F5),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(Icons.location_on, color: Color(0xFFFF6B35)),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Office',
+                                    style: GoogleFonts.outfit(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '2.4 km • 15 min',
+                                    style: GoogleFonts.outfit(
+                                      fontSize: 13,
+                                      color: Colors.grey[500],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 32),
+
+                    // Explore Section
+                    Text(
+                      'Explore',
+                      style: GoogleFonts.outfit(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          _buildExploreCard(
+                            title: 'Rentals',
+                            subtitle: 'Rent by the hour',
+                            icon: Icons.access_time,
+                            color: const Color(0xFFE3F2FD),
+                          ),
+                          const SizedBox(width: 12),
+                          _buildExploreCard(
+                            title: 'Outstation',
+                            subtitle: 'Ride out of town',
+                            icon: Icons.map,
+                            color: const Color(0xFFE8F5E9),
+                          ),
+                          const SizedBox(width: 12),
+                          _buildExploreCard(
+                            title: 'Electric',
+                            subtitle: 'Eco-friendly rides',
+                            icon: Icons.electric_car,
+                            color: const Color(0xFFFFF3E0),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 100), // Bottom padding for scrolling
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _buildExploreCard(
-                    title: 'Rentals',
-                    subtitle: 'Rent by the hour',
-                    icon: Icons.access_time,
-                    color: const Color(0xFFE3F2FD),
-                  ),
-                  const SizedBox(width: 12),
-                  _buildExploreCard(
-                    title: 'Outstation',
-                    subtitle: 'Ride out of town',
-                    icon: Icons.map,
-                    color: const Color(0xFFE8F5E9),
-                  ),
-                  const SizedBox(width: 12),
-                  _buildExploreCard(
-                    title: 'Electric',
-                    subtitle: 'Eco-friendly rides',
-                    icon: Icons.electric_car,
-                    color: const Color(0xFFFFF3E0),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 100), // Bottom padding for scrolling
-          ],
+            );
+          },
         ),
-      ),
+      ],
     );
   }
 
@@ -511,13 +712,11 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildSuggestionCard(String label, IconData icon, {bool promo = false}) {
+  Widget _buildSuggestionCard(String label, IconData icon, {bool promo = false, VoidCallback? onTap}) {
     return Column(
       children: [
         ScaleButton(
-          onTap: () {
-            // Handle tap
-          },
+          onTap: onTap,
           child: Container(
             width: 75,
             height: 75,

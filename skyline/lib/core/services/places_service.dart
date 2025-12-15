@@ -36,6 +36,9 @@ class PlacesService {
           }).toList();
         } else {
           debugPrint('⚠️ PlacesService: API returned status: ${data['status']}');
+          if (data['error_message'] != null) {
+            debugPrint('⚠️ Error Message: ${data['error_message']}');
+          }
           return [];
         }
       } else {

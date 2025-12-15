@@ -70,6 +70,15 @@ class _PlatformMapState extends State<PlatformMap> {
     super.didUpdateWidget(oldWidget);
     _updateMapObjects();
     
+    // Animate to new location if coordinates changed
+    if (widget.initialLat != oldWidget.initialLat || widget.initialLng != oldWidget.initialLng) {
+      _controller?.animateCamera(
+        CameraUpdate.newLatLng(
+          LatLng(widget.initialLat, widget.initialLng),
+        ),
+      );
+    }
+    
     if (widget.bounds != null && widget.bounds != oldWidget.bounds) {
       _fitBounds();
     }

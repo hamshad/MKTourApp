@@ -43,3 +43,10 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Secrets and API keys
+.env
+android/secrets.properties
+ios/Runner/Secrets.plist
+
+/ios/Flutter/Secrets.xcconfig
