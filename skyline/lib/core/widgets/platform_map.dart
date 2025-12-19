@@ -39,6 +39,8 @@ class PlatformMap extends StatefulWidget {
   final List<MapMarker> markers;
   final List<MapPolyline> polylines;
   final dynamic bounds; // Kept for API compatibility
+  final double bearing;
+  final double tilt;
 
   const PlatformMap({
     super.key,
@@ -48,6 +50,8 @@ class PlatformMap extends StatefulWidget {
     this.markers = const [],
     this.polylines = const [],
     this.bounds,
+    this.bearing = 0.0,
+    this.tilt = 0.0,
   });
 
   @override
@@ -73,8 +77,27 @@ class _PlatformMapState extends State<PlatformMap> {
     // Animate to new location if coordinates changed
     if (widget.initialLat != oldWidget.initialLat || widget.initialLng != oldWidget.initialLng) {
       _controller?.animateCamera(
-        CameraUpdate.newLatLng(
-          LatLng(widget.initialLat, widget.initialLng),
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: LatLng(widget.initialLat, widget.initialLng),
+            zoom: 16.0, // Zoom in closer for navigation
+            bearing: widget.bearing,
+            tilt: widget.tilt,
+          ),
+        ),
+      );
+    }
+    
+    // Update bearing/tilt if changed
+    if (widget.bearing != oldWidget.bearing || widget.tilt != oldWidget.tilt) {
+      _controller?.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: LatLng(widget.initialLat, widget.initialLng),
+            zoom: 16.0,
+            bearing: widget.bearing,
+            tilt: widget.tilt,
+          ),
         ),
       );
     }
@@ -82,6 +105,28 @@ class _PlatformMapState extends State<PlatformMap> {
     if (widget.bounds != null && widget.bounds != oldWidget.bounds) {
       _fitBounds();
     }
+  }
+
+  /// Update camera position for navigation (can be called externally if needed)
+  Future<void> updateCamera({
+    required double lat,
+    required double lng,
+    double? bearing,
+    double? tilt,
+    double? zoom,
+  }) async {
+    if (_controller == null) return;
+    
+    await _controller!.animateCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(
+          target: LatLng(lat, lng),
+          zoom: zoom ?? 16.0,
+          bearing: bearing ?? 0.0,
+          tilt: tilt ?? 0.0,
+        ),
+      ),
+    );
   }
 
   void _updateMapObjects() {
@@ -138,6 +183,8 @@ class _PlatformMapState extends State<PlatformMap> {
       initialCameraPosition: CameraPosition(
         target: LatLng(widget.initialLat, widget.initialLng),
         zoom: 14.0,
+        bearing: widget.bearing,
+        tilt: widget.tilt,
       ),
       markers: _googleMarkers,
       polylines: _googlePolylines,

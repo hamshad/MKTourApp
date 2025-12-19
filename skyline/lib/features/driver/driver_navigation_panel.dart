@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
 import '../../core/theme.dart';
+import '../../core/services/navigation_service.dart';
 
 class DriverNavigationPanel extends StatelessWidget {
   final String status;
   final VoidCallback onAction;
   final Map<String, dynamic>? rideData;
+  final NavigationState? navigationState;
 
   const DriverNavigationPanel({
     super.key,
     required this.status,
     required this.onAction,
     this.rideData,
+    this.navigationState,
   });
 
   String get _actionText {
@@ -106,6 +109,44 @@ class DriverNavigationPanel extends StatelessWidget {
           ),
           
           const SizedBox(height: 24),
+          
+          // Navigation Info Card (if navigation is active)
+          if (navigationState != null)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    AppTheme.primaryColor.withValues(alpha: 0.1),
+                    AppTheme.primaryColor.withValues(alpha: 0.05),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.2)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _buildNavInfoItem(
+                    Icons.navigation,
+                    'Distance',
+                    navigationState!.distanceText,
+                  ),
+                  Container(
+                    width: 1,
+                    height: 40,
+                    color: Colors.grey[300],
+                  ),
+                  _buildNavInfoItem(
+                    Icons.schedule,
+                    'ETA',
+                    navigationState!.etaText,
+                  ),
+                ],
+              ),
+            ),
+          
+          if (navigationState != null) const SizedBox(height: 16),
           
           // Passenger / Trip Info Card
           Container(
@@ -224,6 +265,32 @@ class DriverNavigationPanel extends StatelessWidget {
         constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
         padding: EdgeInsets.zero,
       ),
+    );
+  }
+  
+  Widget _buildNavInfoItem(IconData icon, String label, String value) {
+    return Column(
+      children: [
+        Icon(icon, color: AppTheme.primaryColor, size: 24),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.grey[600],
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: AppTheme.textPrimary,
+          ),
+        ),
+      ],
     );
   }
 }

@@ -5,8 +5,9 @@ import 'package:provider/provider.dart';
 import '../../core/auth_provider.dart';
 import '../../core/theme.dart';
 import '../../core/services/socket_service.dart';
-import '../../core/services/socket_service.dart';
 import '../../core/api_service.dart';
+import '../../core/services/navigation_service.dart';
+import '../../core/services/places_service.dart';
 import 'ride_complete_screen.dart';
 
 class RideAssignedScreen extends StatefulWidget {
@@ -30,6 +31,8 @@ class RideAssignedScreen extends StatefulWidget {
 class _RideAssignedScreenState extends State<RideAssignedScreen> {
   final SocketService _socketService = SocketService();
   final ApiService _apiService = ApiService();
+  final NavigationService _navigationService = NavigationService();
+  final PlacesService _placesService = PlacesService();
   String _rideStatus = 'searching';
 
   // Locations
@@ -48,12 +51,21 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
   // Driver Data
   Map<String, dynamic> _driver = {};
   String _otp = '';
+  
+  // Detailed Addresses
+  String _pickupAddress = '';
+  String _dropoffAddress = '';
+  
+  // Navigation State
+  NavigationState? _navigationState;
 
   @override
   void initState() {
     super.initState();
     _initializeLocations();
     _setupSocketListeners();
+    _fetchDetailedAddresses();
+    _setupNavigationListener();
   }
 
   void _initializeLocations() {
@@ -80,6 +92,45 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
     }
 
     _updateAnnotations();
+  }
+  
+  /// Fetch detailed addresses for pickup and dropoff
+  Future<void> _fetchDetailedAddresses() async {
+    if (widget.pickup != null) {
+      final address = await _placesService.getAddressFromLatLng(
+        _pickupLocation.latitude,
+        _pickupLocation.longitude,
+      );
+      if (mounted) {
+        setState(() {
+          _pickupAddress = address ?? widget.pickup?['address'] ?? 'Pickup Location';
+        });
+      }
+    }
+    
+    if (widget.dropoff != null) {
+      final address = await _placesService.getAddressFromLatLng(
+        _dropoffLocation.latitude,
+        _dropoffLocation.longitude,
+      );
+      if (mounted) {
+        setState(() {
+          _dropoffAddress = address ?? widget.dropoff?['address'] ?? 'Dropoff Location';
+        });
+      }
+    }
+  }
+  
+  /// Setup navigation listener for route updates
+  void _setupNavigationListener() {
+    _navigationService.routeUpdates.listen((state) {
+      if (mounted) {
+        setState(() {
+          _navigationState = state;
+          _updatePolylines();
+        });
+      }
+    });
   }
 
   void _setupSocketListeners() {
@@ -114,6 +165,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
           if (data['driver']?['location'] != null) {
             final coords = data['driver']['location']['coordinates'];
             _driverLocation = LatLng(coords[1], coords[0]);
+            // Fetch navigation route from driver to pickup
+            _fetchNavigationRoute();
           }
           _updateAnnotations();
           _fitBounds();
@@ -129,6 +182,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
           final coords = data['location']['coordinates'];
           _driverLocation = LatLng(coords[1], coords[0]);
           _updateAnnotations();
+          // Update navigation route in real-time
+          _updateNavigationRoute();
         });
       }
     });
@@ -139,6 +194,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
         setState(() {
           _rideStatus = 'in_progress';
           _updateAnnotations();
+          // Switch to navigation from current to dropoff
+          _fetchNavigationRoute();
           _fitBounds();
         });
       }
@@ -284,6 +341,78 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
       _annotations = newAnnotations;
     });
   }
+  
+  /// Fetch navigation route based on current ride status
+  Future<void> _fetchNavigationRoute() async {
+    if (_driverLocation == null) return;
+    
+    LatLng origin = _driverLocation!;
+    LatLng destination;
+    
+    if (_rideStatus == 'driver_assigned' || _rideStatus == 'driver_arrived') {
+      // Driver navigating to pickup
+      destination = _pickupLocation;
+    } else if (_rideStatus == 'in_progress') {
+      // Driver navigating to dropoff
+      destination = _dropoffLocation;
+    } else {
+      return;
+    }
+    
+    await _navigationService.fetchRoute(
+      originLat: origin.latitude,
+      originLng: origin.longitude,
+      destLat: destination.latitude,
+      destLng: destination.longitude,
+    );
+  }
+  
+  /// Update navigation route in real-time
+  Future<void> _updateNavigationRoute() async {
+    if (_driverLocation == null) return;
+    
+    LatLng destination;
+    
+    if (_rideStatus == 'driver_assigned' || _rideStatus == 'driver_arrived') {
+      destination = _pickupLocation;
+    } else if (_rideStatus == 'in_progress') {
+      destination = _dropoffLocation;
+    } else {
+      return;
+    }
+    
+    await _navigationService.updateRoute(
+      currentLat: _driverLocation!.latitude,
+      currentLng: _driverLocation!.longitude,
+      destLat: destination.latitude,
+      destLng: destination.longitude,
+    );
+  }
+  
+  /// Update polylines with navigation route
+  void _updatePolylines() {
+    final Set<Polyline> newPolylines = {};
+    
+    if (_navigationState != null && _navigationState!.polyline.isNotEmpty) {
+      // Convert LatLng to Apple Maps LatLng format
+      final points = _navigationState!.polyline
+          .map((point) => LatLng(point.latitude, point.longitude))
+          .toList();
+      
+      newPolylines.add(
+        Polyline(
+          polylineId: PolylineId('navigation_route'),
+          points: points,
+          color: AppTheme.primaryColor,
+          width: 5,
+        ),
+      );
+    }
+    
+    setState(() {
+      _polylines = newPolylines;
+    });
+  }
 
   void _fitBounds() {
     if (_mapController == null) return;
@@ -406,10 +535,10 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
             const Text('Searching for drivers near you...'),
             const SizedBox(height: 24),
             _buildLocationRow(Icons.my_location, 'Pickup',
-                widget.pickup?['address'] ?? 'Current Location'),
+                _pickupAddress.isNotEmpty ? _pickupAddress : (widget.pickup?['address'] ?? 'Current Location')),
             const SizedBox(height: 16),
             _buildLocationRow(Icons.location_on, 'Dropoff',
-                widget.dropoff?['address'] ?? 'Destination'),
+                _dropoffAddress.isNotEmpty ? _dropoffAddress : (widget.dropoff?['address'] ?? 'Destination')),
             const SizedBox(height: 24),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,

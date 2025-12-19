@@ -31,6 +31,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   final LocationService _locationService = LocationService();
   LatLng _currentLocation = const LatLng(51.5085, -0.1260); // Fallback
   bool _isMapLoading = true;
+  double _currentBearing = 0.0;
   StreamSubscription<Position>? _positionStreamSubscription;
   
   String? _currentRideId;
@@ -134,6 +135,20 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     // Listen to updates
     _positionStreamSubscription = _locationService.getPositionStream().listen((position) {
       if (mounted) {
+        // Calculate bearing if we have a previous location
+        if (_currentLocation.latitude != 0 && _currentLocation.longitude != 0) {
+           final bearing = Geolocator.bearingBetween(
+             _currentLocation.latitude, 
+             _currentLocation.longitude, 
+             position.latitude, 
+             position.longitude
+           );
+           // Only update bearing if moving significant distance or speed > 0
+           if (position.speed > 0.5) { // moving at least 0.5 m/s
+             _currentBearing = bearing;
+           }
+        }
+
         setState(() {
           _currentLocation = LatLng(position.latitude, position.longitude);
         });
@@ -542,11 +557,15 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       }
     }
 
+    bool isNavigationMode = _status == 'pickup' || _status == 'in_progress' || _status == 'arrived';
+
     return Stack(
       children: [
         PlatformMap(
           initialLat: _currentLocation.latitude,
           initialLng: _currentLocation.longitude,
+          bearing: isNavigationMode ? _currentBearing : 0.0,
+          tilt: isNavigationMode ? 45.0 : 0.0,
           markers: [
             MapMarker(
               id: 'driver',
