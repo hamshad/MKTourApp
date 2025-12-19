@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../core/theme.dart';
+import '../../core/services/places_service.dart';
 
-class DriverRequestPanel extends StatelessWidget {
+class DriverRequestPanel extends StatefulWidget {
   final VoidCallback onAccept;
   final VoidCallback onDecline;
   final Map<String, dynamic>? rideData;
@@ -12,6 +13,61 @@ class DriverRequestPanel extends StatelessWidget {
     required this.onDecline,
     this.rideData,
   });
+
+  @override
+  State<DriverRequestPanel> createState() => _DriverRequestPanelState();
+}
+
+class _DriverRequestPanelState extends State<DriverRequestPanel> {
+  final PlacesService _placesService = PlacesService();
+  String _pickupAddress = '';
+  String _dropoffAddress = '';
+  bool _isLoadingAddresses = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchDetailedAddresses();
+  }
+
+  Future<void> _fetchDetailedAddresses() async {
+    if (widget.rideData == null) {
+      setState(() => _isLoadingAddresses = false);
+      return;
+    }
+
+    // Fetch pickup address
+    if (widget.rideData!['pickupLocation']?['coordinates'] != null) {
+      final pickupCoords = widget.rideData!['pickupLocation']['coordinates'];
+      final pickupLat = pickupCoords[1];
+      final pickupLng = pickupCoords[0];
+      
+      final pickupAddr = await _placesService.getAddressFromLatLng(pickupLat, pickupLng);
+      if (mounted) {
+        setState(() {
+          _pickupAddress = pickupAddr ?? widget.rideData!['pickupLocation']?['address'] ?? 'Pickup Location';
+        });
+      }
+    }
+
+    // Fetch dropoff address
+    if (widget.rideData!['dropoffLocation']?['coordinates'] != null) {
+      final dropoffCoords = widget.rideData!['dropoffLocation']['coordinates'];
+      final dropoffLat = dropoffCoords[1];
+      final dropoffLng = dropoffCoords[0];
+      
+      final dropoffAddr = await _placesService.getAddressFromLatLng(dropoffLat, dropoffLng);
+      if (mounted) {
+        setState(() {
+          _dropoffAddress = dropoffAddr ?? widget.rideData!['dropoffLocation']?['address'] ?? 'Dropoff Location';
+        });
+      }
+    }
+
+    if (mounted) {
+      setState(() => _isLoadingAddresses = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -85,7 +141,7 @@ class DriverRequestPanel extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        rideData?['user']?['name'] ?? 'Passenger',
+                        widget.rideData?['user']?['name'] ?? 'Passenger',
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -99,7 +155,7 @@ class DriverRequestPanel extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      '£${(rideData?['fare'] ?? 0.0).toStringAsFixed(2)}',
+                      '£${(widget.rideData?['fare'] ?? 0.0).toStringAsFixed(2)}',
                       style: const TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
@@ -145,22 +201,28 @@ class DriverRequestPanel extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      rideData?['pickupLocation']?['address'] ?? 'Pickup Location',
-                      style: const TextStyle(
+                      _isLoadingAddresses 
+                        ? 'Loading address...'
+                        : (_pickupAddress.isNotEmpty ? _pickupAddress : (widget.rideData?['pickupLocation']?['address'] ?? 'Pickup Location')),
+                      style: TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 16,
+                        color: _isLoadingAddresses ? Colors.grey : AppTheme.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 24),
                     Text(
-                      rideData?['dropoffLocation']?['address'] ?? 'Dropoff Location',
-                      style: const TextStyle(
+                      _isLoadingAddresses 
+                        ? 'Loading address...'
+                        : (_dropoffAddress.isNotEmpty ? _dropoffAddress : (widget.rideData?['dropoffLocation']?['address'] ?? 'Dropoff Location')),
+                      style: TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 16,
+                        color: _isLoadingAddresses ? Colors.grey : AppTheme.textPrimary,
                       ),
                     ),
                     Text(
-                      '${(rideData?['distance'] ?? 0.0).toStringAsFixed(1)} km trip',
+                      '${(widget.rideData?['distance'] ?? 0.0).toStringAsFixed(1)} km trip',
                       style: TextStyle(
                         color: AppTheme.textSecondary,
                         fontSize: 13,
@@ -179,7 +241,7 @@ class DriverRequestPanel extends StatelessWidget {
             children: [
               Expanded(
                 child: OutlinedButton(
-                  onPressed: onDecline,
+                  onPressed: widget.onDecline,
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 18),
                     side: BorderSide(color: Colors.red.withOpacity(0.5), width: 2),
@@ -201,7 +263,7 @@ class DriverRequestPanel extends StatelessWidget {
               Expanded(
                 flex: 2,
                 child: ElevatedButton(
-                  onPressed: onAccept,
+                  onPressed: widget.onAccept,
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 18),
                     backgroundColor: AppTheme.primaryColor,

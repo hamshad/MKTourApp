@@ -13,6 +13,7 @@ import 'driver_navigation_panel.dart';
 import '../../core/widgets/custom_snackbar.dart';
 import '../../core/services/socket_service.dart';
 import '../../core/services/location_service.dart';
+import '../../core/services/navigation_service.dart';
 import 'package:geolocator/geolocator.dart';
 
 class DriverHomeScreen extends StatefulWidget {
@@ -40,6 +41,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   final ApiService _apiService = ApiService();
   bool _isLoading = false;
   final SocketService _socketService = SocketService();
+  final NavigationService _navigationService = NavigationService();
+  
+  // Navigation State
+  NavigationState? _navigationState;
+  List<MapPolyline> _navigationPolylines = [];
 
   @override
   void initState() {
@@ -86,6 +92,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     await _socketService.initSocket();
     if (mounted) {
       _setupSocketListeners();
+      _setupNavigationListener();
       // If already online, emit goOnline
       if (_status == 'online') {
         _emitDriverOnline();
@@ -98,6 +105,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   void dispose() {
     _socketService.off('ride:newRequest');
     _positionStreamSubscription?.cancel();
+    _navigationService.dispose();
     super.dispose();
   }
 
@@ -155,9 +163,91 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         
         if (_status == 'online' || _status == 'in_progress' || _status == 'pickup') {
           _emitLocationUpdate(position.latitude, position.longitude);
+          // Update navigation route in real-time
+          if (_status == 'pickup' || _status == 'in_progress') {
+            _updateNavigationRoute();
+          }
         }
       }
     });
+  }
+  
+  /// Setup navigation listener for route updates
+  void _setupNavigationListener() {
+    _navigationService.routeUpdates.listen((state) {
+      if (mounted) {
+        setState(() {
+          _navigationState = state;
+          _updateNavigationPolylines();
+        });
+      }
+    });
+  }
+  
+  /// Fetch navigation route based on current status
+  Future<void> _fetchNavigationRoute() async {
+    if (_rideData == null) return;
+    
+    LatLng destination;
+    
+    if (_status == 'pickup' || _status == 'arrived') {
+      // Navigate to pickup
+      final coords = _rideData!['pickupLocation']?['coordinates'] ?? [0.0, 0.0];
+      destination = LatLng(coords[1], coords[0]);
+    } else if (_status == 'in_progress') {
+      // Navigate to dropoff
+      final coords = _rideData!['dropoffLocation']?['coordinates'] ?? [0.0, 0.0];
+      destination = LatLng(coords[1], coords[0]);
+    } else {
+      return;
+    }
+    
+    await _navigationService.fetchRoute(
+      originLat: _currentLocation.latitude,
+      originLng: _currentLocation.longitude,
+      destLat: destination.latitude,
+      destLng: destination.longitude,
+    );
+  }
+  
+  /// Update navigation route in real-time
+  Future<void> _updateNavigationRoute() async {
+    if (_rideData == null) return;
+    
+    LatLng destination;
+    
+    if (_status == 'pickup' || _status == 'arrived') {
+      final coords = _rideData!['pickupLocation']?['coordinates'] ?? [0.0, 0.0];
+      destination = LatLng(coords[1], coords[0]);
+    } else if (_status == 'in_progress') {
+      final coords = _rideData!['dropoffLocation']?['coordinates'] ?? [0.0, 0.0];
+      destination = LatLng(coords[1], coords[0]);
+    } else {
+      return;
+    }
+    
+    await _navigationService.updateRoute(
+      currentLat: _currentLocation.latitude,
+      currentLng: _currentLocation.longitude,
+      destLat: destination.latitude,
+      destLng: destination.longitude,
+    );
+  }
+  
+  /// Update polylines with navigation route
+  void _updateNavigationPolylines() {
+    if (_navigationState != null && _navigationState!.polyline.isNotEmpty) {
+      _navigationPolylines = [
+        MapPolyline(
+          id: 'navigation_route',
+          points: _navigationState!.polyline,
+          color: AppTheme.primaryColor,
+          width: 5.0,
+        ),
+      ];
+    } else {
+      _navigationPolylines = [];
+    }
   }
 
   void _emitLocationUpdate(double lat, double lng) {
@@ -333,6 +423,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         if (response['success'] == true) {
           setState(() => _status = 'pickup');
           CustomSnackbar.show(context, message: 'Ride Accepted!', type: SnackbarType.success);
+          // Fetch navigation route to pickup
+          _fetchNavigationRoute();
         } else {
           CustomSnackbar.show(context, message: 'Failed to accept: ${response['message']}', type: SnackbarType.error);
         }
@@ -476,6 +568,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             message: 'OTP Verified! Trip Started.',
             type: SnackbarType.success,
           );
+          // Fetch navigation route to dropoff
+          _fetchNavigationRoute();
         } else {
           CustomSnackbar.show(
             context,
@@ -583,7 +677,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                 title: _status == 'pickup' ? 'Pickup' : 'Dropoff',
               ),
           ],
-          polylines: [
+          polylines: _navigationPolylines.isNotEmpty ? _navigationPolylines : [
             if (_status == 'pickup' || _status == 'in_progress')
               MapPolyline(
                 id: 'route',
@@ -707,6 +801,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         status: _status,
         rideData: _rideData,
         onAction: _handleRideAction,
+        navigationState: _navigationState,
       );
     }
   }
