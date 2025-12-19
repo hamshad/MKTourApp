@@ -41,7 +41,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _initLocation() async {
+    debugPrint("📍 _initLocation called");
     final position = await _locationService.getCurrentLocation();
+    debugPrint("📍 Position fetched: $position");
     if (position != null && mounted) {
       setState(() {
         _currentLocation = lat_lng.LatLng(position.latitude, position.longitude);
@@ -50,15 +52,20 @@ class _HomeScreenState extends State<HomeScreen> {
       
       // Fetch Address
       try {
+        debugPrint("📍 Fetching address for ${position.latitude}, ${position.longitude}");
         final address = await _placesService.getAddressFromLatLng(position.latitude, position.longitude);
+        debugPrint("📍 Address fetched result: $address");
         if (address != null && mounted) {
           setState(() {
-            _currentAddress = address.split(',')[0]; // Keep it short
+            _currentAddress = address;
+            debugPrint("📍 _currentAddress updated to: $_currentAddress");
           });
         }
       } catch (e) {
-        debugPrint("Error reverse geocoding: $e");
+        debugPrint("📍 Error reverse geocoding: $e");
       }
+    } else {
+      debugPrint("📍 Position is null or not mounted");
     }
   }
 
@@ -133,6 +140,7 @@ class _HomeScreenState extends State<HomeScreen> {
             markers: [
               MapMarker(
                 id: 'current_loc',
+                title: 'You',
                 lat: _currentLocation.latitude,
                 lng: _currentLocation.longitude,
                 child: Container(
@@ -200,83 +208,54 @@ class _HomeScreenState extends State<HomeScreen> {
                                     ],
                                   ),
                                 ),
-                                Text(
-                                  'MK-Tours',
-                                  style: GoogleFonts.outfit(
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.bold,
-                                    color: const Color(0xFF2E7D32), // Green shade like image
-                                    height: 1.1,
-                                    shadows: [
-                                      const Shadow(color: Colors.white, blurRadius: 8),
-                                    ],
+                                // Address Pill
+                                if (_currentAddress != null)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(30),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.08),
+                                          blurRadius: 10,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(Icons.location_on, color: Colors.red, size: 16),
+                                        const SizedBox(width: 8),
+                                        Flexible(
+                                          child: Text(
+                                            _currentAddress!,
+                                            style: GoogleFonts.outfit(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w500,
+                                              color: Colors.black87,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                ),
                               ],
                             );
                           }
                         ),
                       ),
                       
-                      // Notification Bell
-                      Container(
-                        margin: const EdgeInsets.only(left: 8),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.1),
-                              blurRadius: 8,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: IconButton(
-                          icon: const Icon(Icons.notifications_outlined, color: Colors.black87),
-                          onPressed: () {},
-                        ),
-                      ),
+
                     ],
                   ),
                   
                   const SizedBox(height: 12),
                   
-                  // Address Pill
-                  if (_currentAddress != null)
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(30),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.08),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.location_on, color: Colors.red, size: 20),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              _currentAddress!,
-                              style: GoogleFonts.outfit(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                                color: Colors.black87,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                  const SizedBox(height: 12),
                 ],
               ),
             ),

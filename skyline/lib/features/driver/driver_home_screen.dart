@@ -30,6 +30,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   // Location
   final LocationService _locationService = LocationService();
   LatLng _currentLocation = const LatLng(51.5085, -0.1260); // Fallback
+  bool _isMapLoading = true;
   StreamSubscription<Position>? _positionStreamSubscription;
   
   String? _currentRideId;
@@ -43,6 +44,26 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   void initState() {
     super.initState();
     _initDriver();
+    _initLocation();
+  }
+
+  void _initLocation() async {
+    debugPrint("📍 _initLocation called in DriverHomeScreen");
+    final position = await _locationService.getCurrentLocation();
+    if (position != null && mounted) {
+      setState(() {
+        _currentLocation = LatLng(position.latitude, position.longitude);
+        _isMapLoading = false;
+      });
+      // Start updates if already online or needed
+      if (_status == 'online') {
+         _emitLocationUpdate(position.latitude, position.longitude);
+      }
+    } else {
+       // Handle failure or timeout - maybe show fallback or retry?
+       // For now, just stop loading to show fallback
+       if (mounted) setState(() => _isMapLoading = false);
+    }
   }
 
   Future<void> _initDriver() async {
@@ -499,6 +520,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   }
 
   Widget _buildMapBackground() {
+    if (_isMapLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: AppTheme.primaryColor),
+      );
+    }
+
     // Get dynamic destination
     double destLat = 51.5074;
     double destLng = -0.1278;
