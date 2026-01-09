@@ -41,6 +41,7 @@ class PlatformMap extends StatefulWidget {
   final dynamic bounds; // Kept for API compatibility
   final double bearing;
   final double tilt;
+  final bool interactive;
 
   const PlatformMap({
     super.key,
@@ -52,6 +53,7 @@ class PlatformMap extends StatefulWidget {
     this.bounds,
     this.bearing = 0.0,
     this.tilt = 0.0,
+    this.interactive = true,
   });
 
   @override
@@ -60,36 +62,13 @@ class PlatformMap extends StatefulWidget {
 
 class _PlatformMapState extends State<PlatformMap> {
   GoogleMapController? _controller;
-  Set<Marker> _googleMarkers = {};
-  Set<Polyline> _googlePolylines = {};
-
-  @override
-  void initState() {
-    super.initState();
-    _updateMapObjects();
-  }
 
   @override
   void didUpdateWidget(PlatformMap oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _updateMapObjects();
     
     // Animate to new location if coordinates changed
     if (widget.initialLat != oldWidget.initialLat || widget.initialLng != oldWidget.initialLng) {
-      _controller?.animateCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(
-            target: LatLng(widget.initialLat, widget.initialLng),
-            zoom: 16.0, // Zoom in closer for navigation
-            bearing: widget.bearing,
-            tilt: widget.tilt,
-          ),
-        ),
-      );
-    }
-    
-    // Update bearing/tilt if changed
-    if (widget.bearing != oldWidget.bearing || widget.tilt != oldWidget.tilt) {
       _controller?.animateCamera(
         CameraUpdate.newCameraPosition(
           CameraPosition(
@@ -128,33 +107,10 @@ class _PlatformMapState extends State<PlatformMap> {
       ),
     );
   }
-
-  void _updateMapObjects() {
-    // Convert MapMarker to Google Maps Marker
-    _googleMarkers = widget.markers.map((m) {
-      return Marker(
-        markerId: MarkerId(m.id),
-        position: LatLng(m.lat, m.lng),
-        infoWindow: InfoWindow(title: m.title ?? m.id),
-      );
-    }).toSet();
-
-    // Convert MapPolyline to Google Maps Polyline
-    _googlePolylines = widget.polylines.map((p) {
-      return Polyline(
-        polylineId: PolylineId(p.id),
-        points: p.points.map((pt) => LatLng(pt.latitude, pt.longitude)).toList(),
-        color: p.color,
-        width: p.width.toInt(),
-      );
-    }).toSet();
-  }
-
   void _fitBounds() {
     if (_controller == null || widget.bounds == null) return;
 
     try {
-      // Create LatLngBounds for Google Maps
       final bounds = widget.bounds;
       final googleBounds = LatLngBounds(
         southwest: LatLng(
@@ -179,6 +135,32 @@ class _PlatformMapState extends State<PlatformMap> {
   Widget build(BuildContext context) {
     debugPrint('🗺️ PlatformMap: Building with Google Maps');
 
+    // Convert MapMarker to Google Maps Marker (Moved to build for reactivity)
+    final googleMarkers = widget.markers.map((m) {
+      return Marker(
+        markerId: MarkerId(m.id),
+        position: LatLng(m.lat, m.lng),
+        infoWindow: InfoWindow(title: m.title ?? m.id),
+      );
+    }).toSet();
+
+    // Convert MapPolyline to Google Maps Polyline (Moved to build for reactivity)
+    final googlePolylines = widget.polylines.map((p) {
+      return Polyline(
+        polylineId: PolylineId(p.id),
+        points: p.points
+            .map((pt) => LatLng(pt.latitude, pt.longitude))
+            .toList(),
+        color: p.color,
+        width: 6, // Increased width for better visibility
+        geodesic: true,
+        jointType: JointType.round,
+        startCap: Cap.roundCap,
+        endCap: Cap.roundCap,
+        zIndex: 1, // Ensure it's above the map tiles
+      );
+    }).toSet();
+
     return GoogleMap(
       initialCameraPosition: CameraPosition(
         target: LatLng(widget.initialLat, widget.initialLng),
@@ -186,24 +168,26 @@ class _PlatformMapState extends State<PlatformMap> {
         bearing: widget.bearing,
         tilt: widget.tilt,
       ),
-      markers: _googleMarkers,
-      polylines: _googlePolylines,
+      markers: googleMarkers,
+      polylines: googlePolylines,
       onMapCreated: (GoogleMapController controller) {
         debugPrint('🗺️ PlatformMap: Google Map created successfully');
         _controller = controller;
         if (widget.bounds != null) {
-          // Delay to ensure map is fully loaded before fitting bounds
           Future.delayed(const Duration(milliseconds: 100), _fitBounds);
         }
       },
       onTap: (LatLng position) {
-        debugPrint('🗺️ PlatformMap: Map tapped at ${position.latitude}, ${position.longitude}');
         widget.onTap?.call(position.latitude, position.longitude);
       },
-      myLocationEnabled: true,
-      myLocationButtonEnabled: true,
+      myLocationEnabled: widget.interactive,
+      myLocationButtonEnabled: widget.interactive,
       mapToolbarEnabled: false,
       zoomControlsEnabled: false,
+      zoomGesturesEnabled: widget.interactive,
+      scrollGesturesEnabled: widget.interactive,
+      rotateGesturesEnabled: widget.interactive,
+      tiltGesturesEnabled: widget.interactive,
     );
   }
 }

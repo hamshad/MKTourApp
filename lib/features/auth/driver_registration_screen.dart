@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/api_service.dart';
+import '../../core/services/location_service.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/custom_snackbar.dart';
 import '../driver/driver_home_screen.dart';
@@ -11,25 +12,28 @@ class DriverRegistrationScreen extends StatefulWidget {
   final String? name;
 
   const DriverRegistrationScreen({
-    super.key, 
+    super.key,
     required this.phoneNumber,
     this.isNewUser = true,
     this.name,
   });
 
   @override
-  State<DriverRegistrationScreen> createState() => _DriverRegistrationScreenState();
+  State<DriverRegistrationScreen> createState() =>
+      _DriverRegistrationScreenState();
 }
 
 class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
   final TextEditingController _otpController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _vehicleModelController = TextEditingController();
-  final TextEditingController _vehicleNumberController = TextEditingController();
+  final TextEditingController _vehicleNumberController =
+      TextEditingController();
   final TextEditingController _vehicleColorController = TextEditingController();
   final ApiService _apiService = ApiService();
+  final LocationService _locationService = LocationService();
   bool _isLoading = false;
-  
+
   String? _selectedVehicleType;
   final List<String> _vehicleTypes = ['sedan', 'suv', 'hatchback', 'van'];
 
@@ -55,10 +59,10 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
 
     // Only validate registration fields if it's a new user
     if (widget.isNewUser) {
-      if (_nameController.text.isEmpty || 
-          _selectedVehicleType == null || 
-          _vehicleModelController.text.isEmpty || 
-          _vehicleNumberController.text.isEmpty || 
+      if (_nameController.text.isEmpty ||
+          _selectedVehicleType == null ||
+          _vehicleModelController.text.isEmpty ||
+          _vehicleNumberController.text.isEmpty ||
           _vehicleColorController.text.isEmpty) {
         CustomSnackbar.show(
           context,
@@ -75,13 +79,13 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
 
     try {
       Map<String, dynamic>? vehicleDetails;
-      
+
       if (widget.isNewUser) {
         vehicleDetails = {
           "type": _selectedVehicleType,
           "model": _vehicleModelController.text,
           "number": _vehicleNumberController.text,
-          "color": _vehicleColorController.text
+          "color": _vehicleColorController.text,
         };
       }
 
@@ -102,10 +106,50 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
       if (response['success'] == true) {
         CustomSnackbar.show(
           context,
-          message: widget.isNewUser ? 'Registration Successful!' : 'Login Successful!',
+          message: widget.isNewUser
+              ? 'Registration Successful!'
+              : 'Login Successful!',
           type: SnackbarType.success,
         );
-        
+
+        // Get current location and update driver's initial position
+        debugPrint(
+          '📍 [DriverRegistration] Getting current location to update driver position...',
+        );
+        try {
+          final position = await _locationService.getCurrentLocation();
+          if (position != null) {
+            debugPrint(
+              '📍 [DriverRegistration] Got location: ${position.latitude}, ${position.longitude}',
+            );
+
+            // Update driver's location in backend
+            final locationResponse = await _apiService.updateDriverLocation(
+              latitude: position.latitude,
+              longitude: position.longitude,
+            );
+
+            if (locationResponse['success'] == true) {
+              debugPrint(
+                '✅ [DriverRegistration] Initial location set successfully',
+              );
+            } else {
+              debugPrint(
+                '⚠️ [DriverRegistration] Failed to set initial location: ${locationResponse['message']}',
+              );
+            }
+          } else {
+            debugPrint(
+              '⚠️ [DriverRegistration] Could not get current location',
+            );
+          }
+        } catch (e) {
+          debugPrint('❌ [DriverRegistration] Error updating location: $e');
+          // Don't block navigation if location update fails
+        }
+
+        if (!mounted) return;
+
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (context) => const DriverHomeScreen()),
@@ -160,7 +204,10 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
             const SizedBox(height: 8),
             Text(
               'Enter the code sent to ${widget.phoneNumber}',
-              style: GoogleFonts.outfit(color: AppTheme.textSecondary, fontSize: 14),
+              style: GoogleFonts.outfit(
+                color: AppTheme.textSecondary,
+                fontSize: 14,
+              ),
             ),
             const SizedBox(height: 16),
             Container(
@@ -191,7 +238,7 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
 
             if (widget.isNewUser) ...[
               const SizedBox(height: 32),
-              
+
               // Personal Details
               _buildSectionHeader('Personal Details'),
               const SizedBox(height: 16),
@@ -206,10 +253,13 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
               // Vehicle Details
               _buildSectionHeader('Vehicle Information'),
               const SizedBox(height: 16),
-              
+
               // Vehicle Type Dropdown
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: AppTheme.borderColor),
@@ -220,11 +270,17 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
                     isExpanded: true,
                     hint: Row(
                       children: [
-                        const Icon(Icons.directions_car_outlined, color: AppTheme.textSecondary),
+                        const Icon(
+                          Icons.directions_car_outlined,
+                          color: AppTheme.textSecondary,
+                        ),
                         const SizedBox(width: 12),
                         Text(
                           'Select Vehicle Type',
-                          style: GoogleFonts.outfit(color: AppTheme.textSecondary, fontSize: 16),
+                          style: GoogleFonts.outfit(
+                            color: AppTheme.textSecondary,
+                            fontSize: 16,
+                          ),
                         ),
                       ],
                     ),
@@ -233,29 +289,35 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
                         value: type,
                         child: Row(
                           children: [
-                            const Icon(Icons.directions_car_outlined, color: AppTheme.textPrimary),
+                            const Icon(
+                              Icons.directions_car_outlined,
+                              color: AppTheme.textPrimary,
+                            ),
                             const SizedBox(width: 12),
                             Text(
                               _capitalize(type),
-                              style: GoogleFonts.outfit(color: AppTheme.textPrimary),
+                              style: GoogleFonts.outfit(
+                                color: AppTheme.textPrimary,
+                              ),
                             ),
                           ],
                         ),
                       );
                     }).toList(),
-                    onChanged: (value) => setState(() => _selectedVehicleType = value),
+                    onChanged: (value) =>
+                        setState(() => _selectedVehicleType = value),
                   ),
                 ),
               ),
               const SizedBox(height: 16),
-              
+
               _buildTextField(
                 controller: _vehicleModelController,
                 label: 'Vehicle Model (e.g., Toyota Camry)',
                 icon: Icons.model_training,
               ),
               const SizedBox(height: 16),
-              
+
               Row(
                 children: [
                   Expanded(
@@ -297,10 +359,15 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
                     ? const SizedBox(
                         height: 24,
                         width: 24,
-                        child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: Colors.white,
+                        ),
                       )
                     : Text(
-                        widget.isNewUser ? 'Submit Application' : 'Verify & Login',
+                        widget.isNewUser
+                            ? 'Submit Application'
+                            : 'Verify & Login',
                         style: GoogleFonts.outfit(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -349,7 +416,10 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: AppTheme.primaryColor, width: 2),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
+        ),
       ),
     );
   }

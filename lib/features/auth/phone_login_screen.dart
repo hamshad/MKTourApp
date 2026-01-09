@@ -8,7 +8,6 @@ import '../../core/widgets/custom_snackbar.dart';
 import 'driver_registration_screen.dart';
 import 'name_input_screen.dart';
 
-
 class PhoneLoginScreen extends StatefulWidget {
   final String role; // 'user' or 'driver'
 
@@ -35,13 +34,15 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
       );
       return;
     }
-    
+
     setState(() {
       _isLoading = true;
     });
 
     final fullPhoneNumber = '$_selectedCountryCode$phone';
-    debugPrint('📱 ------------------------------------------------------------------');
+    debugPrint(
+      '📱 ------------------------------------------------------------------',
+    );
     debugPrint('📱 [PhoneLoginScreen] User tapped Continue');
     debugPrint('📱 [PhoneLoginScreen] Phone: $fullPhoneNumber');
     debugPrint('📱 [PhoneLoginScreen] Role: ${widget.role}');
@@ -49,8 +50,11 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
     try {
       // Step 1: Check Phone
       debugPrint('⏳ [PhoneLoginScreen] Calling ApiService.checkPhone...');
-      final checkResponse = await _apiService.checkPhone(fullPhoneNumber, widget.role);
-      
+      final checkResponse = await _apiService.checkPhone(
+        fullPhoneNumber,
+        widget.role,
+      );
+
       if (!mounted) return;
 
       if (checkResponse['success'] == true) {
@@ -58,15 +62,19 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
         final bool isNewUser = data['isNewUser'] ?? false;
         final String? existingName = data['user']?['name'];
 
-        debugPrint('🔍 [PhoneLoginScreen] Check Phone Result: isNewUser=$isNewUser, Name=$existingName');
+        debugPrint(
+          '🔍 [PhoneLoginScreen] Check Phone Result: isNewUser=$isNewUser, Name=$existingName',
+        );
 
         if (isNewUser) {
           // Case A: New User -> Go to Name Input Screen
-          debugPrint('🆕 [PhoneLoginScreen] New User detected. Navigating to NameInputScreen...');
+          debugPrint(
+            '🆕 [PhoneLoginScreen] New User detected. Navigating to NameInputScreen...',
+          );
           setState(() {
             _isLoading = false;
           });
-          
+
           Navigator.push(
             context,
             MaterialPageRoute(
@@ -78,8 +86,10 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
           );
         } else {
           // Case B: Returning User -> Show Welcome & Send OTP
-          debugPrint('👋 [PhoneLoginScreen] Returning User detected. Sending OTP...');
-          
+          debugPrint(
+            '👋 [PhoneLoginScreen] Returning User detected. Sending OTP...',
+          );
+
           if (existingName != null) {
             // CustomSnackbar.show(
             //   context,
@@ -90,21 +100,23 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
 
           // Send OTP
           final otpResponse = await _apiService.sendOtp(fullPhoneNumber);
-          
+
           if (!mounted) return;
-          
+
           setState(() {
             _isLoading = false;
           });
 
           if (otpResponse['success'] == true) {
             final otp = otpResponse['data']['otp'];
-            debugPrint('🎉 [PhoneLoginScreen] OTP Sent. OTP: $otp');
-            CustomSnackbar.show(
-              context,
-              message: 'OTP Sent: $otp',
-              type: SnackbarType.success,
-            );
+            if (otp != null) {
+              debugPrint('🎉 [PhoneLoginScreen] OTP Sent. OTP: $otp');
+              CustomSnackbar.show(
+                context,
+                message: 'OTP Sent: $otp',
+                type: SnackbarType.success,
+              );
+            }
 
             // Navigate to OTP Screen (UserRegistrationScreen)
             if (widget.role == 'user') {
@@ -132,11 +144,11 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
               );
             }
           } else {
-             CustomSnackbar.show(
-               context,
-               message: otpResponse['message'] ?? 'Failed to send OTP',
-               type: SnackbarType.error,
-             );
+            CustomSnackbar.show(
+              context,
+              message: otpResponse['message'] ?? 'Failed to send OTP',
+              type: SnackbarType.error,
+            );
           }
         }
       } else {
@@ -151,7 +163,9 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
       }
     } catch (e) {
       debugPrint('❌ [PhoneLoginScreen] Error occurred: $e');
-      debugPrint('📱 ------------------------------------------------------------------');
+      debugPrint(
+        '📱 ------------------------------------------------------------------',
+      );
       if (!mounted) return;
       setState(() {
         _isLoading = false;
@@ -206,7 +220,7 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
                 ),
               ),
               const SizedBox(height: 40),
-              
+
               // Phone Input Row
               Container(
                 decoration: BoxDecoration(
@@ -219,12 +233,17 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       decoration: const BoxDecoration(
-                        border: Border(right: BorderSide(color: AppTheme.borderColor)),
+                        border: Border(
+                          right: BorderSide(color: AppTheme.borderColor),
+                        ),
                       ),
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<String>(
                           value: _selectedCountryCode,
-                          icon: const Icon(Icons.keyboard_arrow_down, color: AppTheme.textSecondary),
+                          icon: const Icon(
+                            Icons.keyboard_arrow_down,
+                            color: AppTheme.textSecondary,
+                          ),
                           style: GoogleFonts.outfit(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
@@ -244,7 +263,7 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
                         ),
                       ),
                     ),
-                    
+
                     // Phone Number Input
                     Expanded(
                       child: TextField(
@@ -257,18 +276,23 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
                         ),
                         decoration: InputDecoration(
                           hintText: 'Phone Number',
-                          hintStyle: GoogleFonts.outfit(color: AppTheme.textSecondary),
+                          hintStyle: GoogleFonts.outfit(
+                            color: AppTheme.textSecondary,
+                          ),
                           border: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 16,
+                          ),
                         ),
                       ),
                     ),
                   ],
                 ),
               ),
-              
+
               const Spacer(),
-              
+
               // Continue Button
               SizedBox(
                 width: double.infinity,
@@ -283,19 +307,22 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  child: _isLoading 
-                    ? const SizedBox(
-                        height: 24, 
-                        width: 24, 
-                        child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white)
-                      )
-                    : Text(
-                        'Continue',
-                        style: GoogleFonts.outfit(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
+                  child: _isLoading
+                      ? const SizedBox(
+                          height: 24,
+                          width: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Text(
+                          'Continue',
+                          style: GoogleFonts.outfit(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
                 ),
               ),
               const SizedBox(height: 16),

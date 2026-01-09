@@ -31,9 +31,19 @@ class AuthProvider with ChangeNotifier {
     return false;
   }
 
-  Future<bool> signup(String email, String password, String firstName, String lastName) async {
+  Future<bool> signup(
+    String email,
+    String password,
+    String firstName,
+    String lastName,
+  ) async {
     try {
-      final response = await _apiService.signup(email, password, firstName, lastName);
+      final response = await _apiService.signup(
+        email,
+        password,
+        firstName,
+        lastName,
+      );
       if (response['success']) {
         _isAuthenticated = true;
         _user = response['user'];
@@ -58,7 +68,8 @@ class AuthProvider with ChangeNotifier {
       }
     } catch (e) {
       print('Error fetching user profile: $e');
-      if (e.toString().contains("User not found") || e.toString().contains("Unauthorized")) {
+      if (e.toString().contains("User not found") ||
+          e.toString().contains("Unauthorized")) {
         await logout();
       }
     }
@@ -75,7 +86,9 @@ class AuthProvider with ChangeNotifier {
       }
     } catch (e) {
       print('Error fetching driver profile: $e');
-      if (e.toString().contains("User not found") || e.toString().contains("Driver not found") || e.toString().contains("Unauthorized")) {
+      if (e.toString().contains("User not found") ||
+          e.toString().contains("Driver not found") ||
+          e.toString().contains("Unauthorized")) {
         await logout();
       }
     }
@@ -85,12 +98,12 @@ class AuthProvider with ChangeNotifier {
     try {
       final response = await _apiService.uploadVehicleImages(images);
       if (response['success'] == true && response['data'] != null) {
-         // Update local user data with new images if needed
-         if (response['data']['driver'] != null) {
-            _user = response['data']['driver'];
-            notifyListeners();
-         }
-         return true;
+        // Update local user data with new images if needed
+        if (response['data']['driver'] != null) {
+          _user = response['data']['driver'];
+          notifyListeners();
+        }
+        return true;
       }
     } catch (e) {
       print('Error uploading vehicle images: $e');
@@ -102,27 +115,29 @@ class AuthProvider with ChangeNotifier {
     try {
       final response = await _apiService.deleteVehicleImage(publicId);
       if (response['success'] == true) {
-         // Update local user data
-         if (_user != null && _user!['vehicleImages'] != null) {
-            final updatedUser = Map<String, dynamic>.from(_user!);
-            final List<dynamic> images = List.from(updatedUser['vehicleImages']);
-            final List<dynamic> publicIds = List.from(updatedUser['vehicleImagePublicIds'] ?? []);
-            
-            // Find index of publicId to remove corresponding image URL
-            final index = publicIds.indexOf(publicId);
-            if (index != -1) {
-              if (index < images.length) {
-                images.removeAt(index);
-              }
-              publicIds.removeAt(index);
-              
-              updatedUser['vehicleImages'] = images;
-              updatedUser['vehicleImagePublicIds'] = publicIds;
-              _user = updatedUser;
-              notifyListeners();
+        // Update local user data
+        if (_user != null && _user!['vehicleImages'] != null) {
+          final updatedUser = Map<String, dynamic>.from(_user!);
+          final List<dynamic> images = List.from(updatedUser['vehicleImages']);
+          final List<dynamic> publicIds = List.from(
+            updatedUser['vehicleImagePublicIds'] ?? [],
+          );
+
+          // Find index of publicId to remove corresponding image URL
+          final index = publicIds.indexOf(publicId);
+          if (index != -1) {
+            if (index < images.length) {
+              images.removeAt(index);
             }
-         }
-         return true;
+            publicIds.removeAt(index);
+
+            updatedUser['vehicleImages'] = images;
+            updatedUser['vehicleImagePublicIds'] = publicIds;
+            _user = updatedUser;
+            notifyListeners();
+          }
+        }
+        return true;
       }
     } catch (e) {
       print('Error deleting vehicle image: $e');
@@ -134,12 +149,12 @@ class AuthProvider with ChangeNotifier {
     try {
       final response = await _apiService.uploadDriverLicense(license);
       if (response['success'] == true && response['data'] != null) {
-         // Update local user data with new license if needed
-         if (response['data']['driver'] != null) {
-            _user = response['data']['driver'];
-            notifyListeners();
-         }
-         return true;
+        // Update local user data with new license if needed
+        if (response['data']['driver'] != null) {
+          _user = response['data']['driver'];
+          notifyListeners();
+        }
+        return true;
       }
     } catch (e) {
       print('Error uploading driver license: $e');
@@ -162,7 +177,7 @@ class AuthProvider with ChangeNotifier {
       if (!prefs.containsKey('auth_token')) {
         return false;
       }
-      
+
       await fetchUserProfile();
       return _isAuthenticated;
     } catch (e) {
@@ -174,15 +189,15 @@ class AuthProvider with ChangeNotifier {
     try {
       final response = await _apiService.updateDriverProfilePicture(image);
       if (response['success'] == true && response['data'] != null) {
-         // Update local user data with new profile picture
-         if (response['data']['profilePicture'] != null) {
-            // Create a new map to ensure immutability isn't an issue if _user was const
-            final updatedUser = Map<String, dynamic>.from(_user ?? {});
-            updatedUser['profilePicture'] = response['data']['profilePicture'];
-            _user = updatedUser;
-            notifyListeners();
-         }
-         return true;
+        // Update local user data with new profile picture
+        if (response['data']['profilePicture'] != null) {
+          // Create a new map to ensure immutability isn't an issue if _user was const
+          final updatedUser = Map<String, dynamic>.from(_user ?? {});
+          updatedUser['profilePicture'] = response['data']['profilePicture'];
+          _user = updatedUser;
+          notifyListeners();
+        }
+        return true;
       }
     } catch (e) {
       print('Error updating profile picture: $e');
@@ -194,10 +209,10 @@ class AuthProvider with ChangeNotifier {
     try {
       final response = await _apiService.updateDriverProfile(data);
       if (response['success'] == true && response['data'] != null) {
-         // Update local user data
-         _user = response['data'];
-         notifyListeners();
-         return true;
+        // Update local user data
+        _user = response['data'];
+        notifyListeners();
+        return true;
       }
     } catch (e) {
       print('Error updating driver profile: $e');
@@ -216,7 +231,7 @@ class AuthProvider with ChangeNotifier {
         email: email,
         profilePicture: profilePicture,
       );
-      
+
       if (response['success'] == true && response['data'] != null) {
         _user = response['data'];
         notifyListeners();
@@ -229,24 +244,46 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<void> fetchRideHistory({bool forceRefresh = false}) async {
+    debugPrint(
+      '📦 [AuthProvider] fetchRideHistory called (forceRefresh: $forceRefresh)',
+    );
+
     // Smart Caching: Return cached data if less than 5 minutes old and not forced
-    if (!forceRefresh && 
-        _rideHistory.isNotEmpty && 
-        _lastRideHistoryFetch != null && 
-        DateTime.now().difference(_lastRideHistoryFetch!) < const Duration(minutes: 5)) {
-      debugPrint('📦 [AuthProvider] Returning cached ride history');
+    if (!forceRefresh &&
+        _rideHistory.isNotEmpty &&
+        _lastRideHistoryFetch != null &&
+        DateTime.now().difference(_lastRideHistoryFetch!) <
+            const Duration(minutes: 5)) {
+      debugPrint(
+        '📦 [AuthProvider] Returning cached ride history (${_rideHistory.length} rides)',
+      );
       return;
     }
 
     try {
+      debugPrint('📦 [AuthProvider] Fetching ride history from API...');
       final response = await _apiService.getRideHistory();
+      debugPrint(
+        '📦 [AuthProvider] API Response: success=${response['success']}, data type=${response['data']?.runtimeType}',
+      );
+
       if (response['success'] == true && response['data'] != null) {
-        _rideHistory = response['data'];
+        _rideHistory = List<Map<String, dynamic>>.from(response['data']);
         _lastRideHistoryFetch = DateTime.now();
+        debugPrint(
+          '📦 [AuthProvider] Ride history updated: ${_rideHistory.length} rides',
+        );
+        if (_rideHistory.isNotEmpty) {
+          debugPrint(
+            '📦 [AuthProvider] First ride status: ${_rideHistory.first['status']}',
+          );
+        }
         notifyListeners();
+      } else {
+        debugPrint('📦 [AuthProvider] API returned success=false or no data');
       }
     } catch (e) {
-      print('Error fetching ride history: $e');
+      debugPrint('❌ [AuthProvider] Error fetching ride history: $e');
     }
   }
 

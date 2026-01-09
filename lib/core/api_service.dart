@@ -34,16 +34,26 @@ class ApiService {
       // Mock token saving
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('auth_token', 'mock_token_fallback');
-      
+
       return {
         'success': true,
         'token': 'mock_token_fallback',
-        'user': {'id': 1, 'firstName': 'Demo', 'lastName': 'User', 'email': email}
+        'user': {
+          'id': 1,
+          'firstName': 'Demo',
+          'lastName': 'User',
+          'email': email,
+        },
       };
     }
   }
 
-  Future<Map<String, dynamic>> signup(String email, String password, String firstName, String lastName) async {
+  Future<Map<String, dynamic>> signup(
+    String email,
+    String password,
+    String firstName,
+    String lastName,
+  ) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/signup'),
@@ -52,7 +62,7 @@ class ApiService {
           'email': email,
           'password': password,
           'firstName': firstName,
-          'lastName': lastName
+          'lastName': lastName,
         }),
       );
 
@@ -71,16 +81,23 @@ class ApiService {
       // Mock token saving
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('auth_token', 'mock_token_fallback');
-      
+
       return {
         'success': true,
         'token': 'mock_token_fallback',
-        'user': {'id': 2, 'firstName': firstName, 'lastName': lastName, 'email': email}
+        'user': {
+          'id': 2,
+          'firstName': firstName,
+          'lastName': lastName,
+          'email': email,
+        },
       };
     }
   }
 
-  Future<Map<String, dynamic>> bookRide(Map<String, dynamic> bookingDetails) async {
+  Future<Map<String, dynamic>> bookRide(
+    Map<String, dynamic> bookingDetails,
+  ) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/book'),
@@ -94,22 +111,29 @@ class ApiService {
         throw Exception('Failed to book ride');
       }
     } catch (e) {
-       print('API Error: $e. Returning mock booking.');
-       return {
-            'success': true,
-            'bookingId': "book_mock_${DateTime.now().millisecondsSinceEpoch}",
-            'status': "driver_assigned",
-            'otp': "1234",  // Add OTP to mock
-            'driver': { "name": "Mock Driver", "vehicle": "Mock Car", "plate": "MOCK 123", "rating": 5.0 },
-            'eta': "5 mins",
-            'fare': 15.50
-        };
+      print('API Error: $e. Returning mock booking.');
+      return {
+        'success': true,
+        'bookingId': "book_mock_${DateTime.now().millisecondsSinceEpoch}",
+        'status': "driver_assigned",
+        'otp': "1234", // Add OTP to mock
+        'driver': {
+          "name": "Mock Driver",
+          "vehicle": "Mock Car",
+          "plate": "MOCK 123",
+          "rating": 5.0,
+        },
+        'eta': "5 mins",
+        'fare': 15.50,
+      };
     }
   }
 
   Future<Map<String, dynamic>> getRideStatus(String rideId) async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/ride-status/$rideId'));
+      final response = await http.get(
+        Uri.parse('$baseUrl/ride-status/$rideId'),
+      );
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       } else {
@@ -119,18 +143,20 @@ class ApiService {
       // Mock status for demo
       return {
         'status': 'driver_assigned',
-        'location': {'lat': 51.5074, 'lng': -0.1278}
+        'location': {'lat': 51.5074, 'lng': -0.1278},
       };
     }
   }
-  
+
   // Removed conflicting static completeRide method
   Future<Map<String, dynamic>> sendOtp(String phone) async {
-    debugPrint('🔵 ------------------------------------------------------------------');
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
     debugPrint('🔵 [ApiService] sendOtp called');
     debugPrint('🔵 [Request] URL: ${ApiConstants.sendOtp}');
     debugPrint('🔵 [Request] Body: {"phone": "$phone"}');
-    
+
     try {
       final response = await http.post(
         Uri.parse(ApiConstants.sendOtp),
@@ -143,21 +169,30 @@ class ApiService {
 
       if (response.statusCode == 200) {
         debugPrint('🟢 [ApiService] sendOtp Success');
-        debugPrint('🔵 ------------------------------------------------------------------');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
         return jsonDecode(response.body);
       } else {
         debugPrint('🔴 [ApiService] sendOtp Failed: ${response.body}');
-        debugPrint('🔵 ------------------------------------------------------------------');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
         throw Exception('Failed to send OTP: ${response.body}');
       }
     } catch (e) {
       debugPrint('🟠 [ApiService] Exception caught: $e');
-      debugPrint('🔵 ------------------------------------------------------------------');
+      debugPrint(
+        '🔵 ------------------------------------------------------------------',
+      );
       throw Exception('Failed to send OTP: $e');
     }
   }
+
   Future<Map<String, dynamic>> checkPhone(String phone, String role) async {
-    debugPrint('🔵 ------------------------------------------------------------------');
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
     debugPrint('🔵 [ApiService] checkPhone called');
     debugPrint('🔵 [Request] URL: ${ApiConstants.baseUrl}/auth/check-phone');
     debugPrint('🔵 [Request] Body: {"phone": "$phone", "role": "$role"}');
@@ -176,16 +211,22 @@ class ApiService {
 
       if (response.statusCode == 200) {
         debugPrint('🟢 [ApiService] checkPhone Success');
-        debugPrint('🔵 ------------------------------------------------------------------');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
         return jsonDecode(response.body);
       } else {
         debugPrint('🔴 [ApiService] checkPhone Failed: ${response.body}');
-        debugPrint('🔵 ------------------------------------------------------------------');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
         throw Exception('Failed to check phone: ${response.body}');
       }
     } catch (e) {
       debugPrint('🟠 [ApiService] Exception caught: $e');
-      debugPrint('🔵 ------------------------------------------------------------------');
+      debugPrint(
+        '🔵 ------------------------------------------------------------------',
+      );
       throw Exception('Failed to check phone: $e');
     }
   }
@@ -197,9 +238,11 @@ class ApiService {
     String? name, // Made nullable
     Map<String, dynamic>? vehicleDetails,
   }) async {
-    debugPrint('🔵 ------------------------------------------------------------------');
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
     debugPrint('🔵 [ApiService] verifyOtp called');
-    
+
     final Map<String, dynamic> requestBody = {
       'phone': phone,
       'otp': otp,
@@ -230,7 +273,7 @@ class ApiService {
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
         debugPrint('🟢 [ApiService] verifyOtp Success');
-        
+
         if (responseData['success'] == true && responseData['data'] != null) {
           final token = responseData['data']['token'];
           if (token != null) {
@@ -240,22 +283,31 @@ class ApiService {
             debugPrint('✅ [ApiService] Token saved successfully');
           }
         }
-        
-        debugPrint('🔵 ------------------------------------------------------------------');
+
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
         return responseData;
       } else {
         debugPrint('🔴 [ApiService] verifyOtp Failed: ${response.body}');
-        debugPrint('🔵 ------------------------------------------------------------------');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
         throw Exception('Failed to verify OTP: ${response.body}');
       }
     } catch (e) {
       debugPrint('🟠 [ApiService] Exception caught: $e');
-      debugPrint('🔵 ------------------------------------------------------------------');
+      debugPrint(
+        '🔵 ------------------------------------------------------------------',
+      );
       throw Exception('Failed to verify OTP: $e');
     }
   }
+
   Future<Map<String, dynamic>> getUserProfile() async {
-    debugPrint('🔵 ------------------------------------------------------------------');
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
     debugPrint('🔵 [ApiService] getUserProfile called');
     debugPrint('🔵 [Request] URL: ${ApiConstants.userProfile}');
 
@@ -267,7 +319,9 @@ class ApiService {
         throw Exception('No auth token found');
       }
 
-      debugPrint('🔵 [Request] Headers: Authorization: Bearer ${token.substring(0, 10)}...');
+      debugPrint(
+        '🔵 [Request] Headers: Authorization: Bearer ${token.substring(0, 10)}...',
+      );
 
       final response = await http.get(
         Uri.parse(ApiConstants.userProfile),
@@ -282,16 +336,22 @@ class ApiService {
 
       if (response.statusCode == 200) {
         debugPrint('🟢 [ApiService] getUserProfile Success');
-        debugPrint('🔵 ------------------------------------------------------------------');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
         return jsonDecode(response.body);
       } else {
         debugPrint('🔴 [ApiService] getUserProfile Failed: ${response.body}');
-        debugPrint('🔵 ------------------------------------------------------------------');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
         throw Exception('Failed to get user profile: ${response.body}');
       }
     } catch (e) {
       debugPrint('🟠 [ApiService] Exception caught: $e');
-      debugPrint('🔵 ------------------------------------------------------------------');
+      debugPrint(
+        '🔵 ------------------------------------------------------------------',
+      );
       throw Exception('Failed to get user profile: $e');
     }
   }
@@ -301,7 +361,9 @@ class ApiService {
     required String email,
     File? profilePicture,
   }) async {
-    debugPrint('🔵 ------------------------------------------------------------------');
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
     debugPrint('🔵 [ApiService] updateUserProfile called');
     debugPrint('🔵 [Request] URL: ${ApiConstants.updateUser}');
     debugPrint('🔵 [Request] Name: $name, Email: $email');
@@ -317,14 +379,22 @@ class ApiService {
         throw Exception('No auth token found');
       }
 
-      var request = http.MultipartRequest('PATCH', Uri.parse(ApiConstants.updateUser));
+      var request = http.MultipartRequest(
+        'PATCH',
+        Uri.parse(ApiConstants.updateUser),
+      );
       request.headers['Authorization'] = 'Bearer $token';
-      
+
       request.fields['name'] = name;
       request.fields['email'] = email;
 
       if (profilePicture != null) {
-        request.files.add(await http.MultipartFile.fromPath('profilePicture', profilePicture.path));
+        request.files.add(
+          await http.MultipartFile.fromPath(
+            'profilePicture',
+            profilePicture.path,
+          ),
+        );
       }
 
       debugPrint('🔵 [Request] Sending multipart request...');
@@ -336,25 +406,36 @@ class ApiService {
 
       if (response.statusCode == 200) {
         debugPrint('🟢 [ApiService] updateUserProfile Success');
-        debugPrint('🔵 ------------------------------------------------------------------');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
         return jsonDecode(response.body);
       } else {
-        debugPrint('🔴 [ApiService] updateUserProfile Failed: ${response.body}');
-        debugPrint('🔵 ------------------------------------------------------------------');
+        debugPrint(
+          '🔴 [ApiService] updateUserProfile Failed: ${response.body}',
+        );
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
         throw Exception('Failed to update user profile: ${response.body}');
       }
     } catch (e) {
       debugPrint('🟠 [ApiService] Exception caught: $e');
-      debugPrint('🔵 ------------------------------------------------------------------');
+      debugPrint(
+        '🔵 ------------------------------------------------------------------',
+      );
       throw Exception('Failed to update user profile: $e');
     }
   }
+
   Future<Map<String, dynamic>> createRide(Map<String, dynamic> rideData) async {
-    debugPrint('🔵 ------------------------------------------------------------------');
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
     debugPrint('🔵 [ApiService] createRide called');
     debugPrint('🔵 [Request] URL: ${ApiConstants.createRide}');
     debugPrint('🔵 [Request] Body: $rideData');
-    
+
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('auth_token');
@@ -373,23 +454,23 @@ class ApiService {
 
       if (response.statusCode == 201) {
         debugPrint('🟢 [ApiService] createRide Success');
-        debugPrint('🔵 ------------------------------------------------------------------');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
         return jsonDecode(response.body);
       } else {
         debugPrint('🔴 [ApiService] createRide Failed: ${response.statusCode}');
-        debugPrint('🔵 ------------------------------------------------------------------');
-        return {
-          'success': false,
-          'message': 'Failed to create ride request',
-        };
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
+        return {'success': false, 'message': 'Failed to create ride request'};
       }
     } catch (e) {
       debugPrint('🔴 [ApiService] createRide Error: $e');
-      debugPrint('🔵 ------------------------------------------------------------------');
-      return {
-        'success': false,
-        'message': 'Error creating ride request: $e',
-      };
+      debugPrint(
+        '🔵 ------------------------------------------------------------------',
+      );
+      return {'success': false, 'message': 'Error creating ride request: $e'};
     }
   }
 
@@ -397,7 +478,11 @@ class ApiService {
     return await _postRequest(ApiConstants.acceptRide(rideId), {});
   }
 
-  Future<Map<String, dynamic>> arriveAtPickup(String rideId, double lat, double lng) async {
+  Future<Map<String, dynamic>> arriveAtPickup(
+    String rideId,
+    double lat,
+    double lng,
+  ) async {
     return await _postRequest(ApiConstants.arriveAtPickup(rideId), {
       'latitude': lat,
       'longitude': lng,
@@ -405,16 +490,17 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> startRide(String rideId, String otp) async {
-    return await _postRequest(ApiConstants.startRide(rideId), {
-      'otp': otp,
-    });
+    return await _postRequest(ApiConstants.startRide(rideId), {'otp': otp});
   }
 
   Future<Map<String, dynamic>> completeRide(String rideId) async {
     return await _postRequest(ApiConstants.completeRide(rideId), {});
   }
 
-  Future<Map<String, dynamic>> cancelRide(String rideId, {String? reason}) async {
+  Future<Map<String, dynamic>> cancelRide(
+    String rideId, {
+    String? reason,
+  }) async {
     return await _postRequest(ApiConstants.cancelRide(rideId), {
       if (reason != null) 'reason': reason,
     });
@@ -434,8 +520,13 @@ class ApiService {
     });
   }
 
-  Future<Map<String, dynamic>> _postRequest(String url, Map<String, dynamic> body) async {
-    debugPrint('🔵 ------------------------------------------------------------------');
+  Future<Map<String, dynamic>> _postRequest(
+    String url,
+    Map<String, dynamic> body,
+  ) async {
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
     debugPrint('🔵 [ApiService] POST Request');
     debugPrint('🔵 [Request] URL: $url');
     debugPrint('🔵 [Request] Body: $body');
@@ -477,15 +568,14 @@ class ApiService {
       }
     } catch (e) {
       debugPrint('🟠 [ApiService] Exception: $e');
-      return {
-        'success': false,
-        'message': 'Error: $e',
-      };
+      return {'success': false, 'message': 'Error: $e'};
     }
   }
 
   Future<Map<String, dynamic>> getRideDetails(String rideId) async {
-    debugPrint('🔵 ------------------------------------------------------------------');
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
     debugPrint('🔵 [ApiService] getRideDetails called');
     final url = ApiConstants.getRideDetails(rideId);
     debugPrint('🔵 [Request] URL: $url');
@@ -511,21 +601,30 @@ class ApiService {
 
       if (response.statusCode == 200) {
         debugPrint('🟢 [ApiService] getRideDetails Success');
-        debugPrint('🔵 ------------------------------------------------------------------');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
         return jsonDecode(response.body);
       } else {
         debugPrint('🔴 [ApiService] getRideDetails Failed: ${response.body}');
-        debugPrint('🔵 ------------------------------------------------------------------');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
         throw Exception('Failed to get ride details: ${response.body}');
       }
     } catch (e) {
       debugPrint('🟠 [ApiService] Exception caught: $e');
-      debugPrint('🔵 ------------------------------------------------------------------');
+      debugPrint(
+        '🔵 ------------------------------------------------------------------',
+      );
       throw Exception('Failed to get ride details: $e');
     }
   }
+
   Future<Map<String, dynamic>> getDriverProfile() async {
-    debugPrint('🔵 ------------------------------------------------------------------');
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
     debugPrint('🔵 [ApiService] getDriverProfile called');
     debugPrint('🔵 [Request] URL: ${ApiConstants.driverProfile}');
 
@@ -537,7 +636,9 @@ class ApiService {
         throw Exception('No auth token found');
       }
 
-      debugPrint('🔵 [Request] Headers: Authorization: Bearer ${token.substring(0, 10)}...');
+      debugPrint(
+        '🔵 [Request] Headers: Authorization: Bearer ${token.substring(0, 10)}...',
+      );
 
       final response = await http.get(
         Uri.parse(ApiConstants.driverProfile),
@@ -552,22 +653,30 @@ class ApiService {
 
       if (response.statusCode == 200) {
         debugPrint('🟢 [ApiService] getDriverProfile Success');
-        debugPrint('🔵 ------------------------------------------------------------------');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
         return jsonDecode(response.body);
       } else {
         debugPrint('🔴 [ApiService] getDriverProfile Failed: ${response.body}');
-        debugPrint('🔵 ------------------------------------------------------------------');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
         throw Exception('Failed to get driver profile: ${response.body}');
       }
     } catch (e) {
       debugPrint('🟠 [ApiService] Exception caught: $e');
-      debugPrint('🔵 ------------------------------------------------------------------');
+      debugPrint(
+        '🔵 ------------------------------------------------------------------',
+      );
       throw Exception('Failed to get driver profile: $e');
     }
   }
 
   Future<Map<String, dynamic>> uploadVehicleImages(List<File> images) async {
-    debugPrint('🔵 ------------------------------------------------------------------');
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
     debugPrint('🔵 [ApiService] uploadVehicleImages called');
     debugPrint('🔵 [Request] URL: ${ApiConstants.uploadVehicleImages}');
     debugPrint('🔵 [Request] Image Count: ${images.length}');
@@ -580,11 +689,16 @@ class ApiService {
         throw Exception('No auth token found');
       }
 
-      var request = http.MultipartRequest('POST', Uri.parse(ApiConstants.uploadVehicleImages));
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse(ApiConstants.uploadVehicleImages),
+      );
       request.headers['Authorization'] = 'Bearer $token';
 
       for (var image in images) {
-        request.files.add(await http.MultipartFile.fromPath('vehicleImages', image.path));
+        request.files.add(
+          await http.MultipartFile.fromPath('vehicleImages', image.path),
+        );
       }
 
       debugPrint('🔵 [Request] Sending multipart request...');
@@ -596,22 +710,32 @@ class ApiService {
 
       if (response.statusCode == 200) {
         debugPrint('🟢 [ApiService] uploadVehicleImages Success');
-        debugPrint('🔵 ------------------------------------------------------------------');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
         return jsonDecode(response.body);
       } else {
-        debugPrint('🔴 [ApiService] uploadVehicleImages Failed: ${response.body}');
-        debugPrint('🔵 ------------------------------------------------------------------');
+        debugPrint(
+          '🔴 [ApiService] uploadVehicleImages Failed: ${response.body}',
+        );
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
         throw Exception('Failed to upload vehicle images: ${response.body}');
       }
     } catch (e) {
       debugPrint('🟠 [ApiService] Exception caught: $e');
-      debugPrint('🔵 ------------------------------------------------------------------');
+      debugPrint(
+        '🔵 ------------------------------------------------------------------',
+      );
       throw Exception('Failed to upload vehicle images: $e');
     }
   }
 
   Future<Map<String, dynamic>> deleteVehicleImage(String publicId) async {
-    debugPrint('🔵 ------------------------------------------------------------------');
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
     debugPrint('🔵 [ApiService] deleteVehicleImage called');
     debugPrint('🔵 [Request] URL: ${ApiConstants.deleteVehicleImage}');
     debugPrint('🔵 [Request] Public ID: $publicId');
@@ -624,8 +748,10 @@ class ApiService {
         throw Exception('No auth token found');
       }
 
-      final uri = Uri.parse(ApiConstants.deleteVehicleImage).replace(queryParameters: {'publicId': publicId});
-      
+      final uri = Uri.parse(
+        ApiConstants.deleteVehicleImage,
+      ).replace(queryParameters: {'publicId': publicId});
+
       final response = await http.delete(
         uri,
         headers: {
@@ -639,22 +765,32 @@ class ApiService {
 
       if (response.statusCode == 200) {
         debugPrint('🟢 [ApiService] deleteVehicleImage Success');
-        debugPrint('🔵 ------------------------------------------------------------------');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
         return jsonDecode(response.body);
       } else {
-        debugPrint('🔴 [ApiService] deleteVehicleImage Failed: ${response.body}');
-        debugPrint('🔵 ------------------------------------------------------------------');
+        debugPrint(
+          '🔴 [ApiService] deleteVehicleImage Failed: ${response.body}',
+        );
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
         throw Exception('Failed to delete vehicle image: ${response.body}');
       }
     } catch (e) {
       debugPrint('🟠 [ApiService] Exception caught: $e');
-      debugPrint('🔵 ------------------------------------------------------------------');
+      debugPrint(
+        '🔵 ------------------------------------------------------------------',
+      );
       throw Exception('Failed to delete vehicle image: $e');
     }
   }
 
   Future<Map<String, dynamic>> uploadDriverLicense(File licenseDocument) async {
-    debugPrint('🔵 ------------------------------------------------------------------');
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
     debugPrint('🔵 [ApiService] uploadDriverLicense called');
     debugPrint('🔵 [Request] URL: ${ApiConstants.uploadLicense}');
     debugPrint('🔵 [Request] File: ${licenseDocument.path}');
@@ -667,10 +803,15 @@ class ApiService {
         throw Exception('No auth token found');
       }
 
-      var request = http.MultipartRequest('POST', Uri.parse(ApiConstants.uploadLicense));
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse(ApiConstants.uploadLicense),
+      );
       request.headers['Authorization'] = 'Bearer $token';
-      
-      request.files.add(await http.MultipartFile.fromPath('document', licenseDocument.path));
+
+      request.files.add(
+        await http.MultipartFile.fromPath('document', licenseDocument.path),
+      );
 
       debugPrint('🔵 [Request] Sending multipart request...');
       final streamedResponse = await request.send();
@@ -681,22 +822,94 @@ class ApiService {
 
       if (response.statusCode == 200) {
         debugPrint('🟢 [ApiService] uploadDriverLicense Success');
-        debugPrint('🔵 ------------------------------------------------------------------');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
         return jsonDecode(response.body);
       } else {
-        debugPrint('🔴 [ApiService] uploadDriverLicense Failed: ${response.body}');
-        debugPrint('🔵 ------------------------------------------------------------------');
+        debugPrint(
+          '🔴 [ApiService] uploadDriverLicense Failed: ${response.body}',
+        );
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
         throw Exception('Failed to upload driver license: ${response.body}');
       }
     } catch (e) {
       debugPrint('🟠 [ApiService] Exception caught: $e');
-      debugPrint('🔵 ------------------------------------------------------------------');
+      debugPrint(
+        '🔵 ------------------------------------------------------------------',
+      );
       throw Exception('Failed to upload driver license: $e');
     }
   }
 
+  /// Update driver's location (called after login or periodically)
+  Future<Map<String, dynamic>> updateDriverLocation({
+    required double latitude,
+    required double longitude,
+  }) async {
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
+    debugPrint('🔵 [ApiService] updateDriverLocation called');
+    debugPrint('🔵 [Request] URL: ${ApiConstants.updateDriverLocation}');
+    debugPrint(
+      '🔵 [Request] Body: {"latitude": $latitude, "longitude": $longitude}',
+    );
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+
+      if (token == null) {
+        throw Exception('No auth token found');
+      }
+
+      debugPrint(
+        '🔵 [Request] Headers: Authorization: Bearer ${token.substring(0, 10)}...',
+      );
+
+      final response = await http.patch(
+        Uri.parse(ApiConstants.updateDriverLocation),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'latitude': latitude, 'longitude': longitude}),
+      );
+
+      debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
+      debugPrint('🟣 [Response] Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        debugPrint('🟢 [ApiService] Driver location updated successfully');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
+        return jsonDecode(response.body);
+      } else {
+        debugPrint(
+          '🔴 [ApiService] Failed to update driver location: ${response.body}',
+        );
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
+        return {'success': false, 'message': 'Failed to update location'};
+      }
+    } catch (e) {
+      debugPrint('🟠 [ApiService] Exception updating driver location: $e');
+      debugPrint(
+        '🔵 ------------------------------------------------------------------',
+      );
+      return {'success': false, 'message': 'Error updating location: $e'};
+    }
+  }
+
   Future<Map<String, dynamic>> updateDriverStatus(bool isOnline) async {
-    debugPrint('🔵 ------------------------------------------------------------------');
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
     debugPrint('🔵 [ApiService] updateDriverStatus called');
     debugPrint('🔵 [Request] URL: ${ApiConstants.updateDriverStatus}');
     debugPrint('🔵 [Request] Body: {"isOnline": $isOnline}');
@@ -709,7 +922,9 @@ class ApiService {
         throw Exception('No auth token found');
       }
 
-      debugPrint('🔵 [Request] Headers: Authorization: Bearer ${token.substring(0, 10)}...');
+      debugPrint(
+        '🔵 [Request] Headers: Authorization: Bearer ${token.substring(0, 10)}...',
+      );
 
       final response = await http.patch(
         Uri.parse(ApiConstants.updateDriverStatus),
@@ -725,24 +940,35 @@ class ApiService {
 
       if (response.statusCode == 200) {
         debugPrint('🟢 [ApiService] updateDriverStatus Success');
-        debugPrint('🔵 ------------------------------------------------------------------');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
         return jsonDecode(response.body);
       } else {
-        debugPrint('🔴 [ApiService] updateDriverStatus Failed: ${response.body}');
-        debugPrint('🔵 ------------------------------------------------------------------');
+        debugPrint(
+          '🔴 [ApiService] updateDriverStatus Failed: ${response.body}',
+        );
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
         throw Exception('Failed to update driver status: ${response.body}');
       }
     } catch (e) {
       debugPrint('🟠 [ApiService] Exception caught: $e');
-      debugPrint('🔵 ------------------------------------------------------------------');
+      debugPrint(
+        '🔵 ------------------------------------------------------------------',
+      );
       throw Exception('Failed to update driver status: $e');
     }
   }
+
   Future<Map<String, dynamic>> updateDriverProfilePicture(File image) async {
-    debugPrint('🔵 ------------------------------------------------------------------');
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
     debugPrint('🔵 [ApiService] updateDriverProfilePicture called');
     debugPrint('🔵 [Request] URL: ${ApiConstants.updateDriver}');
-    
+
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('auth_token');
@@ -751,10 +977,15 @@ class ApiService {
         throw Exception('No auth token found');
       }
 
-      var request = http.MultipartRequest('PATCH', Uri.parse(ApiConstants.updateDriver));
+      var request = http.MultipartRequest(
+        'PATCH',
+        Uri.parse(ApiConstants.updateDriver),
+      );
       request.headers['Authorization'] = 'Bearer $token';
-      
-      request.files.add(await http.MultipartFile.fromPath('profilePicture', image.path));
+
+      request.files.add(
+        await http.MultipartFile.fromPath('profilePicture', image.path),
+      );
 
       debugPrint('🔵 [Request] Sending multipart request...');
       final streamedResponse = await request.send();
@@ -765,22 +996,34 @@ class ApiService {
 
       if (response.statusCode == 200) {
         debugPrint('🟢 [ApiService] updateDriverProfilePicture Success');
-        debugPrint('🔵 ------------------------------------------------------------------');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
         return jsonDecode(response.body);
       } else {
-        debugPrint('🔴 [ApiService] updateDriverProfilePicture Failed: ${response.body}');
-        debugPrint('🔵 ------------------------------------------------------------------');
+        debugPrint(
+          '🔴 [ApiService] updateDriverProfilePicture Failed: ${response.body}',
+        );
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
         throw Exception('Failed to update profile picture: ${response.body}');
       }
     } catch (e) {
       debugPrint('🟠 [ApiService] Exception caught: $e');
-      debugPrint('🔵 ------------------------------------------------------------------');
+      debugPrint(
+        '🔵 ------------------------------------------------------------------',
+      );
       throw Exception('Failed to update profile picture: $e');
     }
   }
 
-  Future<Map<String, dynamic>> updateDriverProfile(Map<String, dynamic> data) async {
-    debugPrint('🔵 ------------------------------------------------------------------');
+  Future<Map<String, dynamic>> updateDriverProfile(
+    Map<String, dynamic> data,
+  ) async {
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
     debugPrint('🔵 [ApiService] updateDriverProfile called');
     debugPrint('🔵 [Request] URL: ${ApiConstants.updateDriver}');
     debugPrint('🔵 [Request] Body: $data');
@@ -807,21 +1050,32 @@ class ApiService {
 
       if (response.statusCode == 200) {
         debugPrint('🟢 [ApiService] updateDriverProfile Success');
-        debugPrint('🔵 ------------------------------------------------------------------');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
         return jsonDecode(response.body);
       } else {
-        debugPrint('🔴 [ApiService] updateDriverProfile Failed: ${response.body}');
-        debugPrint('🔵 ------------------------------------------------------------------');
+        debugPrint(
+          '🔴 [ApiService] updateDriverProfile Failed: ${response.body}',
+        );
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
         throw Exception('Failed to update driver profile: ${response.body}');
       }
     } catch (e) {
       debugPrint('🟠 [ApiService] Exception caught: $e');
-      debugPrint('🔵 ------------------------------------------------------------------');
+      debugPrint(
+        '🔵 ------------------------------------------------------------------',
+      );
       throw Exception('Failed to update driver profile: $e');
     }
   }
+
   Future<Map<String, dynamic>> getRideHistory() async {
-    debugPrint('🔵 ------------------------------------------------------------------');
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
     debugPrint('🔵 [ApiService] getRideHistory called');
     debugPrint('🔵 [Request] URL: ${ApiConstants.rideHistory}');
 
@@ -833,7 +1087,9 @@ class ApiService {
         throw Exception('No auth token found');
       }
 
-      debugPrint('🔵 [Request] Headers: Authorization: Bearer ${token.substring(0, 10)}...');
+      debugPrint(
+        '🔵 [Request] Headers: Authorization: Bearer ${token.substring(0, 10)}...',
+      );
 
       final response = await http.get(
         Uri.parse(ApiConstants.rideHistory),
@@ -848,16 +1104,22 @@ class ApiService {
 
       if (response.statusCode == 200) {
         debugPrint('🟢 [ApiService] getRideHistory Success');
-        debugPrint('🔵 ------------------------------------------------------------------');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
         return jsonDecode(response.body);
       } else {
         debugPrint('🔴 [ApiService] getRideHistory Failed: ${response.body}');
-        debugPrint('🔵 ------------------------------------------------------------------');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
         throw Exception('Failed to get ride history: ${response.body}');
       }
     } catch (e) {
       debugPrint('🟠 [ApiService] Exception caught: $e');
-      debugPrint('🔵 ------------------------------------------------------------------');
+      debugPrint(
+        '🔵 ------------------------------------------------------------------',
+      );
       throw Exception('Failed to get ride history: $e');
     }
   }

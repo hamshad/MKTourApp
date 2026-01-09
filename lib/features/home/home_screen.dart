@@ -12,6 +12,9 @@ import '../../core/services/location_service.dart';
 import '../../core/services/places_service.dart';
 import 'package:latlong2/latlong.dart' as lat_lng;
 import 'dart:async';
+import '../../core/services/socket_service.dart';
+import '../../core/api_service.dart';
+import '../ride/ride_assigned_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -33,11 +36,102 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? _bannerTimer;
   bool _isMapLoading = true;
 
+  // Booking State
+  final SocketService _socketService = SocketService();
+  final ApiService _apiService = ApiService();
+  bool _isSearching = false;
+  Map<String, dynamic>? _activeRide;
+  bool _isLoading = false;
+
   @override
   void initState() {
     super.initState();
     _initLocation();
     _startBannerTimer();
+    _setupSocketListeners();
+  }
+
+  void _setupSocketListeners() {
+    _socketService.initSocket();
+
+    _socketService.on('ride:accepted', (data) {
+      debugPrint('✅ [HomeScreen] Ride Accepted: $data');
+      if (mounted && _isSearching) {
+        setState(() {
+          _isSearching = false;
+          _activeRide = data;
+        });
+
+        // Navigate to Ride Assigned Screen
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => RideAssignedScreen(
+              rideId: data['rideId'] ?? data['_id'] ?? '',
+              pickup: data['pickupLocation'],
+              dropoff: data['dropoffLocation'],
+              fare: (data['fare'] ?? 0.0).toDouble(),
+              driver: data['driver'], // Pass driver info
+            ),
+          ),
+        );
+      }
+    });
+  }
+
+  Future<void> _cancelRide() async {
+    if (_activeRide == null) return;
+
+    final rideId = _activeRide!['_id'] ?? _activeRide!['rideId'];
+    if (rideId == null) {
+      debugPrint('🔴 [HomeScreen] Cannot cancel ride: No ride ID found');
+      setState(() => _isSearching = false);
+      return;
+    }
+
+    debugPrint('🔵 [HomeScreen] Cancelling ride: $rideId');
+    setState(() => _isLoading = true);
+
+    try {
+      final response = await _apiService.cancelRide(rideId);
+      
+      if (mounted) {
+        if (response['success'] == true || response['status'] == 'cancelled') {
+          debugPrint('🟢 [HomeScreen] Ride cancelled successfully');
+          setState(() {
+            _isSearching = false;
+            _activeRide = null;
+            _isLoading = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Ride request cancelled'),
+              backgroundColor: Colors.black87,
+            ),
+          );
+        } else {
+          debugPrint('🔴 [HomeScreen] Ride cancellation failed: ${response['message']}');
+          setState(() => _isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to cancel ride: ${response['message'] ?? 'Unknown error'}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('🔴 [HomeScreen] Error cancelling ride: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   void _initLocation() async {
@@ -155,6 +249,56 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
 
+        // Searching Overlay
+        if (_isSearching)
+          Positioned.fill(
+            child: Container(
+              color: Colors.black.withOpacity(0.6),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(
+                      color: Color(0xFFFF6B35),
+                      strokeWidth: 3,
+                    ),
+                    const SizedBox(height: 24),
+                    Text(
+                      'Finding your driver...',
+                      style: GoogleFonts.outfit(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Please wait while we connect you',
+                      style: GoogleFonts.outfit(
+                        color: Colors.white70,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 40),
+                    ElevatedButton(
+                      onPressed: _isLoading ? null : _cancelRide,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white24,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                      ),
+                      child: const Text('Cancel Request'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
         // 2. Gradient Overlay for Header Visibility
         Positioned(
           top: 0,
@@ -263,11 +407,12 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
 
         // 4. Draggable Scrollable Sheet
-        DraggableScrollableSheet(
-          initialChildSize: 0.40,
-          minChildSize: 0.30,
-          maxChildSize: 0.95,
-          builder: (context, scrollController) {
+        if (!_isSearching)
+          DraggableScrollableSheet(
+            initialChildSize: 0.40,
+            minChildSize: 0.30,
+            maxChildSize: 0.95,
+            builder: (context, scrollController) {
             return Container(
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -301,7 +446,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
                     // Search Bar
                     GestureDetector(
-                      onTap: () => Navigator.pushNamed(context, '/destination-search'),
+                      onTap: () async {
+                        final result = await Navigator.pushNamed(context, '/destination-search');
+                        if (result != null && result is Map && result['status'] == 'searching') {
+                          setState(() {
+                            _isSearching = true;
+                            _activeRide = result['ride'];
+                          });
+                        }
+                      },
                       child: Hero(
                         tag: 'search_bar',
                         child: Container(

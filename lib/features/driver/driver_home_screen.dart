@@ -27,14 +27,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   // Status: offline, online, request, pickup, arrived, in_progress, complete
   String _status = 'offline';
   final PanelController _panelController = PanelController();
-  
+
   // Location
   final LocationService _locationService = LocationService();
   LatLng _currentLocation = const LatLng(51.5085, -0.1260); // Fallback
   bool _isMapLoading = true;
   double _currentBearing = 0.0;
   StreamSubscription<Position>? _positionStreamSubscription;
-  
+
   String? _currentRideId;
   Map<String, dynamic>? _rideData;
 
@@ -42,16 +42,38 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   bool _isLoading = false;
   final SocketService _socketService = SocketService();
   final NavigationService _navigationService = NavigationService();
-  
+
   // Navigation State
   NavigationState? _navigationState;
   List<MapPolyline> _navigationPolylines = [];
+
+  // Connection status subscription for reconnection handling
+  StreamSubscription<bool>? _connectionSubscription;
+
+  // Last emitted location timestamp to throttle updates
+  DateTime? _lastEmitTime;
+  static const int _minEmitIntervalMs = 3000; // Minimum 3 seconds between emits
 
   @override
   void initState() {
     super.initState();
     _initDriver();
     _initLocation();
+    _setupConnectionListener();
+  }
+
+  /// Listen for socket reconnection and re-emit driver online status
+  void _setupConnectionListener() {
+    _connectionSubscription = _socketService.connectionStatus.listen((
+      isConnected,
+    ) {
+      if (isConnected && _status != 'offline') {
+        debugPrint(
+          '🔄 [DriverHomeScreen] Reconnected, re-emitting driver status',
+        );
+        _emitDriverOnline();
+      }
+    });
   }
 
   void _initLocation() async {
@@ -64,12 +86,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       });
       // Start updates if already online or needed
       if (_status == 'online') {
-         _emitLocationUpdate(position.latitude, position.longitude);
+        _emitLocationUpdate(position.latitude, position.longitude);
       }
     } else {
-       // Handle failure or timeout - maybe show fallback or retry?
-       // For now, just stop loading to show fallback
-       if (mounted) setState(() => _isMapLoading = false);
+      // Handle failure or timeout - maybe show fallback or retry?
+      // For now, just stop loading to show fallback
+      if (mounted) setState(() => _isMapLoading = false);
     }
   }
 
@@ -103,34 +125,54 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
   @override
   void dispose() {
+    // Clean up socket listeners
     _socketService.off('ride:newRequest');
+    _socketService.off('ride:reminder');
+    _socketService.off('ride:longRunning');
+    _socketService.off('ride:cancelled');
+
+    // Clean up streams
     _positionStreamSubscription?.cancel();
+    _connectionSubscription?.cancel();
+
+    // Clean up services
     _navigationService.dispose();
+    _locationService.dispose();
+
+    debugPrint('🔴 [DriverHomeScreen] Disposed');
     super.dispose();
   }
 
   void _emitDriverOnline() {
     final user = Provider.of<AuthProvider>(context, listen: false).user;
-    debugPrint('🔍 [DriverHomeScreen] User Object: $user'); // Debug print to inspect user structure
-    
+    debugPrint(
+      '🔍 [DriverHomeScreen] User Object: $user',
+    ); // Debug print to inspect user structure
+
     if (user != null) {
       // Try to find ID in common fields
       final driverId = user['_id'] ?? user['id'] ?? user['userId'];
-      
+
       if (driverId != null) {
-        debugPrint('📤 [DriverHomeScreen] Emitting driver:goOnline for $driverId');
+        debugPrint(
+          '📤 [DriverHomeScreen] Emitting driver:goOnline for $driverId',
+        );
         _socketService.emit('driver:goOnline', {'driverId': driverId});
       } else {
-        debugPrint('⚠️ [DriverHomeScreen] Cannot emit driver:goOnline: Driver ID not found in user object');
+        debugPrint(
+          '⚠️ [DriverHomeScreen] Cannot emit driver:goOnline: Driver ID not found in user object',
+        );
       }
     } else {
-      debugPrint('⚠️ [DriverHomeScreen] Cannot emit driver:goOnline: User object is null');
+      debugPrint(
+        '⚠️ [DriverHomeScreen] Cannot emit driver:goOnline: User object is null',
+      );
     }
   }
 
   void _startLocationUpdates() async {
     _positionStreamSubscription?.cancel();
-    
+
     // Get initial location
     final position = await _locationService.getCurrentLocation();
     if (position != null && mounted) {
@@ -139,39 +181,79 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       });
       _emitLocationUpdate(position.latitude, position.longitude);
     }
-    
-    // Listen to updates
-    _positionStreamSubscription = _locationService.getPositionStream().listen((position) {
-      if (mounted) {
-        // Calculate bearing if we have a previous location
-        if (_currentLocation.latitude != 0 && _currentLocation.longitude != 0) {
-           final bearing = Geolocator.bearingBetween(
-             _currentLocation.latitude, 
-             _currentLocation.longitude, 
-             position.latitude, 
-             position.longitude
-           );
-           // Only update bearing if moving significant distance or speed > 0
-           if (position.speed > 0.5) { // moving at least 0.5 m/s
-             _currentBearing = bearing;
-           }
-        }
 
-        setState(() {
-          _currentLocation = LatLng(position.latitude, position.longitude);
-        });
-        
-        if (_status == 'online' || _status == 'in_progress' || _status == 'pickup') {
-          _emitLocationUpdate(position.latitude, position.longitude);
-          // Update navigation route in real-time
-          if (_status == 'pickup' || _status == 'in_progress') {
-            _updateNavigationRoute();
-          }
-        }
-      }
-    });
+    // Use ride tracking stream for active rides (more frequent updates)
+    // or periodic stream for online status
+    final bool isActiveRide =
+        _status == 'in_progress' || _status == 'pickup' || _status == 'arrived';
+
+    if (isActiveRide) {
+      // Use high-frequency tracking for active rides (every 3 seconds, 5m distance filter)
+      _positionStreamSubscription = _locationService
+          .getRideTrackingStream(intervalSeconds: 3)
+          .listen(_handlePositionUpdate);
+
+      debugPrint(
+        '📍 [DriverHomeScreen] Started ride tracking stream (3s interval)',
+      );
+    } else {
+      // Use periodic updates when just online (every 4 seconds)
+      _positionStreamSubscription = _locationService
+          .getPeriodicPositionStream(intervalSeconds: 4)
+          .listen(_handlePositionUpdate);
+
+      debugPrint(
+        '📍 [DriverHomeScreen] Started periodic location stream (4s interval)',
+      );
+    }
   }
-  
+
+  /// Handle incoming position updates
+  void _handlePositionUpdate(Position position) {
+    if (!mounted) return;
+
+    // Calculate bearing if we have a previous location
+    if (_currentLocation.latitude != 0 && _currentLocation.longitude != 0) {
+      final bearing = Geolocator.bearingBetween(
+        _currentLocation.latitude,
+        _currentLocation.longitude,
+        position.latitude,
+        position.longitude,
+      );
+      // Only update bearing if moving significant distance or speed > 0
+      if (position.speed > 0.5) {
+        // moving at least 0.5 m/s
+        _currentBearing = bearing;
+      }
+    }
+
+    setState(() {
+      _currentLocation = LatLng(position.latitude, position.longitude);
+    });
+
+    // Throttle location emissions to prevent overwhelming the server
+    final now = DateTime.now();
+    final shouldEmit =
+        _lastEmitTime == null ||
+        now.difference(_lastEmitTime!).inMilliseconds >= _minEmitIntervalMs;
+
+    if (shouldEmit &&
+        (_status == 'online' ||
+            _status == 'in_progress' ||
+            _status == 'pickup' ||
+            _status == 'arrived')) {
+      _emitLocationUpdate(position.latitude, position.longitude);
+      _lastEmitTime = now;
+
+      // Update navigation route in real-time
+      if (_status == 'pickup' ||
+          _status == 'in_progress' ||
+          _status == 'arrived') {
+        _updateNavigationRoute();
+      }
+    }
+  }
+
   /// Setup navigation listener for route updates
   void _setupNavigationListener() {
     _navigationService.routeUpdates.listen((state) {
@@ -183,25 +265,26 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       }
     });
   }
-  
+
   /// Fetch navigation route based on current status
   Future<void> _fetchNavigationRoute() async {
     if (_rideData == null) return;
-    
+
     LatLng destination;
-    
+
     if (_status == 'pickup' || _status == 'arrived') {
       // Navigate to pickup
       final coords = _rideData!['pickupLocation']?['coordinates'] ?? [0.0, 0.0];
       destination = LatLng(coords[1], coords[0]);
     } else if (_status == 'in_progress') {
       // Navigate to dropoff
-      final coords = _rideData!['dropoffLocation']?['coordinates'] ?? [0.0, 0.0];
+      final coords =
+          _rideData!['dropoffLocation']?['coordinates'] ?? [0.0, 0.0];
       destination = LatLng(coords[1], coords[0]);
     } else {
       return;
     }
-    
+
     await _navigationService.fetchRoute(
       originLat: _currentLocation.latitude,
       originLng: _currentLocation.longitude,
@@ -209,23 +292,24 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       destLng: destination.longitude,
     );
   }
-  
+
   /// Update navigation route in real-time
   Future<void> _updateNavigationRoute() async {
     if (_rideData == null) return;
-    
+
     LatLng destination;
-    
+
     if (_status == 'pickup' || _status == 'arrived') {
       final coords = _rideData!['pickupLocation']?['coordinates'] ?? [0.0, 0.0];
       destination = LatLng(coords[1], coords[0]);
     } else if (_status == 'in_progress') {
-      final coords = _rideData!['dropoffLocation']?['coordinates'] ?? [0.0, 0.0];
+      final coords =
+          _rideData!['dropoffLocation']?['coordinates'] ?? [0.0, 0.0];
       destination = LatLng(coords[1], coords[0]);
     } else {
       return;
     }
-    
+
     await _navigationService.updateRoute(
       currentLat: _currentLocation.latitude,
       currentLng: _currentLocation.longitude,
@@ -233,7 +317,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       destLng: destination.longitude,
     );
   }
-  
+
   /// Update polylines with navigation route
   void _updateNavigationPolylines() {
     if (_navigationState != null && _navigationState!.polyline.isNotEmpty) {
@@ -251,19 +335,19 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   }
 
   void _emitLocationUpdate(double lat, double lng) {
-      final user = Provider.of<AuthProvider>(context, listen: false).user;
-      if (user != null) {
-         final driverId = user['_id'] ?? user['id'] ?? user['userId'];
-         
-         if (driverId != null) {
-            // debugPrint('📤 [DriverHomeScreen] Emitting driver:locationUpdate for $driverId');
-            _socketService.emit('driver:locationUpdate', {
-              'driverId': driverId,
-              'latitude': lat,
-              'longitude': lng,
-            });
-         }
+    final user = Provider.of<AuthProvider>(context, listen: false).user;
+    if (user != null) {
+      final driverId = user['_id'] ?? user['id'] ?? user['userId'];
+
+      if (driverId != null) {
+        // debugPrint('📤 [DriverHomeScreen] Emitting driver:locationUpdate for $driverId');
+        _socketService.emit('driver:locationUpdate', {
+          'driverId': driverId,
+          'latitude': lat,
+          'longitude': lng,
+        });
       }
+    }
   }
 
   void _setupSocketListeners() {
@@ -305,7 +389,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           _status = 'online';
           _currentRideId = null;
         });
-        
+
         showDialog(
           context: context,
           builder: (context) => AlertDialog(
@@ -332,7 +416,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         _currentRideId = data['rideId'] ?? data['_id']; // Store ride ID
         _rideData = data;
       });
-      
+
       // Show notification
       CustomSnackbar.show(
         context,
@@ -340,7 +424,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         type: SnackbarType.success,
       );
     } else {
-      debugPrint('⚠️ [DriverHomeScreen] Received request but status is $_status');
+      debugPrint(
+        '⚠️ [DriverHomeScreen] Received request but status is $_status',
+      );
     }
   }
 
@@ -348,37 +434,43 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     if (_isLoading) return;
 
     final bool isGoingOnline = _status == 'offline';
-    
+
     setState(() {
       _isLoading = true;
     });
-    
+
     try {
-      debugPrint('🔵 [DriverHomeScreen] Toggling status. Current: $_status, Target: ${isGoingOnline ? 'online' : 'offline'}');
-      
+      debugPrint(
+        '🔵 [DriverHomeScreen] Toggling status. Current: $_status, Target: ${isGoingOnline ? 'online' : 'offline'}',
+      );
+
       final response = await _apiService.updateDriverStatus(isGoingOnline);
-      
+
       if (response['success'] == true) {
         setState(() {
           _status = isGoingOnline ? 'online' : 'offline';
         });
-        
+
         if (mounted) {
           CustomSnackbar.show(
             context,
-            message: response['message'] ?? (isGoingOnline ? 'You are now Online' : 'You are now Offline'),
+            message:
+                response['message'] ??
+                (isGoingOnline ? 'You are now Online' : 'You are now Offline'),
             type: SnackbarType.success,
           );
-          
+
           if (isGoingOnline) {
-             _emitDriverOnline();
-             _startLocationUpdates();
+            _emitDriverOnline();
+            _startLocationUpdates();
           } else {
-             _positionStreamSubscription?.cancel();
-             // Optional: emit driver:goOffline
+            _positionStreamSubscription?.cancel();
+            // Optional: emit driver:goOffline
           }
         }
-        debugPrint('🟢 [DriverHomeScreen] Status updated successfully to $_status');
+        debugPrint(
+          '🟢 [DriverHomeScreen] Status updated successfully to $_status',
+        );
       } else {
         if (mounted) {
           CustomSnackbar.show(
@@ -407,10 +499,13 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     }
   }
 
-
   Future<void> _handleRideAction() async {
     if (_currentRideId == null) {
-      CustomSnackbar.show(context, message: 'Error: No active ride', type: SnackbarType.error);
+      CustomSnackbar.show(
+        context,
+        message: 'Error: No active ride',
+        type: SnackbarType.error,
+      );
       return;
     }
 
@@ -422,28 +517,50 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         final response = await _apiService.acceptRide(_currentRideId!);
         if (response['success'] == true) {
           setState(() => _status = 'pickup');
-          CustomSnackbar.show(context, message: 'Ride Accepted!', type: SnackbarType.success);
+          CustomSnackbar.show(
+            context,
+            message: 'Ride Accepted!',
+            type: SnackbarType.success,
+          );
           // Fetch navigation route to pickup
           _fetchNavigationRoute();
         } else {
-          CustomSnackbar.show(context, message: 'Failed to accept: ${response['message']}', type: SnackbarType.error);
+          CustomSnackbar.show(
+            context,
+            message: 'Failed to accept: ${response['message']}',
+            type: SnackbarType.error,
+          );
         }
       } else if (_status == 'pickup') {
         // Arrive at Pickup
         // Get current location
-        final pos = _currentLocation; 
-        
-        final response = await _apiService.arriveAtPickup(_currentRideId!, pos.latitude, pos.longitude);
-        
+        final pos = _currentLocation;
+
+        final response = await _apiService.arriveAtPickup(
+          _currentRideId!,
+          pos.latitude,
+          pos.longitude,
+        );
+
         if (response['success'] == true) {
-           setState(() => _status = 'arrived');
-           CustomSnackbar.show(context, message: 'You have arrived!', type: SnackbarType.success);
+          setState(() => _status = 'arrived');
+          CustomSnackbar.show(
+            context,
+            message: 'You have arrived!',
+            type: SnackbarType.success,
+          );
         } else {
-           String errorMessage = response['message'] ?? 'Failed to arrive';
-           if (response['errors'] != null && response['errors']['distance'] != null) {
-             errorMessage = 'You are ${response['errors']['distance'].toInt()}m away. Must be within ${response['errors']['required']}m.';
-           }
-           CustomSnackbar.show(context, message: errorMessage, type: SnackbarType.error);
+          String errorMessage = response['message'] ?? 'Failed to arrive';
+          if (response['errors'] != null &&
+              response['errors']['distance'] != null) {
+            errorMessage =
+                'You are ${response['errors']['distance'].toInt()}m away. Must be within ${response['errors']['required']}m.';
+          }
+          CustomSnackbar.show(
+            context,
+            message: errorMessage,
+            type: SnackbarType.error,
+          );
         }
       } else if (_status == 'arrived') {
         _showOtpDialog();
@@ -455,18 +572,26 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           // Reset to online after short delay
           Future.delayed(const Duration(seconds: 2), () {
             if (mounted) {
-               setState(() {
-                 _status = 'online';
-                 _currentRideId = null;
-               });
+              setState(() {
+                _status = 'online';
+                _currentRideId = null;
+              });
             }
           });
         } else {
-          CustomSnackbar.show(context, message: 'Failed to complete: ${response['message']}', type: SnackbarType.error);
+          CustomSnackbar.show(
+            context,
+            message: 'Failed to complete: ${response['message']}',
+            type: SnackbarType.error,
+          );
         }
       }
     } catch (e) {
-      CustomSnackbar.show(context, message: 'Error: $e', type: SnackbarType.error);
+      CustomSnackbar.show(
+        context,
+        message: 'Error: $e',
+        type: SnackbarType.error,
+      );
     } finally {
       setState(() => _isLoading = false);
     }
@@ -474,7 +599,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
   Future<void> _declineRide() async {
     if (_currentRideId == null) return;
-    
+
     setState(() => _isLoading = true);
     try {
       final response = await _apiService.cancelRide(_currentRideId!);
@@ -483,13 +608,17 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         _status = 'online';
         _currentRideId = null;
       });
-      
+
       if (response['success'] == true) {
-         CustomSnackbar.show(context, message: 'Ride Declined', type: SnackbarType.info);
+        CustomSnackbar.show(
+          context,
+          message: 'Ride Declined',
+          type: SnackbarType.info,
+        );
       }
     } catch (e) {
-       debugPrint('Error declining ride: $e');
-       setState(() {
+      debugPrint('Error declining ride: $e');
+      setState(() {
         _status = 'online';
         _currentRideId = null;
       });
@@ -553,35 +682,39 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   }
 
   Future<void> _verifyAndStartRide(String otp) async {
-      // Mock OTP verification for now
-      // In real app, verify OTP with backend or check against ride data
-      
-      Navigator.pop(context); // Close dialog
-      setState(() => _isLoading = true);
-      
-      try {
-        final response = await _apiService.startRide(_currentRideId!, otp);
-        if (response['success'] == true) {
-          setState(() => _status = 'in_progress');
-          CustomSnackbar.show(
-            context,
-            message: 'OTP Verified! Trip Started.',
-            type: SnackbarType.success,
-          );
-          // Fetch navigation route to dropoff
-          _fetchNavigationRoute();
-        } else {
-          CustomSnackbar.show(
-            context,
-            message: 'Failed to start ride: ${response['message']}',
-            type: SnackbarType.error,
-          );
-        }
-      } catch (e) {
-         CustomSnackbar.show(context, message: 'Error: $e', type: SnackbarType.error);
-      } finally {
-        setState(() => _isLoading = false);
+    // Mock OTP verification for now
+    // In real app, verify OTP with backend or check against ride data
+
+    Navigator.pop(context); // Close dialog
+    setState(() => _isLoading = true);
+
+    try {
+      final response = await _apiService.startRide(_currentRideId!, otp);
+      if (response['success'] == true) {
+        setState(() => _status = 'in_progress');
+        CustomSnackbar.show(
+          context,
+          message: 'OTP Verified! Trip Started.',
+          type: SnackbarType.success,
+        );
+        // Fetch navigation route to dropoff
+        _fetchNavigationRoute();
+      } else {
+        CustomSnackbar.show(
+          context,
+          message: 'Failed to start ride: ${response['message']}',
+          type: SnackbarType.error,
+        );
       }
+    } catch (e) {
+      CustomSnackbar.show(
+        context,
+        message: 'Error: $e',
+        type: SnackbarType.error,
+      );
+    } finally {
+      setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -597,10 +730,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         body: _buildMapBackground(),
         panel: _buildPanelContent(),
         boxShadow: [
-          BoxShadow(
-            blurRadius: 20.0,
-            color: Colors.black.withOpacity(0.1),
-          ),
+          BoxShadow(blurRadius: 20.0, color: Colors.black.withOpacity(0.1)),
         ],
       ),
     );
@@ -638,20 +768,23 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     // Get dynamic destination
     double destLat = 51.5074;
     double destLng = -0.1278;
-    
+
     if (_rideData != null) {
       if (_status == 'pickup') {
-         final coords = _rideData!['pickupLocation']?['coordinates'] ?? [0.0, 0.0];
-         destLat = coords[1];
-         destLng = coords[0];
+        final coords =
+            _rideData!['pickupLocation']?['coordinates'] ?? [0.0, 0.0];
+        destLat = coords[1];
+        destLng = coords[0];
       } else if (_status == 'in_progress') {
-         final coords = _rideData!['dropoffLocation']?['coordinates'] ?? [0.0, 0.0];
-         destLat = coords[1];
-         destLng = coords[0];
+        final coords =
+            _rideData!['dropoffLocation']?['coordinates'] ?? [0.0, 0.0];
+        destLat = coords[1];
+        destLng = coords[0];
       }
     }
 
-    bool isNavigationMode = _status == 'pickup' || _status == 'in_progress' || _status == 'arrived';
+    bool isNavigationMode =
+        _status == 'pickup' || _status == 'in_progress' || _status == 'arrived';
 
     return Stack(
       children: [
@@ -665,7 +798,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
               id: 'driver',
               lat: _currentLocation.latitude,
               lng: _currentLocation.longitude,
-              child: const Icon(Icons.directions_car, color: AppTheme.primaryColor, size: 40),
+              child: const Icon(
+                Icons.directions_car,
+                color: AppTheme.primaryColor,
+                size: 40,
+              ),
               title: 'Driver',
             ),
             if (_status == 'pickup' || _status == 'in_progress')
@@ -673,21 +810,27 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                 id: 'destination',
                 lat: destLat,
                 lng: destLng,
-                child: Icon(Icons.location_on, color: _status == 'pickup' ? Colors.green : Colors.red, size: 40),
+                child: Icon(
+                  Icons.location_on,
+                  color: _status == 'pickup' ? Colors.green : Colors.red,
+                  size: 40,
+                ),
                 title: _status == 'pickup' ? 'Pickup' : 'Dropoff',
               ),
           ],
-          polylines: _navigationPolylines.isNotEmpty ? _navigationPolylines : [
-            if (_status == 'pickup' || _status == 'in_progress')
-              MapPolyline(
-                id: 'route',
-                points: [_currentLocation, LatLng(destLat, destLng)],
-                color: AppTheme.primaryColor,
-                width: 4.0,
-              ),
-          ],
+          polylines: _navigationPolylines.isNotEmpty
+              ? _navigationPolylines
+              : [
+                  if (_status == 'pickup' || _status == 'in_progress')
+                    MapPolyline(
+                      id: 'route',
+                      points: [_currentLocation, LatLng(destLat, destLng)],
+                      color: AppTheme.primaryColor,
+                      width: 4.0,
+                    ),
+                ],
         ),
-        
+
         // Top Bar (Earnings & Status) - Only show when not in full ride flow or make it collapsible
         SafeArea(
           child: Padding(
@@ -699,9 +842,13 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                   children: [
                     // Earnings Pill
                     GestureDetector(
-                      onTap: () => Navigator.pushNamed(context, '/driver-earnings'),
+                      onTap: () =>
+                          Navigator.pushNamed(context, '/driver-earnings'),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(24),
@@ -714,7 +861,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                         ),
                         child: const Row(
                           children: [
-                            Icon(Icons.account_balance_wallet, color: AppTheme.primaryColor),
+                            Icon(
+                              Icons.account_balance_wallet,
+                              color: AppTheme.primaryColor,
+                            ),
                             SizedBox(width: 8),
                             Text(
                               '£142.50',
@@ -727,20 +877,19 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                         ),
                       ),
                     ),
-                    
+
                     // Profile Button
                     CircleAvatar(
                       backgroundColor: Colors.white,
                       child: IconButton(
                         icon: const Icon(Icons.person, color: Colors.black),
-                        onPressed: () => Navigator.pushNamed(context, '/driver-profile'),
+                        onPressed: () =>
+                            Navigator.pushNamed(context, '/driver-profile'),
                       ),
                     ),
                   ],
                 ),
-                if (_status == 'online') ...[
-                  const SizedBox(height: 16),
-                ],
+                if (_status == 'online') ...[const SizedBox(height: 16)],
               ],
             ),
           ),
@@ -761,7 +910,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.check_circle, color: Colors.green, size: 64),
+                    const Icon(
+                      Icons.check_circle,
+                      color: Colors.green,
+                      size: 64,
+                    ),
                     const SizedBox(height: 16),
                     const Text(
                       'Trip Completed!',
@@ -821,7 +974,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           ),
         ),
         const SizedBox(height: 24),
-        
+
         // Go Online Button
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -835,7 +988,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                 borderRadius: BorderRadius.circular(30),
                 boxShadow: [
                   BoxShadow(
-                    color: (_status == 'online' ? Colors.red : AppTheme.primaryColor).withValues(alpha: 0.3),
+                    color:
+                        (_status == 'online'
+                                ? Colors.red
+                                : AppTheme.primaryColor)
+                            .withValues(alpha: 0.3),
                     blurRadius: 12,
                     offset: const Offset(0, 4),
                   ),
@@ -864,9 +1021,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             ),
           ),
         ),
-        
+
         const SizedBox(height: 32),
-        
+
         // Stats / Recent Activity
         Expanded(
           child: ListView(
@@ -878,13 +1035,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                 children: [
                   const Text(
                     'Today\'s Summary',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   TextButton(
-                    onPressed: () => Navigator.pushNamed(context, '/driver-activity'),
+                    onPressed: () =>
+                        Navigator.pushNamed(context, '/driver-activity'),
                     child: const Text('See All'),
                   ),
                 ],
@@ -900,10 +1055,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
               const SizedBox(height: 24),
               const Text(
                 'Recent Activity',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 16),
               _buildActivityItem('Heathrow Drop-off', '£24.50', '10:30 AM'),
@@ -932,17 +1084,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             const SizedBox(height: 8),
             Text(
               value,
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
-            Text(
-              label,
-              style: const TextStyle(
-                color: AppTheme.textSecondary,
-              ),
-            ),
+            Text(label, style: const TextStyle(color: AppTheme.textSecondary)),
           ],
         ),
       ),

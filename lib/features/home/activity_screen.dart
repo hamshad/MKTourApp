@@ -15,19 +15,28 @@ class ActivityScreen extends StatefulWidget {
 class _ActivityScreenState extends State<ActivityScreen> {
   bool _isInit = true;
   bool _isLoading = false;
+  String _selectedFilter = 'All';
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_isInit) {
+      debugPrint('📋 ActivityScreen: Initializing, fetching ride history...');
       _fetchRideHistory();
       _isInit = false;
     }
   }
 
   Future<void> _fetchRideHistory({bool forceRefresh = false}) async {
+    debugPrint(
+      '📋 ActivityScreen: _fetchRideHistory called (forceRefresh: $forceRefresh)',
+    );
     setState(() => _isLoading = true);
-    await Provider.of<AuthProvider>(context, listen: false).fetchRideHistory(forceRefresh: forceRefresh);
+    await Provider.of<AuthProvider>(
+      context,
+      listen: false,
+    ).fetchRideHistory(forceRefresh: forceRefresh);
+
     if (mounted) {
       setState(() => _isLoading = false);
     }
@@ -55,56 +64,180 @@ class _ActivityScreenState extends State<ActivityScreen> {
             unselectedLabelColor: AppTheme.textSecondary,
             indicatorColor: AppTheme.primaryColor,
             tabs: [
-              Tab(text: 'Current'),
-              Tab(text: 'Completed'),
+              Tab(text: 'Ongoing'),
+              Tab(text: 'All'),
             ],
           ),
         ),
         body: TabBarView(
           children: [
-            _buildActivityList(context, isCompleted: false),
-            _buildActivityList(context, isCompleted: true),
+            _buildActivityList(context, filterType: 'ongoing'),
+            _buildActivityList(context, filterType: 'all'),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildActivityList(BuildContext context, {required bool isCompleted}) {
+  Widget _buildActivityList(
+    BuildContext context, {
+    required String filterType,
+  }) {
     return Consumer<AuthProvider>(
       builder: (context, authProvider, child) {
         if (_isLoading && authProvider.rideHistory.isEmpty) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        // Filter rides based on status
-        final allRides = authProvider.rideHistory;
-        final rides = allRides.where((ride) {
-          final status = (ride['status'] as String?)?.toLowerCase() ?? '';
-          if (isCompleted) {
-            return status == 'completed' || status == 'cancelled';
-          } else {
-            return status == 'pending' || 
-                   status == 'accepted' || 
-                   status == 'started' || 
-                   status == 'driver_assigned';
-          }
-        }).toList();
+        final allRidesFromSource = authProvider.rideHistory;
 
-        if (rides.isEmpty) {
-           return Center(
+        // Filter rides based on tab
+        List<dynamic> rides;
+        if (filterType == 'ongoing') {
+          rides = allRidesFromSource.where((ride) {
+            final status = (ride['status'] as String?)?.toLowerCase() ?? '';
+            // Ongoing includes everything that is NOT terminal
+            return status != 'completed' &&
+                status != 'cancelled' &&
+                status != 'expired';
+          }).toList();
+        } else {
+          // All Tab - apply chip filter
+          rides = allRidesFromSource.where((ride) {
+            if (_selectedFilter == 'All') return true;
+            final status = (ride['status'] as String?)?.toLowerCase() ?? '';
+            return status == _selectedFilter.toLowerCase();
+          }).toList();
+        }
+
+        return Column(
+          children: [
+            if (filterType == 'all') _buildFilterBar(),
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: () => _fetchRideHistory(forceRefresh: true),
+                child: rides.isEmpty
+                    ? _buildEmptyState(filterType)
+                    : ListView.separated(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: rides.length,
+                        separatorBuilder: (context, index) =>
+                            const Divider(height: 32),
+                        itemBuilder: (context, index) {
+                          final ride = rides[index];
+                          final pickup = ride['pickupLocation']?['address'] ??
+                              'Unknown Pickup';
+                          final dropoff = ride['dropoffLocation']?['address'] ??
+                              'Unknown Dropoff';
+                          final price = ride['fare'] != null
+                              ? '£${ride['fare']}'
+                              : '£0.00';
+                          final status = ride['status'] ?? 'Unknown';
+                          final dateStr = ride['createdAt'];
+                          String formattedDate = 'Unknown Date';
+
+                          if (dateStr != null) {
+                            try {
+                              final date = DateTime.parse(dateStr).toLocal();
+                              formattedDate =
+                                  DateFormat('MMM d, h:mm a').format(date);
+                            } catch (e) {
+                              formattedDate = dateStr;
+                            }
+                          }
+
+                          return _buildActivityItem(
+                            context,
+                            date: formattedDate,
+                            destination: dropoff,
+                            price: price,
+                            status: status.toString(),
+                            rideData: ride,
+                          );
+                        },
+                      ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildFilterBar() {
+    final filters = ['All', 'Pending', 'Completed', 'Cancelled', 'Expired'];
+    return Container(
+      height: 60,
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: filters.length,
+        itemBuilder: (context, index) {
+          final filter = filters[index];
+          final isSelected = _selectedFilter == filter;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: FilterChip(
+              label: Text(filter),
+              selected: isSelected,
+              onSelected: (selected) {
+                setState(() {
+                  _selectedFilter = filter;
+                });
+              },
+              selectedColor: AppTheme.primaryColor.withValues(alpha: 0.1),
+              checkmarkColor: AppTheme.primaryColor,
+              labelStyle: TextStyle(
+                color: isSelected ? AppTheme.primaryColor : Colors.grey[700],
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
+              backgroundColor: Colors.grey[100],
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: BorderSide(
+                  color: isSelected ? AppTheme.primaryColor : Colors.transparent,
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(String filterType) {
+    IconData emptyIcon;
+    String emptyMessage;
+
+    if (filterType == 'ongoing') {
+      emptyIcon = Icons.directions_car;
+      emptyMessage = 'No ongoing rides';
+    } else {
+      emptyIcon = Icons.history;
+      emptyMessage = _selectedFilter == 'All'
+          ? 'No ride history yet'
+          : 'No $_selectedFilter rides';
+    }
+
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        SizedBox(
+          height: MediaQuery.of(context).size.height * 0.5,
+          child: Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
-                  isCompleted ? Icons.history : Icons.directions_car,
+                  emptyIcon,
                   size: 64,
                   color: AppTheme.textSecondary.withValues(alpha: 0.3),
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  isCompleted ? 'No completed rides' : 'No current rides',
-                  style: TextStyle(
+                  emptyMessage,
+                  style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
                     color: AppTheme.textSecondary,
@@ -112,45 +245,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
                 ),
               ],
             ),
-          );
-        }
-
-        return RefreshIndicator(
-          onRefresh: () => _fetchRideHistory(forceRefresh: true),
-          child: ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: rides.length,
-            separatorBuilder: (context, index) => const Divider(height: 32),
-            itemBuilder: (context, index) {
-              final ride = rides[index];
-              final pickup = ride['pickupLocation']?['address'] ?? 'Unknown Pickup';
-              final dropoff = ride['dropoffLocation']?['address'] ?? 'Unknown Dropoff';
-              final price = ride['fare'] != null ? '£${ride['fare']}' : '£0.00';
-              final status = ride['status'] ?? 'Unknown';
-              final dateStr = ride['createdAt'];
-              String formattedDate = 'Unknown Date';
-              
-              if (dateStr != null) {
-                try {
-                  final date = DateTime.parse(dateStr).toLocal();
-                  formattedDate = DateFormat('MMM d, h:mm a').format(date);
-                } catch (e) {
-                  formattedDate = dateStr;
-                }
-              }
-
-              return _buildActivityItem(
-                context,
-                date: formattedDate,
-                destination: dropoff,
-                price: price,
-                status: status.toString(),
-                rideData: ride,
-              );
-            },
           ),
-        );
-      },
+        ),
+      ],
     );
   }
 
@@ -160,13 +257,18 @@ class _ActivityScreenState extends State<ActivityScreen> {
         return Colors.green;
       case 'cancelled':
         return Colors.red;
-      case 'pending':
+      case 'expired':
         return Colors.orange;
+      case 'pending':
+        return Colors.amber;
       case 'accepted':
       case 'driver_assigned':
         return Colors.blue;
       case 'started':
+      case 'in_progress':
         return Colors.purple;
+      case 'arrived':
+        return Colors.teal;
       default:
         return Colors.grey;
     }

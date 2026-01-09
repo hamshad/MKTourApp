@@ -5,7 +5,12 @@ import '../../../core/theme.dart';
 
 class VehicleSelectionWidget extends StatefulWidget {
   final Function(String) onVehicleSelected;
-  final VoidCallback onBookRide;
+  final Function(
+    String vehicleType,
+    String vehicleName,
+    Map<String, dynamic> fareData,
+  )
+  onSelectVehicle;
   final bool isLoading;
   final double? pickupLat;
   final double? pickupLng;
@@ -15,7 +20,7 @@ class VehicleSelectionWidget extends StatefulWidget {
   const VehicleSelectionWidget({
     super.key,
     required this.onVehicleSelected,
-    required this.onBookRide,
+    required this.onSelectVehicle,
     this.isLoading = false,
     this.pickupLat,
     this.pickupLng,
@@ -28,121 +33,58 @@ class VehicleSelectionWidget extends StatefulWidget {
 }
 
 class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
-  final PlacesService _placesService = PlacesService();
-  String _selectedVehicle = 'standard';
-  bool _isFetchingFares = false;
+  String _selectedVehicle = 'sedan';
 
-  // Vehicle types with their backend IDs
   final List<Map<String, dynamic>> _vehicles = [
     {
-      'id': 'standard',
-      'name': 'Standard',
+      'id': 'sedan',
+      'name': 'Sedan',
       'icon': Icons.directions_car,
-      'description': 'Affordable, everyday rides',
+      'description': 'Comfortable rides for up to 4',
       'seats': 4,
+      'price': 15.50,
+      'duration_mins': 12,
     },
     {
-      'id': 'executive',
-      'name': 'Executive',
+      'id': 'suv',
+      'name': 'SUV',
       'icon': Icons.directions_car_filled,
-      'description': 'Premium rides for business',
-      'seats': 4,
+      'description': 'Spacious rides with extra room',
+      'seats': 6,
+      'price': 22.00,
+      'duration_mins': 15,
     },
     {
-      'id': 'xl',
-      'name': 'XL',
+      'id': 'hatchback',
+      'name': 'Hatchback',
+      'icon': Icons.car_rental,
+      'description': 'Compact and affordable',
+      'seats': 4,
+      'price': 12.00,
+      'duration_mins': 10,
+    },
+    {
+      'id': 'van',
+      'name': 'Van',
       'icon': Icons.airport_shuttle,
-      'description': 'More space for groups',
-      'seats': 6,
+      'description': 'Perfect for groups & luggage',
+      'seats': 8,
+      'price': 35.00,
+      'duration_mins': 18,
     },
   ];
-
-  // Dynamic fare data fetched from backend
-  Map<String, Map<String, dynamic>> _fareData = {};
 
   @override
   void initState() {
     super.initState();
-    debugPrint('🚗 VehicleSelectionWidget: initState called');
-    _fetchAllFares();
+    debugPrint('🚗 VehicleSelectionWidget: Simplified version initialized');
   }
 
-  @override
-  void didUpdateWidget(VehicleSelectionWidget oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // Refetch fares if coordinates change
-    if (oldWidget.pickupLat != widget.pickupLat ||
-        oldWidget.pickupLng != widget.pickupLng ||
-        oldWidget.dropoffLat != widget.dropoffLat ||
-        oldWidget.dropoffLng != widget.dropoffLng) {
-      debugPrint('🚗 VehicleSelectionWidget: Coordinates changed, refetching fares...');
-      _fetchAllFares();
-    }
-  }
-
-  /// Fetch fares for all vehicle types from backend
-  Future<void> _fetchAllFares() async {
-    if (widget.pickupLat == null ||
-        widget.pickupLng == null ||
-        widget.dropoffLat == null ||
-        widget.dropoffLng == null) {
-      debugPrint('⚠️ VehicleSelectionWidget: Missing coordinates, skipping fare fetch');
-      return;
-    }
-
-    debugPrint('🚗 VehicleSelectionWidget: Fetching fares for all vehicle types...');
-    debugPrint('📍 Pickup: (${widget.pickupLat}, ${widget.pickupLng})');
-    debugPrint('📍 Dropoff: (${widget.dropoffLat}, ${widget.dropoffLng})');
-    
-    setState(() => _isFetchingFares = true);
-
-    try {
-      // Fetch fares for all vehicle types in parallel
-      debugPrint('🔄 VehicleSelectionWidget: Starting parallel fare requests for ${_vehicles.length} vehicle types');
-      
-      final futures = _vehicles.map((vehicle) async {
-        debugPrint('   → Requesting fare for: ${vehicle['id']}');
-        final data = await _placesService.getDistanceAndFare(
-          originLat: widget.pickupLat!,
-          originLng: widget.pickupLng!,
-          destLat: widget.dropoffLat!,
-          destLng: widget.dropoffLng!,
-          vehicleType: vehicle['id'],
-        );
-        return MapEntry(vehicle['id'] as String, data);
-      }).toList();
-
-      final results = await Future.wait(futures);
-
-      if (mounted) {
-        setState(() {
-          for (final entry in results) {
-            if (entry.value != null) {
-              _fareData[entry.key] = entry.value!;
-              debugPrint('✅ VehicleSelectionWidget: ${entry.key} → £${entry.value!['total_fare']}, ${entry.value!['duration_text']}');
-            } else {
-              debugPrint('⚠️ VehicleSelectionWidget: ${entry.key} → No fare data received');
-            }
-          }
-          _isFetchingFares = false;
-        });
-        debugPrint('✅ VehicleSelectionWidget: All fares fetched successfully');
-      }
-    } catch (e) {
-      debugPrint('❌ VehicleSelectionWidget: Error fetching fares: $e');
-      if (mounted) {
-        setState(() => _isFetchingFares = false);
-      }
-    }
-  }
-
-  /// Calculate ETA drop-off time based on duration
-  String _getDropoffTime(int durationSeconds) {
+  /// Calculate ETA drop-off time (Mock version)
+  String _getDropoffTime(int durationMinutes) {
     final now = DateTime.now();
-    final dropoffTime = now.add(Duration(seconds: durationSeconds));
-    final formatted = DateFormat('h:mm a').format(dropoffTime);
-    debugPrint('⏱️ VehicleSelectionWidget: ETA calculated: $formatted (${durationSeconds}s from now)');
-    return formatted;
+    final dropoffTime = now.add(Duration(minutes: durationMinutes));
+    return DateFormat('h:mm a').format(dropoffTime);
   }
 
   @override
@@ -155,25 +97,9 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
           padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Text(
             'Choose a ride',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
         ),
-        
-        // Loading indicator while fetching fares
-        if (_isFetchingFares)
-          const Padding(
-            padding: EdgeInsets.all(16),
-            child: Center(
-              child: SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            ),
-          ),
 
         // Vehicle list
         ListView.separated(
@@ -186,15 +112,11 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
             final vehicle = _vehicles[index];
             final vehicleId = vehicle['id'] as String;
             final isSelected = _selectedVehicle == vehicleId;
-            final fareInfo = _fareData[vehicleId];
             
-            // Get dynamic price or show loading
-            final price = fareInfo?['total_fare'];
-            final durationSeconds = fareInfo?['duration_seconds'] as int?;
-            final dropoffTime = durationSeconds != null 
-                ? _getDropoffTime(durationSeconds) 
-                : null;
-            
+            final price = vehicle['price'] as double;
+            final durationMins = vehicle['duration_mins'] as int;
+            final dropoffTime = _getDropoffTime(durationMins);
+
             return InkWell(
               onTap: () {
                 setState(() => _selectedVehicle = vehicleId);
@@ -203,10 +125,12 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 decoration: BoxDecoration(
-                  color: isSelected ? AppTheme.surfaceColor : Colors.transparent,
+                  color: isSelected
+                      ? AppTheme.surfaceColor
+                      : Colors.transparent,
                   borderRadius: BorderRadius.circular(12),
-                  border: isSelected 
-                      ? Border.all(color: AppTheme.primaryColor, width: 2) 
+                  border: isSelected
+                      ? Border.all(color: AppTheme.primaryColor, width: 2)
                       : null,
                 ),
                 child: Row(
@@ -223,29 +147,36 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                       child: Icon(
                         vehicle['icon'] as IconData,
                         size: 32,
-                        color: isSelected ? AppTheme.primaryColor : Colors.grey[700],
+                        color: isSelected
+                            ? AppTheme.primaryColor
+                            : Colors.grey[700],
                       ),
                     ),
-                    
+
                     // Details
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          Text(
+                            vehicle['name'] as String,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
                           Row(
                             children: [
-                              Text(
-                                vehicle['name'] as String,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppTheme.textPrimary,
-                                ),
+                              Icon(
+                                Icons.person,
+                                size: 14,
+                                color: Colors.grey[600],
                               ),
-                              const SizedBox(width: 8),
-                              Icon(Icons.person, size: 14, color: Colors.grey[600]),
+                              const SizedBox(width: 4),
                               Text(
-                                '${vehicle['seats']}',
+                                '${vehicle['seats']} Seats',
                                 style: TextStyle(
                                   fontSize: 14,
                                   color: Colors.grey[600],
@@ -253,45 +184,8 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            dropoffTime != null 
-                                ? '$dropoffTime drop-off' 
-                                : vehicle['description'] as String,
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.grey[600],
-                            ),
-                          ),
                         ],
                       ),
-                    ),
-                    
-                    // Price
-                    Padding(
-                      padding: const EdgeInsets.only(right: 16),
-                      child: price != null
-                          ? Text(
-                              '£${price.toStringAsFixed(2)}',
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.textPrimary,
-                              ),
-                            )
-                          : _isFetchingFares
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : Text(
-                                  '—',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    color: Colors.grey[400],
-                                  ),
-                                ),
                     ),
                   ],
                 ),
@@ -299,19 +193,38 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
             );
           },
         ),
-        
+
         const SizedBox(height: 16),
-        
-        // Book button
+
+        // Select Vehicle button
         Padding(
           padding: const EdgeInsets.all(16),
           child: SizedBox(
             width: double.infinity,
             height: 50,
             child: ElevatedButton(
-              onPressed: widget.isLoading || _isFetchingFares 
-                  ? null 
-                  : widget.onBookRide,
+              onPressed: widget.isLoading
+                  ? null
+                  : () {
+                      final vehicle = _vehicles.firstWhere(
+                        (v) => v['id'] == _selectedVehicle,
+                      );
+                      
+                      final mockFareData = {
+                        'total_fare': vehicle['price'],
+                        'distance_text': 'Calculation pending',
+                        'duration_text': '${vehicle['duration_mins']} mins',
+                        'duration_seconds': (vehicle['duration_mins'] as int) * 60,
+                      };
+
+                      debugPrint('🚗 VehicleSelectionWidget: Select Vehicle pressed (Simplified)');
+                      
+                      widget.onSelectVehicle(
+                        _selectedVehicle,
+                        vehicle['name'] as String,
+                        mockFareData,
+                      );
+                    },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.primaryColor,
                 foregroundColor: Colors.white,
@@ -330,7 +243,7 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                       ),
                     )
                   : Text(
-                      'Book ${_vehicles.firstWhere((v) => v['id'] == _selectedVehicle)['name']}',
+                      'Select ${_vehicles.firstWhere((v) => v['id'] == _selectedVehicle)['name']}',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
