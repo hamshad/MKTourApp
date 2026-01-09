@@ -48,7 +48,7 @@ class SocketService {
     );
 
     _socket = IO.io(
-      ApiConstants.baseUrl,
+      ApiConstants.socketUrl,
       IO.OptionBuilder()
           .setTransports(['websocket'])
           .disableAutoConnect() // Disable auto connect to control when it connects
@@ -207,6 +207,49 @@ class SocketService {
     debugPrint('🚗 [SocketService] Left driver location room: $roomName');
   }
 
+  /// Emit user:goOnline to register user for receiving ride updates
+  void emitUserOnline(String userId) {
+    if (userId.isEmpty) {
+      debugPrint('⚠️ [SocketService] Cannot emit user:goOnline: empty userId');
+      return;
+    }
+    emit('user:goOnline', {'userId': userId});
+    debugPrint('👤 [SocketService] User online: $userId');
+  }
+
+  /// Emit driver:goOnline to register driver for receiving ride requests
+  void emitDriverOnline(String driverId) {
+    if (driverId.isEmpty) {
+      debugPrint(
+        '⚠️ [SocketService] Cannot emit driver:goOnline: empty driverId',
+      );
+      return;
+    }
+    emit('driver:goOnline', {'driverId': driverId});
+    debugPrint('🚗 [SocketService] Driver online: $driverId');
+  }
+
+  /// Emit driver:goOffline when driver goes offline
+  void emitDriverOffline(String driverId) {
+    if (driverId.isEmpty) return;
+    emit('driver:goOffline', {'driverId': driverId});
+    debugPrint('🚗 [SocketService] Driver offline: $driverId');
+  }
+
+  /// Emit driver:locationUpdate for real-time location tracking
+  void emitDriverLocationUpdate({
+    required String driverId,
+    required double latitude,
+    required double longitude,
+  }) {
+    if (driverId.isEmpty) return;
+    emit('driver:locationUpdate', {
+      'driverId': driverId,
+      'latitude': latitude,
+      'longitude': longitude,
+    });
+  }
+
   void disconnect() {
     _reconnectionTimer?.cancel();
     _joinedRooms.clear();
@@ -247,5 +290,10 @@ class SocketService {
       _socket!.off(event);
       debugPrint('🔇 [SocketService] Stopped listening for: $event');
     }
+  }
+
+  /// Check if a handler is registered for an event
+  bool hasListeners(String event) {
+    return _socket?.hasListeners(event) ?? false;
   }
 }

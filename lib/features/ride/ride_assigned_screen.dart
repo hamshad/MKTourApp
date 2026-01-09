@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:apple_maps_flutter/apple_maps_flutter.dart';
 import 'dart:async';
 import 'package:provider/provider.dart';
 import 'package:latlong2/latlong.dart' as latlong2;
@@ -10,6 +9,7 @@ import '../../core/api_service.dart';
 import '../../core/services/navigation_service.dart';
 import '../../core/services/places_service.dart';
 import '../../core/services/marker_interpolation_service.dart';
+import '../../core/widgets/platform_map.dart';
 import 'ride_complete_screen.dart';
 
 class RideAssignedScreen extends StatefulWidget {
@@ -39,18 +39,15 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
   final PlacesService _placesService = PlacesService();
   String _rideStatus = 'searching';
 
-  // Locations
-  late LatLng _userLocation;
-  LatLng? _driverLocation;
-  late LatLng _pickupLocation;
-  late LatLng _dropoffLocation;
+  // Locations (using latlong2 for cross-platform compatibility)
+  late latlong2.LatLng _userLocation;
+  latlong2.LatLng? _driverLocation;
+  late latlong2.LatLng _pickupLocation;
+  late latlong2.LatLng _dropoffLocation;
 
-  // Map Controller
-  AppleMapController? _mapController;
-
-  // Map Elements
-  Set<Annotation> _annotations = {};
-  Set<Polyline> _polylines = {};
+  // Map Elements (using cross-platform types)
+  List<MapMarker> _markers = [];
+  List<MapPolyline> _polylines = [];
 
   // Driver Data
   Map<String, dynamic> _driver = {};
@@ -67,7 +64,6 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
   // Marker Interpolation for smooth car animation
   MarkerInterpolationService? _markerInterpolation;
   StreamSubscription<InterpolatedPosition>? _interpolationSubscription;
-  double _driverBearing = 0.0; // Current bearing for car rotation
 
   // Connection status subscription
   StreamSubscription<bool>? _connectionSubscription;
@@ -84,25 +80,46 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
   }
 
   void _setupInitialState() {
+    debugPrint('🚀 [RideAssignedScreen] Setting up initial state...');
+    debugPrint('🚀 [RideAssignedScreen] widget.driver: ${widget.driver}');
+
     if (widget.driver != null) {
+      debugPrint('✅ [RideAssignedScreen] Initial driver data provided');
       _rideStatus = 'driver_assigned';
       _driver = widget.driver!;
-      _otp = widget.driver!['otp'] ?? widget.driver!['verificationOTP'] ?? '';
+
+      // Try multiple possible OTP field names from initial data
+      _otp =
+          widget.driver!['otp']?.toString() ??
+          widget.driver!['verificationOTP']?.toString() ??
+          widget.driver!['verification_otp']?.toString() ??
+          '';
+
+      debugPrint('🔐 [RideAssignedScreen] Initial OTP: "$_otp"');
+      debugPrint('👤 [RideAssignedScreen] Initial driver: $_driver');
 
       // Extract driver ID and join their location room
       _currentDriverId =
           _driver['_id']?.toString() ?? _driver['id']?.toString();
       if (_currentDriverId != null) {
         _socketService.joinDriverRoom(_currentDriverId!);
+        debugPrint(
+          '🚗 [RideAssignedScreen] Joined driver room: driver:$_currentDriverId',
+        );
       }
 
       if (_driver['location'] != null) {
         final coords = _driver['location']['coordinates'];
-        _driverLocation = LatLng(coords[1], coords[0]);
+        debugPrint('📍 [RideAssignedScreen] Initial driver location: $coords');
+        _driverLocation = latlong2.LatLng(coords[1], coords[0]);
 
         // Initialize marker interpolation with driver's initial position
         _initMarkerInterpolation(latlong2.LatLng(coords[1], coords[0]));
       }
+    } else {
+      debugPrint(
+        '⏳ [RideAssignedScreen] No initial driver data, waiting for socket event...',
+      );
     }
   }
 
@@ -122,12 +139,11 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
     ) {
       if (mounted) {
         setState(() {
-          _driverLocation = LatLng(
+          _driverLocation = latlong2.LatLng(
             interpolated.position.latitude,
             interpolated.position.longitude,
           );
-          _driverBearing = interpolated.bearing;
-          _updateAnnotations();
+          _updateMarkers();
         });
       }
     });
@@ -157,23 +173,23 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
 
     // MongoDB GeoJSON is [lng, lat], but we need to be careful.
     // Based on DestinationSearchScreen, we are passing [lng, lat].
-    // LatLng takes (lat, lng).
+    // latlong2.LatLng takes (lat, lng).
 
     if (widget.pickup != null) {
-      _userLocation = LatLng(pickupCoords[1], pickupCoords[0]);
-      _pickupLocation = LatLng(pickupCoords[1], pickupCoords[0]);
+      _userLocation = latlong2.LatLng(pickupCoords[1], pickupCoords[0]);
+      _pickupLocation = latlong2.LatLng(pickupCoords[1], pickupCoords[0]);
     } else {
-      _userLocation = const LatLng(0, 0);
-      _pickupLocation = const LatLng(0, 0);
+      _userLocation = const latlong2.LatLng(0, 0);
+      _pickupLocation = const latlong2.LatLng(0, 0);
     }
 
     if (widget.dropoff != null) {
-      _dropoffLocation = LatLng(dropoffCoords[1], dropoffCoords[0]);
+      _dropoffLocation = latlong2.LatLng(dropoffCoords[1], dropoffCoords[0]);
     } else {
-      _dropoffLocation = const LatLng(0, 0);
+      _dropoffLocation = const latlong2.LatLng(0, 0);
     }
 
-    _updateAnnotations();
+    _updateMarkers();
   }
 
   /// Fetch detailed addresses for pickup and dropoff
@@ -242,11 +258,61 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
 
     _socketService.on('ride:accepted', (data) {
       if (mounted) {
-        debugPrint('✅ [RideAssignedScreen] Ride Accepted: $data');
+        debugPrint('═══════════════════════════════════════════════════════');
+        debugPrint('✅ [RideAssignedScreen] RIDE ACCEPTED EVENT RECEIVED');
+        debugPrint('═══════════════════════════════════════════════════════');
+        debugPrint('📦 [RideAssignedScreen] Full data: $data');
+        debugPrint('📦 [RideAssignedScreen] Data type: ${data.runtimeType}');
+
+        // Log individual fields for debugging
+        debugPrint('🔑 [RideAssignedScreen] rideId: ${data['rideId']}');
+        debugPrint('🔑 [RideAssignedScreen] status: ${data['status']}');
+        debugPrint('🔑 [RideAssignedScreen] otp field: ${data['otp']}');
+        debugPrint(
+          '🔑 [RideAssignedScreen] verificationOTP field: ${data['verificationOTP']}',
+        );
+        debugPrint('🔑 [RideAssignedScreen] message: ${data['message']}');
+        debugPrint('👤 [RideAssignedScreen] driver object: ${data['driver']}');
+
+        // Extract driver data
+        final driverData = data['driver'];
+        if (driverData != null) {
+          debugPrint(
+            '👤 [RideAssignedScreen] Driver ID: ${driverData['id'] ?? driverData['_id']}',
+          );
+          debugPrint(
+            '👤 [RideAssignedScreen] Driver name: ${driverData['name']}',
+          );
+          debugPrint(
+            '👤 [RideAssignedScreen] Driver phone: ${driverData['phone']}',
+          );
+          debugPrint(
+            '👤 [RideAssignedScreen] Driver rating: ${driverData['rating']}',
+          );
+          debugPrint(
+            '🚗 [RideAssignedScreen] Vehicle: ${driverData['vehicle']}',
+          );
+          debugPrint(
+            '📍 [RideAssignedScreen] Driver location: ${driverData['location']}',
+          );
+        } else {
+          debugPrint('⚠️ [RideAssignedScreen] Driver data is NULL!');
+        }
+
         setState(() {
           _rideStatus = 'driver_assigned';
           _driver = data['driver'] ?? {};
-          _otp = data['otp'] ?? data['verificationOTP'] ?? '';
+
+          // Try multiple possible OTP field names
+          _otp =
+              data['otp']?.toString() ??
+              data['verificationOTP']?.toString() ??
+              data['verification_otp']?.toString() ??
+              data['code']?.toString() ??
+              '';
+
+          debugPrint('🔐 [RideAssignedScreen] Extracted OTP: "$_otp"');
+          debugPrint('👤 [RideAssignedScreen] Extracted driver: $_driver');
 
           // Extract driver ID and join their location room for real-time updates
           _currentDriverId =
@@ -256,21 +322,33 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
             debugPrint(
               '🚗 [RideAssignedScreen] Joined driver room: driver:$_currentDriverId',
             );
+          } else {
+            debugPrint(
+              '⚠️ [RideAssignedScreen] Could not extract driver ID from: $_driver',
+            );
           }
 
           if (data['driver']?['location'] != null) {
             final coords = data['driver']['location']['coordinates'];
-            _driverLocation = LatLng(coords[1], coords[0]);
+            debugPrint('📍 [RideAssignedScreen] Driver coordinates: $coords');
+            _driverLocation = latlong2.LatLng(coords[1], coords[0]);
 
             // Initialize marker interpolation for smooth car animation
             _initMarkerInterpolation(latlong2.LatLng(coords[1], coords[0]));
 
             // Fetch navigation route from driver to pickup
             _fetchNavigationRoute();
+          } else {
+            debugPrint('⚠️ [RideAssignedScreen] Driver location is NULL');
           }
-          _updateAnnotations();
-          _fitBounds();
+          _updateMarkers();
         });
+
+        debugPrint('═══════════════════════════════════════════════════════');
+        debugPrint(
+          '✅ [RideAssignedScreen] State updated - Status: $_rideStatus, OTP: $_otp',
+        );
+        debugPrint('═══════════════════════════════════════════════════════');
       }
     });
 
@@ -303,10 +381,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
         debugPrint('🚀 [RideAssignedScreen] Ride Started: $data');
         setState(() {
           _rideStatus = 'in_progress';
-          _updateAnnotations();
+          _updateMarkers();
           // Switch to navigation from current to dropoff
           _fetchNavigationRoute();
-          _fitBounds();
         });
       }
     });
@@ -414,45 +491,45 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
     });
   }
 
-  void _updateAnnotations() {
-    final Set<Annotation> newAnnotations = {};
+  void _updateMarkers() {
+    final List<MapMarker> newMarkers = [];
 
     // Pickup Marker (User)
-    newAnnotations.add(
-      Annotation(
-        annotationId: AnnotationId('pickup'),
-        position: _pickupLocation,
-        icon: BitmapDescriptor.defaultAnnotation,
-        infoWindow: const InfoWindow(title: 'Pickup'),
+    newMarkers.add(
+      MapMarker(
+        id: 'pickup',
+        lat: _pickupLocation.latitude,
+        lng: _pickupLocation.longitude,
+        title: 'Pickup',
       ),
     );
 
     // Dropoff Marker
     if (_rideStatus == 'in_progress') {
-      newAnnotations.add(
-        Annotation(
-          annotationId: AnnotationId('dropoff'),
-          position: _dropoffLocation,
-          icon: BitmapDescriptor.defaultAnnotation,
-          infoWindow: const InfoWindow(title: 'Dropoff'),
+      newMarkers.add(
+        MapMarker(
+          id: 'dropoff',
+          lat: _dropoffLocation.latitude,
+          lng: _dropoffLocation.longitude,
+          title: 'Dropoff',
         ),
       );
     }
 
     // Driver Marker
     if (_driverLocation != null && _rideStatus != 'searching') {
-      newAnnotations.add(
-        Annotation(
-          annotationId: AnnotationId('driver'),
-          position: _driverLocation!,
-          icon: BitmapDescriptor.defaultAnnotation,
-          infoWindow: InfoWindow(title: _driver['name'] ?? 'Driver'),
+      newMarkers.add(
+        MapMarker(
+          id: 'driver',
+          lat: _driverLocation!.latitude,
+          lng: _driverLocation!.longitude,
+          title: _driver['name'] ?? 'Driver',
         ),
       );
     }
 
     setState(() {
-      _annotations = newAnnotations;
+      _markers = newMarkers;
     });
   }
 
@@ -460,8 +537,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
   Future<void> _fetchNavigationRoute() async {
     if (_driverLocation == null) return;
 
-    LatLng origin = _driverLocation!;
-    LatLng destination;
+    latlong2.LatLng origin = _driverLocation!;
+    latlong2.LatLng destination;
 
     if (_rideStatus == 'driver_assigned' || _rideStatus == 'driver_arrived') {
       // Driver navigating to pickup
@@ -485,7 +562,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
   Future<void> _updateNavigationRoute() async {
     if (_driverLocation == null) return;
 
-    LatLng destination;
+    latlong2.LatLng destination;
 
     if (_rideStatus == 'driver_assigned' || _rideStatus == 'driver_arrived') {
       destination = _pickupLocation;
@@ -505,18 +582,13 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
 
   /// Update polylines with navigation route
   void _updatePolylines() {
-    final Set<Polyline> newPolylines = {};
+    final List<MapPolyline> newPolylines = [];
 
     if (_navigationState != null && _navigationState!.polyline.isNotEmpty) {
-      // Convert LatLng to Apple Maps LatLng format
-      final points = _navigationState!.polyline
-          .map((point) => LatLng(point.latitude, point.longitude))
-          .toList();
-
       newPolylines.add(
-        Polyline(
-          polylineId: PolylineId('navigation_route'),
-          points: points,
+        MapPolyline(
+          id: 'navigation_route',
+          points: _navigationState!.polyline,
           color: AppTheme.primaryColor,
           width: 5,
         ),
@@ -526,57 +598,6 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
     setState(() {
       _polylines = newPolylines;
     });
-  }
-
-  void _fitBounds() {
-    if (_mapController == null) return;
-
-    List<LatLng> points = [_pickupLocation];
-    if (_driverLocation != null) points.add(_driverLocation!);
-    if (_rideStatus == 'in_progress') points.add(_dropoffLocation);
-
-    if (points.length > 1) {
-      double minLat = points.first.latitude;
-      double maxLat = points.first.latitude;
-      double minLng = points.first.longitude;
-      double maxLng = points.first.longitude;
-
-      for (var point in points) {
-        if (point.latitude < minLat) minLat = point.latitude;
-        if (point.latitude > maxLat) maxLat = point.latitude;
-        if (point.longitude < minLng) minLng = point.longitude;
-        if (point.longitude > maxLng) maxLng = point.longitude;
-      }
-
-      _mapController!.animateCamera(
-        CameraUpdate.newLatLngBounds(
-          LatLngBounds(
-            southwest: LatLng(minLat, minLng),
-            northeast: LatLng(maxLat, maxLng),
-          ),
-          50.0,
-        ),
-      );
-    }
-  }
-
-  String _getStatusText() {
-    switch (_rideStatus) {
-      case 'searching':
-        return 'Finding your driver...';
-      case 'driver_assigned':
-        return 'Driver is on the way';
-      case 'driver_arrived':
-        return 'Driver has arrived';
-      case 'in_progress':
-        return 'Trip in progress';
-      case 'completed':
-        return 'Trip completed';
-      case 'expired':
-        return 'Ride expired';
-      default:
-        return 'Connecting...';
-    }
   }
 
   @override
@@ -627,21 +648,12 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          AppleMap(
-            initialCameraPosition: CameraPosition(
-              target: _userLocation,
-              zoom: 14.0,
-            ),
-            annotations: _annotations,
+          PlatformMap(
+            initialLat: _userLocation.latitude,
+            initialLng: _userLocation.longitude,
+            markers: _markers,
             polylines: _polylines,
-            onMapCreated: (controller) {
-              _mapController = controller;
-              if (_rideStatus != 'searching') {
-                _fitBounds();
-              }
-            },
-            myLocationEnabled: true,
-            myLocationButtonEnabled: false,
+            interactive: true,
           ),
 
           // Status Panel
@@ -652,6 +664,14 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
   }
 
   Widget _buildStatusPanel() {
+    // Debug logging for UI rendering
+    debugPrint('🎨 [RideAssignedScreen] Building status panel');
+    debugPrint('🎨 [RideAssignedScreen] Current status: $_rideStatus');
+    debugPrint(
+      '🎨 [RideAssignedScreen] OTP value: "$_otp" (isEmpty: ${_otp.isEmpty})',
+    );
+    debugPrint('🎨 [RideAssignedScreen] Driver data: $_driver');
+
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: const BoxDecoration(
@@ -725,46 +745,63 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
             ),
           ] else ...[
             // Driver Assigned / In Progress UI
-            if (_rideStatus == 'driver_arrived')
-              Container(
-                margin: const EdgeInsets.only(bottom: 16),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.green.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: const [
-                    Icon(
-                      Icons.notifications_active,
-                      size: 16,
-                      color: Colors.green,
-                    ),
-                    SizedBox(width: 8),
-                    Text(
-                      'Driver is waiting at pickup point',
-                      style: TextStyle(
-                        color: Colors.green,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
 
-            // OTP Display
-            if (_otp.isNotEmpty &&
-                (_rideStatus == 'driver_assigned' ||
-                    _rideStatus == 'driver_arrived'))
+            // Status header
+            Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: _rideStatus == 'driver_arrived'
+                    ? Colors.green.withValues(alpha: 0.1)
+                    : _rideStatus == 'in_progress'
+                    ? Colors.blue.withValues(alpha: 0.1)
+                    : Colors.orange.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    _rideStatus == 'driver_arrived'
+                        ? Icons.check_circle
+                        : _rideStatus == 'in_progress'
+                        ? Icons.directions_car
+                        : Icons.navigation,
+                    color: _rideStatus == 'driver_arrived'
+                        ? Colors.green
+                        : _rideStatus == 'in_progress'
+                        ? Colors.blue
+                        : Colors.orange,
+                    size: 24,
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    _rideStatus == 'driver_arrived'
+                        ? 'Driver has arrived!'
+                        : _rideStatus == 'in_progress'
+                        ? 'Trip in progress'
+                        : 'Driver is on the way',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                      color: _rideStatus == 'driver_arrived'
+                          ? Colors.green
+                          : _rideStatus == 'in_progress'
+                          ? Colors.blue
+                          : Colors.orange,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // OTP Display - Show prominently when driver assigned or arrived
+            if ((_rideStatus == 'driver_assigned' ||
+                _rideStatus == 'driver_arrived'))
               Container(
                 margin: const EdgeInsets.only(bottom: 16),
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
-                  vertical: 12,
+                  vertical: 16,
                 ),
                 decoration: BoxDecoration(
                   color: AppTheme.accentColor.withValues(alpha: 0.1),
@@ -775,47 +812,50 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
                 ),
                 child: Column(
                   children: [
-                    const Text(
-                      'Share OTP with Driver',
-                      style: TextStyle(
-                        color: AppTheme.textSecondary,
-                        fontSize: 12,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Text(
-                          'OTP: ',
-                          style: TextStyle(fontWeight: FontWeight.bold),
+                        Icon(
+                          Icons.lock_outline,
+                          color: AppTheme.accentColor,
+                          size: 18,
                         ),
-                        Text(
-                          _otp,
-                          style: const TextStyle(
-                            fontSize: 32,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.accentColor,
-                            letterSpacing: 4,
+                        const SizedBox(width: 8),
+                        const Text(
+                          'YOUR RIDE OTP',
+                          style: TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 1,
                           ),
                         ),
                       ],
                     ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _otp.isNotEmpty ? _otp : '------',
+                      style: TextStyle(
+                        fontSize: 36,
+                        fontWeight: FontWeight.bold,
+                        color: _otp.isNotEmpty
+                            ? AppTheme.accentColor
+                            : Colors.grey,
+                        letterSpacing: 8,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _otp.isNotEmpty
+                          ? 'Share this code with your driver when boarding'
+                          : 'Waiting for OTP...',
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 12,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
                   ],
-                ),
-              ),
-
-            // Large OTP Display Dialog Trigger (Optional, or auto-show)
-            if (_otp.isNotEmpty &&
-                (_rideStatus == 'driver_assigned' ||
-                    _rideStatus == 'driver_arrived'))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 16.0),
-                child: Center(
-                  child: Text(
-                    'Share OTP with Driver',
-                    style: TextStyle(color: AppTheme.textSecondary),
-                  ),
                 ),
               ),
 

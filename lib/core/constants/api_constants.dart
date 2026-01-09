@@ -2,6 +2,9 @@ class ApiConstants {
   static const String baseUrl =
       'http://192.168.1.23:5000/api/v1'; // TODO: Replace with actual base URL
   // static const String baseUrl = 'https://api.mktours.co.uk';
+  static const String socketUrl =
+      'http://192.168.1.23:5000/'; // TODO: Replace with actual base URL
+  // static const String socketUrl = 'https://api.mktours.co.uk';
 
   // Auth Endpoints
   static const String sendOtp = '$baseUrl/auth/send-otp';

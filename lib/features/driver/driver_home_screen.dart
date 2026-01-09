@@ -130,6 +130,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     _socketService.off('ride:reminder');
     _socketService.off('ride:longRunning');
     _socketService.off('ride:cancelled');
+    _socketService.off('driver:status');
+    _socketService.off('driver:locationUpdated');
 
     // Clean up streams
     _positionStreamSubscription?.cancel();
@@ -138,6 +140,15 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     // Clean up services
     _navigationService.dispose();
     _locationService.dispose();
+
+    // Emit driver offline when disposing (if was online)
+    if (_status != 'offline') {
+      final user = Provider.of<AuthProvider>(context, listen: false).user;
+      final driverId = user?['_id'] ?? user?['id'] ?? user?['userId'];
+      if (driverId != null) {
+        _socketService.emitDriverOffline(driverId);
+      }
+    }
 
     debugPrint('🔴 [DriverHomeScreen] Disposed');
     super.dispose();
@@ -157,7 +168,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         debugPrint(
           '📤 [DriverHomeScreen] Emitting driver:goOnline for $driverId',
         );
-        _socketService.emit('driver:goOnline', {'driverId': driverId});
+        _socketService.emitDriverOnline(driverId);
       } else {
         debugPrint(
           '⚠️ [DriverHomeScreen] Cannot emit driver:goOnline: Driver ID not found in user object',
@@ -340,18 +351,33 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       final driverId = user['_id'] ?? user['id'] ?? user['userId'];
 
       if (driverId != null) {
-        // debugPrint('📤 [DriverHomeScreen] Emitting driver:locationUpdate for $driverId');
-        _socketService.emit('driver:locationUpdate', {
-          'driverId': driverId,
-          'latitude': lat,
-          'longitude': lng,
-        });
+        // Use the enhanced socket service method
+        _socketService.emitDriverLocationUpdate(
+          driverId: driverId,
+          latitude: lat,
+          longitude: lng,
+        );
       }
     }
   }
 
   void _setupSocketListeners() {
     debugPrint('👂 [DriverHomeScreen] Setting up socket listeners...');
+
+    // Listen for driver status confirmation
+    _socketService.on('driver:status', (data) {
+      debugPrint('📩 [DriverHomeScreen] Driver status: $data');
+      if (mounted && data['status'] == 'online') {
+        // Successfully went online
+      }
+    });
+
+    // Listen for location update confirmation
+    _socketService.on('driver:locationUpdated', (data) {
+      // Location update confirmed by server
+    });
+
+    // Listen for new ride requests
     _socketService.on('ride:newRequest', (data) {
       debugPrint('🔔 [DriverHomeScreen] New Ride Request Received: $data');
       if (mounted) {
