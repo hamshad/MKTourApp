@@ -109,15 +109,11 @@ class PlacesService {
       debugPrint('📍 [Request] Session Token: $token');
 
       final response = await http.get(url, headers: headers);
-      debugPrint(
-        '📍 [Response] Status Code: ${response.statusCode}',
-      );
+      debugPrint('📍 [Response] Status Code: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
-        debugPrint(
-          '📍 [Response] Body: ${response.body}',
-        );
+        debugPrint('📍 [Response] Body: ${response.body}');
 
         if (responseData['success'] == true) {
           // Backend returns data object with lat, lng, formatted_address, name
@@ -254,54 +250,141 @@ class PlacesService {
       debugPrint('🗺️ [Request] Destination: ($destLat, $destLng)');
 
       final response = await http.get(url, headers: headers);
-      debugPrint(
-        '🗺️ [Response] Status Code: ${response.statusCode}',
-      );
+      debugPrint('🗺️ [Response] Status Code: ${response.statusCode}');
 
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
+        final decoded = json.decode(response.body);
         debugPrint(
           '📍 PlacesService.getDirections - Response Body: ${response.body}',
         );
 
-        if (data['success'] == true || data['status'] == 'OK') {
-          // Backend returns polyline_points as encoded string
-          final polylineString =
-              data['polyline_points'] ??
-              data['routes']?[0]?['overview_polyline']?['points'] ??
-              '';
+        if (decoded is Map &&
+            (decoded['success'] == true || decoded['status'] == 'OK')) {
+          // Some backends wrap the payload under `data`.
+          final Map<String, dynamic> payload = (decoded['data'] is Map)
+              ? (decoded['data'] as Map).cast<String, dynamic>()
+              : decoded.cast<String, dynamic>();
+
+          // Prefer the backend-provided encoded polyline, fall back to raw Google Directions shape.
+          final String polylineString =
+              (payload['polyline_points'] ??
+                      payload['polylinePoints'] ??
+                      decoded['polyline_points'] ??
+                      decoded['polylinePoints'] ??
+                      payload['routes']?[0]?['overview_polyline']?['points'] ??
+                      decoded['routes']?[0]?['overview_polyline']?['points'] ??
+                      '')
+                  .toString();
 
           // Decode polyline points for drawing route on map
           final polylinePoints = _decodePolyline(polylineString);
 
-          final leg = data['routes']?[0]?['legs']?[0] ?? data;
+          // Google Directions shape: routes[0].legs[0]
+          final dynamic routes = payload['routes'] ?? decoded['routes'];
+          dynamic firstLeg;
+          if (routes is List && routes.isNotEmpty) {
+            final firstRoute = routes[0];
+            if (firstRoute is Map &&
+                firstRoute['legs'] is List &&
+                (firstRoute['legs'] as List).isNotEmpty) {
+              firstLeg = (firstRoute['legs'] as List)[0];
+            }
+          }
+
+          final int distanceMeters =
+              (payload['distance_meters'] ??
+                      firstLeg?['distance']?['value'] ??
+                      payload['distance']?['value'] ??
+                      0)
+                  is num
+              ? (payload['distance_meters'] ??
+                        firstLeg?['distance']?['value'] ??
+                        payload['distance']?['value'] ??
+                        0)
+                    .toInt()
+              : int.tryParse(
+                      (payload['distance_meters'] ??
+                              firstLeg?['distance']?['value'] ??
+                              payload['distance']?['value'] ??
+                              '0')
+                          .toString(),
+                    ) ??
+                    0;
+
+          String distanceText =
+              (payload['distance_text'] ??
+                      firstLeg?['distance']?['text'] ??
+                      payload['distance']?['text'] ??
+                      '')
+                  .toString();
+          if (distanceText.isEmpty && distanceMeters > 0) {
+            if (distanceMeters >= 1000) {
+              distanceText = '${(distanceMeters / 1000).toStringAsFixed(1)} km';
+            } else {
+              distanceText = '$distanceMeters m';
+            }
+          }
+
+          final int durationSeconds =
+              (payload['duration_seconds'] ??
+                      firstLeg?['duration']?['value'] ??
+                      payload['duration']?['value'] ??
+                      0)
+                  is num
+              ? (payload['duration_seconds'] ??
+                        firstLeg?['duration']?['value'] ??
+                        payload['duration']?['value'] ??
+                        0)
+                    .toInt()
+              : int.tryParse(
+                      (payload['duration_seconds'] ??
+                              firstLeg?['duration']?['value'] ??
+                              payload['duration']?['value'] ??
+                              '0')
+                          .toString(),
+                    ) ??
+                    0;
+
+          String durationText =
+              (payload['duration_text'] ??
+                      firstLeg?['duration']?['text'] ??
+                      payload['duration']?['text'] ??
+                      '')
+                  .toString();
+          if (durationText.isEmpty && durationSeconds > 0) {
+            final minutes = (durationSeconds / 60).round();
+            durationText = '$minutes mins';
+          }
+
+          final String startAddress =
+              (payload['start_address'] ?? firstLeg?['start_address'] ?? '')
+                  .toString();
+          final String endAddress =
+              (payload['end_address'] ?? firstLeg?['end_address'] ?? '')
+                  .toString();
 
           debugPrint(
-            '📍 PlacesService.getDirections - Distance: ${leg['distance_text'] ?? leg['distance']?['text']}',
-          );
-          debugPrint(
-            '📍 PlacesService.getDirections - Duration: ${leg['duration_text'] ?? leg['duration']?['text']}',
-          );
-          debugPrint(
             '📍 PlacesService.getDirections - Polyline points decoded: ${polylinePoints.length}',
+          );
+          debugPrint(
+            '📍 PlacesService.getDirections - Distance: $distanceText',
+          );
+          debugPrint(
+            '📍 PlacesService.getDirections - Duration: $durationText',
           );
 
           return {
             'polyline': polylinePoints,
-            'distance_meters':
-                leg['distance_meters'] ?? leg['distance']?['value'] ?? 0,
-            'distance_text':
-                leg['distance_text'] ?? leg['distance']?['text'] ?? '',
-            'duration_seconds':
-                leg['duration_seconds'] ?? leg['duration']?['value'] ?? 0,
-            'duration_text':
-                leg['duration_text'] ?? leg['duration']?['text'] ?? '',
-            'start_address': leg['start_address'] ?? '',
-            'end_address': leg['end_address'] ?? '',
+            'distance_meters': distanceMeters,
+            'distance_text': distanceText,
+            'duration_seconds': durationSeconds,
+            'duration_text': durationText,
+            'start_address': startAddress,
+            'end_address': endAddress,
           };
         } else {
           debugPrint(
-            '⚠️ PlacesService.getDirections - API error: ${data['status'] ?? data['message']}',
+            '⚠️ PlacesService.getDirections - API error: ${(decoded is Map) ? (decoded['status'] ?? decoded['message']) : 'Unexpected response'}',
           );
           debugPrint(
             '⚠️ PlacesService.getDirections - Full response: ${response.body}',

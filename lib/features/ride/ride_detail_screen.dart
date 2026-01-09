@@ -3,6 +3,7 @@ import '../../core/api_service.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../../core/widgets/platform_map.dart';
+import '../../core/services/places_service.dart';
 
 class RideDetailScreen extends StatefulWidget {
   final String rideId;
@@ -15,9 +16,13 @@ class RideDetailScreen extends StatefulWidget {
 
 class _RideDetailScreenState extends State<RideDetailScreen> {
   final ApiService _apiService = ApiService();
+  final PlacesService _placesService = PlacesService();
   Map<String, dynamic>? _rideDetails;
   bool _isLoading = true;
   String? _error;
+
+  List<LatLng> _routePoints = [];
+  LatLngBounds? _routeBounds;
 
   @override
   void initState() {
@@ -33,6 +38,9 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
           _rideDetails = details['data'];
           _isLoading = false;
         });
+
+        // After ride details load, fetch the road-following route polyline
+        await _fetchRoutePolyline();
       }
     } catch (e) {
       if (mounted) {
@@ -44,12 +52,70 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     }
   }
 
+  Future<void> _fetchRoutePolyline() async {
+    if (_rideDetails == null) return;
+
+    final pickup = _rideDetails!['pickupLocation'];
+    final dropoff = _rideDetails!['dropoffLocation'];
+    if (pickup == null || dropoff == null) return;
+
+    final pickupLat = pickup['coordinates'][1];
+    final pickupLng = pickup['coordinates'][0];
+    final dropoffLat = dropoff['coordinates'][1];
+    final dropoffLng = dropoff['coordinates'][0];
+
+    debugPrint('🗺️ [RideDetailScreen] Fetching route via get-directions...');
+    final directions = await _placesService.getDirections(
+      (pickupLat as num).toDouble(),
+      (pickupLng as num).toDouble(),
+      (dropoffLat as num).toDouble(),
+      (dropoffLng as num).toDouble(),
+    );
+
+    if (!mounted) return;
+
+    if (directions != null &&
+        directions['polyline'] is List &&
+        (directions['polyline'] as List).isNotEmpty) {
+      final polylinePoints = (directions['polyline'] as List)
+          .cast<Map<String, double>>();
+
+      final points = polylinePoints
+          .map((p) => LatLng(p['lat'] ?? 0.0, p['lng'] ?? 0.0))
+          .where((p) => !(p.latitude == 0.0 && p.longitude == 0.0))
+          .toList();
+
+      setState(() {
+        _routePoints = points;
+        _routeBounds = points.isNotEmpty
+            ? LatLngBounds.fromPoints(points)
+            : null;
+      });
+
+      debugPrint(
+        '✅ [RideDetailScreen] Route loaded. Points: ${_routePoints.length}',
+      );
+      return;
+    }
+
+    // Fallback: straight line
+    debugPrint(
+      '⚠️ [RideDetailScreen] Directions missing/empty. Using straight-line fallback.',
+    );
+    final fallback = [
+      LatLng(pickupLat.toDouble(), pickupLng.toDouble()),
+      LatLng(dropoffLat.toDouble(), dropoffLng.toDouble()),
+    ];
+    setState(() {
+      _routePoints = fallback;
+      _routeBounds = LatLngBounds.fromPoints(fallback);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     if (_error != null) {
@@ -60,9 +126,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     }
 
     if (_rideDetails == null) {
-      return const Scaffold(
-        body: Center(child: Text('No ride details found')),
-      );
+      return const Scaffold(body: Center(child: Text('No ride details found')));
     }
 
     final pickup = _rideDetails!['pickupLocation'];
@@ -96,10 +160,12 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
       ),
     ];
 
-    final polylines = [
-      LatLng(pickupLat, pickupLng),
-      LatLng(dropoffLat, dropoffLng),
-    ];
+    final polylines = _routePoints.isNotEmpty
+        ? _routePoints
+        : [
+            LatLng(pickupLat.toDouble(), pickupLng.toDouble()),
+            LatLng(dropoffLat.toDouble(), dropoffLng.toDouble()),
+          ];
 
     return Scaffold(
       body: Stack(
@@ -116,7 +182,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                 width: 4.0,
               ),
             ],
-            bounds: LatLngBounds.fromPoints(polylines),
+            bounds: _routeBounds ?? LatLngBounds.fromPoints(polylines),
           ),
           Positioned(
             top: MediaQuery.of(context).padding.top + 10,
@@ -146,7 +212,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                   ),
                 ],
               ),
-                  child: Column(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -158,7 +224,9 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
-                          color: _rideDetails!['status'] == 'cancelled' ? Colors.red : Colors.green,
+                          color: _rideDetails!['status'] == 'cancelled'
+                              ? Colors.red
+                              : Colors.green,
                         ),
                       ),
                       Text(
@@ -171,9 +239,10 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  
+
                   // Cancellation Reason
-                  if (_rideDetails!['status'] == 'cancelled' && _rideDetails!['cancellationReason'] != null) ...[
+                  if (_rideDetails!['status'] == 'cancelled' &&
+                      _rideDetails!['cancellationReason'] != null) ...[
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
@@ -183,12 +252,19 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.info_outline, color: Colors.red, size: 20),
+                          const Icon(
+                            Icons.info_outline,
+                            color: Colors.red,
+                            size: 20,
+                          ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               'Reason: ${_rideDetails!['cancellationReason']}',
-                              style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w500),
+                              style: const TextStyle(
+                                color: Colors.red,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
                           ),
                         ],
@@ -198,10 +274,15 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                   ],
 
                   // OTP
-                  if ((_rideDetails!['status'] == 'driver_assigned' || _rideDetails!['status'] == 'driver_arrived') && 
-                      (_rideDetails!['verificationOTP'] != null || _rideDetails!['otp'] != null)) ...[
+                  if ((_rideDetails!['status'] == 'driver_assigned' ||
+                          _rideDetails!['status'] == 'driver_arrived') &&
+                      (_rideDetails!['verificationOTP'] != null ||
+                          _rideDetails!['otp'] != null)) ...[
                     Container(
-                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 12,
+                        horizontal: 16,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.blue.shade50,
                         borderRadius: BorderRadius.circular(8),
@@ -210,9 +291,17 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('OTP', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+                          const Text(
+                            'OTP',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue,
+                            ),
+                          ),
                           Text(
-                            _rideDetails!['verificationOTP'] ?? _rideDetails!['otp'] ?? '',
+                            _rideDetails!['verificationOTP'] ??
+                                _rideDetails!['otp'] ??
+                                '',
                             style: const TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
@@ -233,11 +322,15 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                         CircleAvatar(
                           radius: 24,
                           backgroundColor: Colors.grey.shade200,
-                          backgroundImage: _rideDetails!['driver']['profilePicture'] != null 
-                              ? NetworkImage(_rideDetails!['driver']['profilePicture']) 
+                          backgroundImage:
+                              _rideDetails!['driver']['profilePicture'] != null
+                              ? NetworkImage(
+                                  _rideDetails!['driver']['profilePicture'],
+                                )
                               : null,
-                          child: _rideDetails!['driver']['profilePicture'] == null 
-                              ? const Icon(Icons.person, color: Colors.grey) 
+                          child:
+                              _rideDetails!['driver']['profilePicture'] == null
+                              ? const Icon(Icons.person, color: Colors.grey)
                               : null,
                         ),
                         const SizedBox(width: 12),
@@ -247,15 +340,25 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                             children: [
                               Text(
                                 _rideDetails!['driver']['name'] ?? 'Driver',
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
                               ),
                               Row(
                                 children: [
-                                  const Icon(Icons.star, size: 14, color: Colors.amber),
+                                  const Icon(
+                                    Icons.star,
+                                    size: 14,
+                                    color: Colors.amber,
+                                  ),
                                   const SizedBox(width: 4),
                                   Text(
                                     '${_rideDetails!['driver']['rating'] ?? 5.0}',
-                                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                                    style: TextStyle(
+                                      color: Colors.grey[600],
+                                      fontSize: 12,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -266,12 +369,19 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             Text(
-                              _rideDetails!['driver']['vehicle']?['model'] ?? 'Vehicle',
-                              style: const TextStyle(fontWeight: FontWeight.bold),
+                              _rideDetails!['driver']['vehicle']?['model'] ??
+                                  'Vehicle',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                             Text(
-                              _rideDetails!['driver']['vehicle']?['number'] ?? '',
-                              style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                              _rideDetails!['driver']['vehicle']?['number'] ??
+                                  '',
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 12,
+                              ),
                             ),
                           ],
                         ),
@@ -301,10 +411,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
         Expanded(
           child: Text(
             address,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-            ),
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
           ),
         ),
       ],
