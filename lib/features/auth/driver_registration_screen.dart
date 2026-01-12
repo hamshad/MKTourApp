@@ -5,6 +5,7 @@ import '../../core/services/location_service.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/custom_snackbar.dart';
 import '../driver/driver_home_screen.dart';
+import '../driver/driver_profile_screen.dart';
 
 class DriverRegistrationScreen extends StatefulWidget {
   final String phoneNumber;
@@ -150,9 +151,19 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
 
         if (!mounted) return;
 
+        final profileStatus = response['data']?['profileStatus'];
+        final verificationStatus = profileStatus?['verificationStatus']
+            ?.toString();
+        final shouldGoToProfile =
+            verificationStatus == 'pending' || verificationStatus == 'rejected';
+
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (context) => const DriverHomeScreen()),
+          MaterialPageRoute(
+            builder: (context) => shouldGoToProfile
+                ? const DriverProfileScreen()
+                : const DriverHomeScreen(),
+          ),
           (route) => false,
         );
       } else {

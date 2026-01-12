@@ -3,12 +3,15 @@ import 'dart:io';
 import 'package:flutter/foundation.dart'; // For debugPrint
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'constants.dart';
 
 import 'constants/api_constants.dart';
 
 class ApiService {
   final String baseUrl = ApiConstants.baseUrl;
+
+  static const String _prefsAuthTokenKey = 'auth_token';
+  static const String _prefsAuthRoleKey = 'auth_role';
+  static const String _prefsDriverProfileStatusKey = 'driver_profile_status';
 
   Future<Map<String, dynamic>> login(String email, String password) async {
     try {
@@ -22,7 +25,9 @@ class ApiService {
         final responseData = jsonDecode(response.body);
         if (responseData['success'] == true && responseData['token'] != null) {
           final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('auth_token', responseData['token']);
+          await prefs.setString(_prefsAuthTokenKey, responseData['token']);
+          // Email/password flow is for passenger/user.
+          await prefs.setString(_prefsAuthRoleKey, 'user');
         }
         return responseData;
       } else {
@@ -33,7 +38,8 @@ class ApiService {
       print('API Error: $e. Returning mock success.');
       // Mock token saving
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('auth_token', 'mock_token_fallback');
+      await prefs.setString(_prefsAuthTokenKey, 'mock_token_fallback');
+      await prefs.setString(_prefsAuthRoleKey, 'user');
 
       return {
         'success': true,
@@ -70,7 +76,9 @@ class ApiService {
         final responseData = jsonDecode(response.body);
         if (responseData['success'] == true && responseData['token'] != null) {
           final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('auth_token', responseData['token']);
+          await prefs.setString(_prefsAuthTokenKey, responseData['token']);
+          // Email/password flow is for passenger/user.
+          await prefs.setString(_prefsAuthRoleKey, 'user');
         }
         return responseData;
       } else {
@@ -80,7 +88,8 @@ class ApiService {
       print('API Error: $e. Returning mock success.');
       // Mock token saving
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('auth_token', 'mock_token_fallback');
+      await prefs.setString(_prefsAuthTokenKey, 'mock_token_fallback');
+      await prefs.setString(_prefsAuthRoleKey, 'user');
 
       return {
         'success': true,
@@ -279,7 +288,19 @@ class ApiService {
           if (token != null) {
             debugPrint('💾 [ApiService] Saving token to SharedPreferences...');
             final prefs = await SharedPreferences.getInstance();
-            await prefs.setString('auth_token', token);
+            await prefs.setString(_prefsAuthTokenKey, token);
+            await prefs.setString(_prefsAuthRoleKey, role);
+
+            // New backend behavior: drivers get profileStatus embedded in login response.
+            if (role == 'driver') {
+              final profileStatus = responseData['data']['profileStatus'];
+              if (profileStatus != null) {
+                await prefs.setString(
+                  _prefsDriverProfileStatusKey,
+                  jsonEncode(profileStatus),
+                );
+              }
+            }
             debugPrint('✅ [ApiService] Token saved successfully');
           }
         }
@@ -304,6 +325,73 @@ class ApiService {
     }
   }
 
+  /// Fetch latest driver profile completion/verification status.
+  /// Recommended usage: app reopen/refresh after uploads/polling.
+  Future<Map<String, dynamic>> getDriverProfileStatus() async {
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
+    debugPrint('🔵 [ApiService] getDriverProfileStatus called');
+    debugPrint('🔵 [Request] URL: ${ApiConstants.driverProfileStatus}');
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString(_prefsAuthTokenKey);
+
+      if (token == null) {
+        throw Exception('No auth token found');
+      }
+
+      final response = await http.get(
+        Uri.parse(ApiConstants.driverProfileStatus),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
+      debugPrint('🟣 [Response] Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+
+        // Cache for offline/fast restore.
+        final data = responseData['data'];
+        if (data != null) {
+          // Endpoint may return { data: profileStatus } or { data: { profileStatus: ... } }
+          final profileStatus = (data is Map && data['profileStatus'] != null)
+              ? data['profileStatus']
+              : data;
+          await prefs.setString(
+            _prefsDriverProfileStatusKey,
+            jsonEncode(profileStatus),
+          );
+        }
+
+        debugPrint('🟢 [ApiService] getDriverProfileStatus Success');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
+        return responseData;
+      }
+
+      debugPrint(
+        '🔴 [ApiService] getDriverProfileStatus Failed: ${response.body}',
+      );
+      debugPrint(
+        '🔵 ------------------------------------------------------------------',
+      );
+      throw Exception('Failed to get driver profile status: ${response.body}');
+    } catch (e) {
+      debugPrint('🟠 [ApiService] Exception caught: $e');
+      debugPrint(
+        '🔵 ------------------------------------------------------------------',
+      );
+      throw Exception('Failed to get driver profile status: $e');
+    }
+  }
+
   Future<Map<String, dynamic>> getUserProfile() async {
     debugPrint(
       '🔵 ------------------------------------------------------------------',
@@ -313,7 +401,7 @@ class ApiService {
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('auth_token');
+      final token = prefs.getString(_prefsAuthTokenKey);
 
       if (token == null) {
         throw Exception('No auth token found');
@@ -373,7 +461,7 @@ class ApiService {
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('auth_token');
+      final token = prefs.getString(_prefsAuthTokenKey);
 
       if (token == null) {
         throw Exception('No auth token found');

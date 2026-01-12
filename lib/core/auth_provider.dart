@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'dart:convert';
 import 'api_service.dart';
 import 'services/socket_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -10,10 +11,19 @@ class AuthProvider with ChangeNotifier {
   Map<String, dynamic>? _user;
   List<dynamic> _rideHistory = [];
   DateTime? _lastRideHistoryFetch;
+  String? _role;
+  Map<String, dynamic>? _driverProfileStatus;
+
+  static const String _prefsAuthTokenKey = 'auth_token';
+  static const String _prefsAuthRoleKey = 'auth_role';
+  static const String _prefsDriverProfileStatusKey = 'driver_profile_status';
 
   bool get isAuthenticated => _isAuthenticated;
   Map<String, dynamic>? get user => _user;
   List<dynamic> get rideHistory => _rideHistory;
+  String? get role => _role;
+  bool get isDriver => _role == 'driver';
+  Map<String, dynamic>? get driverProfileStatus => _driverProfileStatus;
 
   Future<bool> login(String email, String password) async {
     try {
@@ -21,6 +31,7 @@ class AuthProvider with ChangeNotifier {
       if (response['success']) {
         _isAuthenticated = true;
         _user = response['user'];
+        _role = 'user';
         await SocketService().initSocket();
         notifyListeners();
         return true;
@@ -47,6 +58,7 @@ class AuthProvider with ChangeNotifier {
       if (response['success']) {
         _isAuthenticated = true;
         _user = response['user'];
+        _role = 'user';
         await SocketService().initSocket();
         notifyListeners();
         return true;
@@ -63,6 +75,7 @@ class AuthProvider with ChangeNotifier {
       if (response['success'] == true && response['data'] != null) {
         _user = response['data'];
         _isAuthenticated = true;
+        _role = 'user';
         await SocketService().initSocket();
         notifyListeners();
       }
@@ -81,6 +94,7 @@ class AuthProvider with ChangeNotifier {
       if (response['success'] == true && response['data'] != null) {
         _user = response['data']; // Reusing _user for driver data as well
         _isAuthenticated = true;
+        _role = 'driver';
         await SocketService().initSocket();
         notifyListeners();
       }
@@ -174,14 +188,63 @@ class AuthProvider with ChangeNotifier {
   Future<bool> tryAutoLogin() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      if (!prefs.containsKey('auth_token')) {
+      if (!prefs.containsKey(_prefsAuthTokenKey)) {
         return false;
       }
 
-      await fetchUserProfile();
+      _role = prefs.getString(_prefsAuthRoleKey) ?? 'user';
+
+      // Load cached driver profileStatus immediately (may be refreshed below).
+      if (_role == 'driver') {
+        _loadCachedDriverProfileStatus(prefs);
+      }
+
+      if (_role == 'driver') {
+        await fetchDriverProfile();
+
+        // On app re-open, refresh current driver profile status.
+        // If it fails (offline), the cached status remains available.
+        try {
+          await fetchDriverProfileStatus();
+        } catch (_) {}
+      } else {
+        await fetchUserProfile();
+      }
       return _isAuthenticated;
     } catch (e) {
       return false;
+    }
+  }
+
+  void _loadCachedDriverProfileStatus(SharedPreferences prefs) {
+    final raw = prefs.getString(_prefsDriverProfileStatusKey);
+    if (raw == null || raw.isEmpty) return;
+
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) {
+        _driverProfileStatus = decoded;
+      } else if (decoded is Map) {
+        _driverProfileStatus = Map<String, dynamic>.from(decoded);
+      }
+    } catch (_) {
+      // Ignore cache decode issues.
+    }
+  }
+
+  Future<void> fetchDriverProfileStatus() async {
+    final response = await _apiService.getDriverProfileStatus();
+    if (response['success'] == true && response['data'] != null) {
+      final data = response['data'];
+      final profileStatus = (data is Map && data['profileStatus'] != null)
+          ? data['profileStatus']
+          : data;
+      if (profileStatus is Map<String, dynamic>) {
+        _driverProfileStatus = profileStatus;
+      } else if (profileStatus is Map) {
+        _driverProfileStatus = Map<String, dynamic>.from(profileStatus);
+      }
+      notifyListeners();
     }
   }
 
@@ -304,8 +367,12 @@ class AuthProvider with ChangeNotifier {
     _user = null;
     _rideHistory = [];
     _lastRideHistoryFetch = null;
+    _role = null;
+    _driverProfileStatus = null;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('auth_token');
+    await prefs.remove(_prefsAuthTokenKey);
+    await prefs.remove(_prefsAuthRoleKey);
+    await prefs.remove(_prefsDriverProfileStatusKey);
     SocketService().disconnect();
     notifyListeners();
   }

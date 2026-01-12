@@ -14,19 +14,16 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
-
   @override
   void initState() {
     super.initState();
     _checkAuth();
   }
 
-
-
   Future<void> _checkAuth() async {
     // Minimum splash duration
     await Future.delayed(const Duration(milliseconds: 2000));
-    
+
     if (!mounted) return;
 
     final authProvider = context.read<AuthProvider>();
@@ -35,7 +32,19 @@ class _SplashScreenState extends State<SplashScreen> {
     if (!mounted) return;
 
     if (isLoggedIn) {
-      Navigator.pushReplacementNamed(context, '/home');
+      if (authProvider.isDriver) {
+        final status = authProvider.driverProfileStatus;
+        final verificationStatus = status?['verificationStatus']?.toString();
+        final targetRoute =
+            (verificationStatus == 'pending' ||
+                verificationStatus == 'rejected')
+            ? '/driver-profile'
+            : '/driver-home';
+
+        Navigator.pushReplacementNamed(context, targetRoute);
+      } else {
+        Navigator.pushReplacementNamed(context, '/home');
+      }
     } else {
       Navigator.pushReplacement(
         context,
@@ -43,8 +52,6 @@ class _SplashScreenState extends State<SplashScreen> {
       );
     }
   }
-
-
 
   @override
   Widget build(BuildContext context) {
@@ -62,22 +69,19 @@ class _SplashScreenState extends State<SplashScreen> {
               fit: BoxFit.contain,
             ),
             const SizedBox(height: 32),
-            
+
             Image.asset(
               'lib/assets/images/Logo-01.png',
               width: 200,
               height: 100,
               fit: BoxFit.contain,
             ),
-            
+
             const SizedBox(height: 12),
 
-            Text(
-              'MK-Tours',
-              style: Theme.of(context).textTheme.displayLarge,
-            ),
+            Text('MK-Tours', style: Theme.of(context).textTheme.displayLarge),
             const SizedBox(height: 12),
-            
+
             Text(
               'Your journey, simplified',
               style: Theme.of(context).textTheme.bodyMedium,

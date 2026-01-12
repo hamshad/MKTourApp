@@ -43,7 +43,10 @@ class _AccountScreenState extends State<AccountScreen> {
         automaticallyImplyLeading: false,
         actions: [
           IconButton(
-            icon: const Icon(Icons.settings_outlined, color: AppTheme.textPrimary),
+            icon: const Icon(
+              Icons.settings_outlined,
+              color: AppTheme.textPrimary,
+            ),
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (context) => const SettingsScreen()),
@@ -55,7 +58,7 @@ class _AccountScreenState extends State<AccountScreen> {
         builder: (context, auth, child) {
           final user = auth.user;
           final name = user?['name'] ?? 'Guest';
-          
+
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -63,19 +66,28 @@ class _AccountScreenState extends State<AccountScreen> {
                 GestureDetector(
                   onTap: () => Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => const EditProfileScreen()),
+                    MaterialPageRoute(
+                      builder: (context) => const EditProfileScreen(),
+                    ),
                   ),
                   child: Row(
                     children: [
-
                       CircleAvatar(
                         radius: 32,
                         backgroundColor: AppTheme.surfaceColor,
-                        backgroundImage: (user?['profilePicture'] != null && user!['profilePicture'].isNotEmpty)
+                        backgroundImage:
+                            (user?['profilePicture'] != null &&
+                                user!['profilePicture'].isNotEmpty)
                             ? CachedNetworkImageProvider(user['profilePicture'])
                             : null,
-                        child: (user?['profilePicture'] == null || user!['profilePicture'].isEmpty)
-                            ? const Icon(Icons.person, size: 32, color: AppTheme.textSecondary)
+                        child:
+                            (user?['profilePicture'] == null ||
+                                user!['profilePicture'].isEmpty)
+                            ? const Icon(
+                                Icons.person,
+                                size: 32,
+                                color: AppTheme.textSecondary,
+                              )
                             : null,
                       ),
                       const SizedBox(width: 16),
@@ -92,14 +104,21 @@ class _AccountScreenState extends State<AccountScreen> {
                           ),
                           const SizedBox(height: 4),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
                             decoration: BoxDecoration(
                               color: AppTheme.surfaceColor,
                               borderRadius: BorderRadius.circular(16),
                             ),
                             child: const Row(
                               children: [
-                                Icon(Icons.star, size: 14, color: AppTheme.textPrimary),
+                                Icon(
+                                  Icons.star,
+                                  size: 14,
+                                  color: AppTheme.textPrimary,
+                                ),
                                 SizedBox(width: 4),
                                 Text(
                                   '4.8',
@@ -115,7 +134,10 @@ class _AccountScreenState extends State<AccountScreen> {
                         ],
                       ),
                       const Spacer(),
-                      const Icon(Icons.chevron_right, color: AppTheme.textSecondary),
+                      const Icon(
+                        Icons.chevron_right,
+                        color: AppTheme.textSecondary,
+                      ),
                     ],
                   ),
                 ),
@@ -132,7 +154,9 @@ class _AccountScreenState extends State<AccountScreen> {
                   title: 'Payment',
                   onTap: () => Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => const PaymentMethodsScreen()),
+                    MaterialPageRoute(
+                      builder: (context) => const PaymentMethodsScreen(),
+                    ),
                   ),
                 ),
                 _buildMenuOption(
@@ -159,7 +183,9 @@ class _AccountScreenState extends State<AccountScreen> {
                   title: 'Settings',
                   onTap: () => Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => const SettingsScreen()),
+                    MaterialPageRoute(
+                      builder: (context) => const SettingsScreen(),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 32),
@@ -168,14 +194,16 @@ class _AccountScreenState extends State<AccountScreen> {
                     // Clear auth token
                     final prefs = await SharedPreferences.getInstance();
                     await prefs.remove('auth_token');
+                    await prefs.remove('auth_role');
                     auth.logout();
-                    
+
                     // Navigate to login screen
                     if (!context.mounted) return;
                     Navigator.pushAndRemoveUntil(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => const PhoneLoginScreen(role: 'user'),
+                        builder: (context) =>
+                            const PhoneLoginScreen(role: 'user'),
                       ),
                       (route) => false,
                     );
@@ -222,7 +250,11 @@ class _AccountScreenState extends State<AccountScreen> {
                 ),
               ),
             ),
-            const Icon(Icons.chevron_right, size: 20, color: AppTheme.textSecondary),
+            const Icon(
+              Icons.chevron_right,
+              size: 20,
+              color: AppTheme.textSecondary,
+            ),
           ],
         ),
       ),

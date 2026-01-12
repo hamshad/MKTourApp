@@ -17,9 +17,7 @@ class DriverRideDetailScreen extends StatelessWidget {
           SliverAppBar(
             expandedHeight: 250,
             pinned: true,
-            flexibleSpace: FlexibleSpaceBar(
-              background: _buildMap(context),
-            ),
+            flexibleSpace: FlexibleSpaceBar(background: _buildMap(context)),
             leading: CircleAvatar(
               backgroundColor: Colors.white,
               child: IconButton(
@@ -28,7 +26,7 @@ class DriverRideDetailScreen extends StatelessWidget {
               ),
             ),
           ),
-          
+
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.all(20),
@@ -61,7 +59,10 @@ class DriverRideDetailScreen extends StatelessWidget {
                         ],
                       ),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.green.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(20),
@@ -76,11 +77,11 @@ class DriverRideDetailScreen extends StatelessWidget {
                       ),
                     ],
                   ),
-                  
+
                   const SizedBox(height: 24),
                   const Divider(),
                   const SizedBox(height: 24),
-                  
+
                   // Passenger Info
                   const Text(
                     'Passenger',
@@ -96,7 +97,10 @@ class DriverRideDetailScreen extends StatelessWidget {
                       const CircleAvatar(
                         radius: 24,
                         backgroundColor: AppTheme.surfaceColor,
-                        child: Icon(Icons.person, color: AppTheme.textSecondary),
+                        child: Icon(
+                          Icons.person,
+                          color: AppTheme.textSecondary,
+                        ),
                       ),
                       const SizedBox(width: 16),
                       Column(
@@ -113,7 +117,9 @@ class DriverRideDetailScreen extends StatelessWidget {
                             children: [
                               Icon(Icons.star, size: 14, color: Colors.amber),
                               SizedBox(width: 4),
-                              Text('${rideData['passenger']?['rating'] ?? '5.0'}'),
+                              Text(
+                                '${rideData['passenger']?['rating'] ?? '5.0'}',
+                              ),
                             ],
                           ),
                         ],
@@ -126,11 +132,11 @@ class DriverRideDetailScreen extends StatelessWidget {
                       ),
                     ],
                   ),
-                  
+
                   const SizedBox(height: 24),
                   const Divider(),
                   const SizedBox(height: 24),
-                  
+
                   // Trip Details
                   const Text(
                     'Trip Details',
@@ -146,7 +152,8 @@ class DriverRideDetailScreen extends StatelessWidget {
                     Colors.green,
                     'Pickup',
                     _formatTime(rideData['pickupTime']),
-                    rideData['pickupLocation']?['address'] ?? 'Unknown Location',
+                    rideData['pickupLocation']?['address'] ??
+                        'Unknown Location',
                   ),
                   const SizedBox(height: 24),
                   _buildLocationRow(
@@ -154,13 +161,14 @@ class DriverRideDetailScreen extends StatelessWidget {
                     Colors.red,
                     'Drop-off',
                     _formatTime(rideData['dropoffTime']),
-                    rideData['dropoffLocation']?['address'] ?? 'Unknown Destination',
+                    rideData['dropoffLocation']?['address'] ??
+                        'Unknown Destination',
                   ),
-                  
+
                   const SizedBox(height: 24),
                   const Divider(),
                   const SizedBox(height: 24),
-                  
+
                   // Fare Breakdown
                   const Text(
                     'Payment Breakdown',
@@ -188,7 +196,13 @@ class DriverRideDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildLocationRow(IconData icon, Color color, String label, String time, String address) {
+  Widget _buildLocationRow(
+    IconData icon,
+    Color color,
+    String label,
+    String time,
+    String address,
+  ) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -267,12 +281,14 @@ class DriverRideDetailScreen extends StatelessWidget {
   Widget _buildMap(BuildContext context) {
     // Parse coordinates
     // Assuming GeoJSON [lng, lat]
-    final pickupCoords = rideData['pickupLocation']?['coordinates'] ?? [0.0, 0.0];
-    final dropoffCoords = rideData['dropoffLocation']?['coordinates'] ?? [0.0, 0.0];
-    
+    final pickupCoords =
+        rideData['pickupLocation']?['coordinates'] ?? [0.0, 0.0];
+    final dropoffCoords =
+        rideData['dropoffLocation']?['coordinates'] ?? [0.0, 0.0];
+
     final pickup = LatLng(pickupCoords[1], pickupCoords[0]);
     final dropoff = LatLng(dropoffCoords[1], dropoffCoords[0]);
-    
+
     // Center map
     final center = LatLng(
       (pickup.latitude + dropoff.latitude) / 2,
@@ -280,10 +296,7 @@ class DriverRideDetailScreen extends StatelessWidget {
     );
 
     return FlutterMap(
-      options: MapOptions(
-        initialCenter: center,
-        initialZoom: 13.0,
-      ),
+      options: MapOptions(initialCenter: center, initialZoom: 13.0),
       children: [
         TileLayer(
           urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -302,7 +315,11 @@ class DriverRideDetailScreen extends StatelessWidget {
           markers: [
             Marker(
               point: pickup,
-              child: const Icon(Icons.location_on, color: Colors.green, size: 40),
+              child: const Icon(
+                Icons.location_on,
+                color: Colors.green,
+                size: 40,
+              ),
             ),
             Marker(
               point: dropoff,

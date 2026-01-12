@@ -29,6 +29,7 @@ class ApiConstants {
   static const String updateDriverStatus = '$baseUrl/drivers/status';
   static const String updateDriver = '$baseUrl/drivers/update';
   static const String updateDriverLocation = '$baseUrl/drivers/location';
+  static const String driverProfileStatus = '$baseUrl/drivers/profile-status';
 
   // Ride Endpoints
   static const String createRide = '$baseUrl/rides/create';
