@@ -1,9 +1,9 @@
 class ApiConstants {
   static const String baseUrl =
-      'http://192.168.1.23:5000/api/v1'; // TODO: Replace with actual base URL
+      'http://192.168.1.12:5000/api/v1'; // TODO: Replace with actual base URL
   // static const String baseUrl = 'https://api.mktours.co.uk';
   static const String socketUrl =
-      'http://192.168.1.23:5000/'; // TODO: Replace with actual base URL
+      'http://192.168.1.12:5000/'; // TODO: Replace with actual base URL
   // static const String socketUrl = 'https://api.mktours.co.uk';
 
   // Auth Endpoints
@@ -39,6 +39,16 @@ class ApiConstants {
   static String completeRide(String id) => '$baseUrl/rides/$id/complete';
   static String cancelRide(String id) => '$baseUrl/rides/$id/cancel';
   static String arriveAtPickup(String id) => '$baseUrl/rides/$id/arrive';
+
+  // User cancellation endpoint (before ride starts)
+  static String cancelRideByUser(String id) => '$baseUrl/rides/$id/cancel/user';
+
+  // Driver cancellation endpoint (before ride starts)
+  static String cancelRideByDriver(String id) =>
+      '$baseUrl/rides/$id/cancel/driver';
+
+  // End ride early endpoint (driver only, during ride)
+  static String endRideEarly(String id) => '$baseUrl/rides/$id/end-early';
 
   // Maps API Endpoints (proxied through backend for security)
   static const String mapsBaseUrl = '$baseUrl/maps';

@@ -5,6 +5,8 @@ import '../../core/services/navigation_service.dart';
 class DriverNavigationPanel extends StatelessWidget {
   final String status;
   final VoidCallback onAction;
+  final VoidCallback? onCancel;
+  final VoidCallback? onEndEarly;
   final Map<String, dynamic>? rideData;
   final NavigationState? navigationState;
 
@@ -12,6 +14,8 @@ class DriverNavigationPanel extends StatelessWidget {
     super.key,
     required this.status,
     required this.onAction,
+    this.onCancel,
+    this.onEndEarly,
     this.rideData,
     this.navigationState,
   });
@@ -57,7 +61,7 @@ class DriverNavigationPanel extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 20),
-          
+
           // Navigation Instruction
           Row(
             children: [
@@ -74,7 +78,11 @@ class DriverNavigationPanel extends StatelessWidget {
                     ),
                   ],
                 ),
-                child: const Icon(Icons.turn_right, color: Colors.white, size: 32),
+                child: const Icon(
+                  Icons.turn_right,
+                  color: Colors.white,
+                  size: 32,
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -91,9 +99,11 @@ class DriverNavigationPanel extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      status == 'pickup' 
-                          ? (rideData?['pickupLocation']?['address'] ?? 'Pickup Location')
-                          : (rideData?['dropoffLocation']?['address'] ?? 'Dropoff Location'),
+                      status == 'pickup'
+                          ? (rideData?['pickupLocation']?['address'] ??
+                                'Pickup Location')
+                          : (rideData?['dropoffLocation']?['address'] ??
+                                'Dropoff Location'),
                       style: const TextStyle(
                         fontSize: 16,
                         color: AppTheme.textSecondary,
@@ -107,9 +117,9 @@ class DriverNavigationPanel extends StatelessWidget {
               ),
             ],
           ),
-          
+
           const SizedBox(height: 24),
-          
+
           // Navigation Info Card (if navigation is active)
           if (navigationState != null)
             Container(
@@ -122,7 +132,9 @@ class DriverNavigationPanel extends StatelessWidget {
                   ],
                 ),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.2)),
+                border: Border.all(
+                  color: AppTheme.primaryColor.withValues(alpha: 0.2),
+                ),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -132,11 +144,7 @@ class DriverNavigationPanel extends StatelessWidget {
                     'Distance',
                     navigationState!.distanceText,
                   ),
-                  Container(
-                    width: 1,
-                    height: 40,
-                    color: Colors.grey[300],
-                  ),
+                  Container(width: 1, height: 40, color: Colors.grey[300]),
                   _buildNavInfoItem(
                     Icons.schedule,
                     'ETA',
@@ -145,9 +153,9 @@ class DriverNavigationPanel extends StatelessWidget {
                 ],
               ),
             ),
-          
+
           if (navigationState != null) const SizedBox(height: 16),
-          
+
           // Passenger / Trip Info Card
           Container(
             padding: const EdgeInsets.all(16),
@@ -161,11 +169,11 @@ class DriverNavigationPanel extends StatelessWidget {
                 CircleAvatar(
                   radius: 24,
                   backgroundColor: Colors.white,
-                  backgroundImage: rideData?['user']?['profilePicture'] != null 
-                      ? NetworkImage(rideData!['user']['profilePicture']) 
+                  backgroundImage: rideData?['user']?['profilePicture'] != null
+                      ? NetworkImage(rideData!['user']['profilePicture'])
                       : null,
-                  child: rideData?['user']?['profilePicture'] == null 
-                      ? const Icon(Icons.person, color: AppTheme.textSecondary) 
+                  child: rideData?['user']?['profilePicture'] == null
+                      ? const Icon(Icons.person, color: AppTheme.textSecondary)
                       : null,
                 ),
                 const SizedBox(width: 12),
@@ -185,15 +193,19 @@ class DriverNavigationPanel extends StatelessWidget {
                       Row(
                         children: [
                           Icon(
-                            status == 'pickup' || status == 'arrived' ? Icons.location_on : Icons.flag,
+                            status == 'pickup' || status == 'arrived'
+                                ? Icons.location_on
+                                : Icons.flag,
                             size: 14,
-                            color: status == 'pickup' || status == 'arrived' ? AppTheme.primaryColor : Colors.red,
+                            color: status == 'pickup' || status == 'arrived'
+                                ? AppTheme.primaryColor
+                                : Colors.red,
                           ),
                           const SizedBox(width: 4),
                           Expanded(
                             child: Text(
-                              status == 'pickup' || status == 'arrived' 
-                                  ? 'Pickup: ${rideData?['pickupLocation']?['address'] ?? 'Unknown'}' 
+                              status == 'pickup' || status == 'arrived'
+                                  ? 'Pickup: ${rideData?['pickupLocation']?['address'] ?? 'Unknown'}'
                                   : 'Drop-off: ${rideData?['dropoffLocation']?['address'] ?? 'Unknown'}',
                               style: TextStyle(
                                 fontSize: 13,
@@ -218,9 +230,54 @@ class DriverNavigationPanel extends StatelessWidget {
               ],
             ),
           ),
-          
+
           const Spacer(),
-          
+
+          // Cancel/End Early Button (secondary action)
+          if (status == 'pickup' || status == 'arrived') ...[
+            // Cancel button before ride starts
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: OutlinedButton.icon(
+                onPressed: onCancel,
+                icon: const Icon(Icons.close, color: Colors.red, size: 20),
+                label: const Text('Cancel Ride'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.red,
+                  side: const BorderSide(color: Colors.red),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ] else if (status == 'in_progress') ...[
+            // End ride early button during ride
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: OutlinedButton.icon(
+                onPressed: onEndEarly,
+                icon: const Icon(
+                  Icons.stop_circle_outlined,
+                  color: Colors.orange,
+                  size: 20,
+                ),
+                label: const Text('End Ride Early'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.orange,
+                  side: const BorderSide(color: Colors.orange),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+
           // Main Action Button
           SizedBox(
             width: double.infinity,
@@ -267,7 +324,7 @@ class DriverNavigationPanel extends StatelessWidget {
       ),
     );
   }
-  
+
   Widget _buildNavInfoItem(IconData icon, String label, String value) {
     return Column(
       children: [

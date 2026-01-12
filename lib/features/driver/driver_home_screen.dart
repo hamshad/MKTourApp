@@ -431,6 +431,25 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         );
       }
     });
+
+    // User cancelled the ride (before start)
+    _socketService.on('ride:cancelledByUser', (data) {
+      debugPrint('❌ [DriverHomeScreen] Ride Cancelled By User: $data');
+      if (mounted) {
+        final cancellationFee = data['cancellationFee'] ?? 0.0;
+        setState(() {
+          _status = 'online';
+          _currentRideId = null;
+          _rideData = null;
+        });
+
+        final message = cancellationFee > 0
+            ? 'User cancelled the ride.\nYou received £${cancellationFee.toStringAsFixed(2)} compensation.'
+            : 'User cancelled the ride.';
+
+        CustomSnackbar.show(context, message: message, type: SnackbarType.info);
+      }
+    });
   }
 
   void _handleNewRideRequest(dynamic data) {
@@ -648,6 +667,276 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         _status = 'online';
         _currentRideId = null;
       });
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  /// Show cancellation reason picker and cancel the ride
+  void _showCancellationReasonDialog() {
+    String? selectedReason;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Cancel Ride'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Select a reason for cancellation:'),
+              const SizedBox(height: 16),
+              _buildCancellationReasonOption(
+                'rider_no_show',
+                'Rider No Show',
+                selectedReason,
+                (value) => setDialogState(() => selectedReason = value),
+              ),
+              _buildCancellationReasonOption(
+                'rider_unreachable',
+                'Rider Unreachable',
+                selectedReason,
+                (value) => setDialogState(() => selectedReason = value),
+              ),
+              _buildCancellationReasonOption(
+                'safety_concern',
+                'Safety Concern',
+                selectedReason,
+                (value) => setDialogState(() => selectedReason = value),
+              ),
+              _buildCancellationReasonOption(
+                'vehicle_issue',
+                'Vehicle Issue',
+                selectedReason,
+                (value) => setDialogState(() => selectedReason = value),
+              ),
+              _buildCancellationReasonOption(
+                'driver_no_show',
+                'Cannot Make It',
+                selectedReason,
+                (value) => setDialogState(() => selectedReason = value),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Back'),
+            ),
+            ElevatedButton(
+              onPressed: selectedReason != null
+                  ? () {
+                      Navigator.pop(context);
+                      _cancelRideByDriver(selectedReason!);
+                    }
+                  : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Cancel Ride'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCancellationReasonOption(
+    String value,
+    String label,
+    String? selectedValue,
+    ValueChanged<String?> onChanged,
+  ) {
+    return RadioListTile<String>(
+      title: Text(label),
+      value: value,
+      groupValue: selectedValue,
+      onChanged: onChanged,
+      contentPadding: EdgeInsets.zero,
+      dense: true,
+    );
+  }
+
+  /// Cancel ride by driver with a reason
+  Future<void> _cancelRideByDriver(String reason) async {
+    if (_currentRideId == null) return;
+
+    setState(() => _isLoading = true);
+    try {
+      final response = await _apiService.cancelRideByDriver(
+        _currentRideId!,
+        reason: reason,
+      );
+
+      setState(() {
+        _status = 'online';
+        _currentRideId = null;
+        _rideData = null;
+      });
+
+      if (response['success'] == true) {
+        CustomSnackbar.show(
+          context,
+          message: 'Ride cancelled. User will receive full refund.',
+          type: SnackbarType.success,
+        );
+      } else {
+        CustomSnackbar.show(
+          context,
+          message: response['message'] ?? 'Failed to cancel ride',
+          type: SnackbarType.error,
+        );
+      }
+    } catch (e) {
+      debugPrint('Error cancelling ride: $e');
+      CustomSnackbar.show(
+        context,
+        message: 'Error cancelling ride',
+        type: SnackbarType.error,
+      );
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  /// Show end ride early dialog with reason selection
+  void _showEndRideEarlyDialog() {
+    String? selectedReason;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('End Ride Early'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'The fare will be adjusted based on actual distance traveled.',
+                style: TextStyle(color: Colors.grey),
+              ),
+              const SizedBox(height: 16),
+              const Text('Select a reason:'),
+              const SizedBox(height: 8),
+              _buildCancellationReasonOption(
+                'user_requested',
+                'User Requested',
+                selectedReason,
+                (value) => setDialogState(() => selectedReason = value),
+              ),
+              _buildCancellationReasonOption(
+                'wrong_destination',
+                'Wrong Destination',
+                selectedReason,
+                (value) => setDialogState(() => selectedReason = value),
+              ),
+              _buildCancellationReasonOption(
+                'rider_misbehavior',
+                'Rider Misbehavior',
+                selectedReason,
+                (value) => setDialogState(() => selectedReason = value),
+              ),
+              _buildCancellationReasonOption(
+                'safety_concern',
+                'Safety Concern',
+                selectedReason,
+                (value) => setDialogState(() => selectedReason = value),
+              ),
+              _buildCancellationReasonOption(
+                'vehicle_issue',
+                'Vehicle Issue',
+                selectedReason,
+                (value) => setDialogState(() => selectedReason = value),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Back'),
+            ),
+            ElevatedButton(
+              onPressed: selectedReason != null
+                  ? () {
+                      Navigator.pop(context);
+                      _endRideEarly(selectedReason!);
+                    }
+                  : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('End Ride'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// End the ride early with adjusted fare
+  Future<void> _endRideEarly(String reason) async {
+    if (_currentRideId == null) return;
+
+    setState(() => _isLoading = true);
+    try {
+      final response = await _apiService.endRideEarly(
+        _currentRideId!,
+        latitude: _currentLocation.latitude,
+        longitude: _currentLocation.longitude,
+        reason: reason,
+      );
+
+      if (response['success'] == true) {
+        final adjustedFare = response['data']?['adjustedFare'] ?? 0.0;
+        final actualDistance = response['data']?['actualDistance'] ?? 0.0;
+
+        setState(() {
+          _status = 'complete';
+        });
+
+        // Show result dialog
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: const Text('Ride Ended'),
+            content: Text(
+              'Adjusted fare: £${adjustedFare.toStringAsFixed(2)}\n'
+              'Distance traveled: ${actualDistance.toStringAsFixed(1)} km',
+            ),
+            actions: [
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  setState(() {
+                    _status = 'online';
+                    _currentRideId = null;
+                    _rideData = null;
+                  });
+                },
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      } else {
+        CustomSnackbar.show(
+          context,
+          message: response['message'] ?? 'Failed to end ride',
+          type: SnackbarType.error,
+        );
+      }
+    } catch (e) {
+      debugPrint('Error ending ride early: $e');
+      CustomSnackbar.show(
+        context,
+        message: 'Error ending ride',
+        type: SnackbarType.error,
+      );
     } finally {
       setState(() => _isLoading = false);
     }
@@ -980,6 +1269,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         status: _status,
         rideData: _rideData,
         onAction: _handleRideAction,
+        onCancel: _showCancellationReasonDialog,
+        onEndEarly: _showEndRideEarlyDialog,
         navigationState: _navigationState,
       );
     }

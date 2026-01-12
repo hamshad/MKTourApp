@@ -68,6 +68,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
   // Connection status subscription
   StreamSubscription<bool>? _connectionSubscription;
 
+  // Cancellation state
+  bool _isCancelling = false;
+
   @override
   void initState() {
     super.initState();
@@ -451,6 +454,92 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
       }
     });
 
+    // Driver cancelled the ride (before start)
+    _socketService.on('ride:cancelledByDriver', (data) {
+      if (mounted) {
+        debugPrint('❌ [RideAssignedScreen] Ride Cancelled By Driver: $data');
+        final reason = data['reason'] ?? 'Unknown reason';
+        final refundStatus = data['refundStatus'] ?? 'processing';
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: const Text('Ride Cancelled'),
+            content: Text(
+              'Driver cancelled the ride.\nReason: $reason\n\nFull refund is $refundStatus.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context); // Close dialog
+                  Navigator.pushNamedAndRemoveUntil(
+                    context,
+                    '/home',
+                    (route) => false,
+                  );
+                },
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    });
+
+    // Ride ended early by driver (during ride)
+    _socketService.on('ride:earlyCompleted', (data) {
+      if (mounted) {
+        debugPrint('🏁 [RideAssignedScreen] Ride Early Completed: $data');
+        final fare = data['fare'] ?? 0.0;
+        final originalFare = data['originalFare'] ?? widget.fare;
+        final actualDistance = data['actualDistance'] ?? 0.0;
+        final reason = data['reason'] ?? 'Driver ended ride early';
+
+        setState(() {
+          _rideStatus = 'early_completed';
+        });
+
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: const Text('Ride Ended Early'),
+            content: Text(
+              'Your ride was ended early.\n\n'
+              'Original fare: £${originalFare.toStringAsFixed(2)}\n'
+              'Adjusted fare: £${fare.toStringAsFixed(2)}\n'
+              'Distance traveled: ${actualDistance.toStringAsFixed(1)} km\n\n'
+              'Reason: $reason',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context); // Close dialog
+                  // Navigate to ride complete screen with adjusted fare
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => RideCompleteScreen(
+                        rideData: {
+                          'bookingId': widget.rideId,
+                          'driver': _driver,
+                          'fare': fare,
+                          'originalFare': originalFare,
+                          'actualDistance': actualDistance,
+                          'earlyCompleted': true,
+                        },
+                      ),
+                    ),
+                  );
+                },
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    });
+
     _socketService.on('ride:expired', (data) {
       if (mounted) {
         debugPrint('⚠️ [RideAssignedScreen] Ride Expired: $data');
@@ -600,6 +689,138 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
     });
   }
 
+  /// Show cancellation confirmation dialog
+  void _showCancellationConfirmation() {
+    // Determine if ride has been accepted (driver assigned)
+    final bool hasDriverAssigned =
+        _rideStatus == 'driver_assigned' || _rideStatus == 'driver_arrived';
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cancel Ride?'),
+        content: Text(
+          hasDriverAssigned
+              ? 'Are you sure you want to cancel this ride?\n\n'
+                    'Note: A cancellation fee may apply if cancelled after the grace period (2 minutes after driver acceptance).'
+              : 'Are you sure you want to cancel your ride request?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('No, Keep Ride'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _cancelRide();
+            },
+            child: Text('Yes, Cancel', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Cancel the ride using the appropriate API endpoint
+  Future<void> _cancelRide() async {
+    if (_isCancelling) return;
+
+    setState(() => _isCancelling = true);
+
+    try {
+      // Use the new cancelRideByUser endpoint for proper cancellation handling
+      final response = await _apiService.cancelRideByUser(widget.rideId);
+
+      if (!mounted) return;
+
+      if (response['success'] == true) {
+        final data = response['data'];
+        final cancellationFee = data?['cancellationFee'] ?? 0.0;
+        final refundStatus = data?['refundStatus'] ?? 'refunded';
+
+        if (cancellationFee > 0) {
+          // Show cancellation fee dialog
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => AlertDialog(
+              title: const Text('Cancellation Fee'),
+              content: Text(
+                'Your ride has been cancelled.\n\n'
+                'A cancellation fee of £${cancellationFee.toStringAsFixed(2)} was charged.\n'
+                'Refund status: $refundStatus',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(context); // Close dialog
+                    Navigator.pushNamedAndRemoveUntil(
+                      context,
+                      '/home',
+                      (route) => false,
+                    );
+                  },
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        } else {
+          // Full refund - show success message and navigate home
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Ride cancelled. Full refund processed.'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+        }
+      } else {
+        // Handle error cases
+        final message = response['message'] ?? 'Failed to cancel ride';
+        final error = response['error'];
+
+        if (error == 'Bad Request' && message.contains('started')) {
+          // Ride already started
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Cannot Cancel'),
+              content: const Text(
+                'Ride has already started. Please ask driver to end ride early if needed.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(message), backgroundColor: Colors.red),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('🔴 [RideAssignedScreen] Cancel error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to cancel ride: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isCancelling = false);
+      }
+    }
+  }
+
   @override
   void dispose() {
     // Clean up marker interpolation
@@ -622,6 +843,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
     _socketService.off('ride:driverArrived');
     _socketService.off('ride:otpExpired');
     _socketService.off('ride:cancelled');
+    _socketService.off('ride:cancelledByDriver');
+    _socketService.off('ride:earlyCompleted');
     _socketService.off('ride:expired');
     _socketService.off('ride:longRunning');
     _socketService.off('user:status');
@@ -728,14 +951,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: () {
-                  // Cancel logic with reason
-                  _apiService.cancelRide(
-                    widget.rideId,
-                    reason: "user_cancelled",
-                  );
-                  Navigator.pop(context);
-                },
+                onPressed: () => _showCancellationConfirmation(),
                 icon: const Icon(Icons.close),
                 label: const Text('Cancel Request'),
                 style: OutlinedButton.styleFrom(
@@ -984,6 +1200,24 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
                     backgroundColor: Colors.red.shade50,
                     foregroundColor: Colors.red,
                     padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
+                ),
+              ),
+            ],
+            // Cancel button - only show before ride starts (driver_assigned or driver_arrived)
+            if (_rideStatus == 'driver_assigned' ||
+                _rideStatus == 'driver_arrived') ...[
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _showCancellationConfirmation(),
+                  icon: const Icon(Icons.close, color: Colors.red),
+                  label: const Text('Cancel Ride'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red,
+                    side: const BorderSide(color: Colors.red),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                 ),
               ),

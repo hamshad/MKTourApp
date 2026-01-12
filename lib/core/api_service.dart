@@ -594,6 +594,203 @@ class ApiService {
     });
   }
 
+  /// User cancels ride before it starts
+  /// Returns cancellation fee info and refund status
+  /// - Within grace period (< 2 min after acceptance): Full refund
+  /// - After grace period: 20% cancellation fee
+  Future<Map<String, dynamic>> cancelRideByUser(String rideId) async {
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
+    debugPrint('🔵 [ApiService] cancelRideByUser called');
+    debugPrint('🔵 [Request] URL: ${ApiConstants.cancelRideByUser(rideId)}');
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+
+      if (token == null) {
+        throw Exception('No auth token found');
+      }
+
+      final response = await http.post(
+        Uri.parse(ApiConstants.cancelRideByUser(rideId)),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({}),
+      );
+
+      debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
+      debugPrint('🟣 [Response] Body: ${response.body}');
+
+      final responseData = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        debugPrint('🟢 [ApiService] cancelRideByUser Success');
+        return responseData;
+      } else if (response.statusCode == 400) {
+        // Ride already started or other validation error
+        debugPrint(
+          '🔴 [ApiService] cancelRideByUser Failed: ${responseData['message']}',
+        );
+        return {
+          'success': false,
+          'message': responseData['message'] ?? 'Cannot cancel ride',
+          'error': responseData['error'] ?? 'Bad Request',
+        };
+      } else if (response.statusCode == 403) {
+        debugPrint('🔴 [ApiService] cancelRideByUser Forbidden');
+        return {
+          'success': false,
+          'message':
+              responseData['message'] ?? 'Not authorized to cancel this ride',
+          'error': 'Forbidden',
+        };
+      } else {
+        debugPrint('🔴 [ApiService] cancelRideByUser Failed');
+        return {
+          'success': false,
+          'message': responseData['message'] ?? 'Failed to cancel ride',
+        };
+      }
+    } catch (e) {
+      debugPrint('🔴 [ApiService] cancelRideByUser Error: $e');
+      return {'success': false, 'message': 'Error cancelling ride: $e'};
+    }
+  }
+
+  /// Driver cancels ride before it starts
+  /// Requires a reason from valid options:
+  /// - rider_no_show, safety_concern, rider_unreachable, vehicle_issue, driver_no_show
+  Future<Map<String, dynamic>> cancelRideByDriver(
+    String rideId, {
+    required String reason,
+  }) async {
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
+    debugPrint('🔵 [ApiService] cancelRideByDriver called');
+    debugPrint('🔵 [Request] URL: ${ApiConstants.cancelRideByDriver(rideId)}');
+    debugPrint('🔵 [Request] Body: {reason: $reason}');
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+
+      if (token == null) {
+        throw Exception('No auth token found');
+      }
+
+      final response = await http.post(
+        Uri.parse(ApiConstants.cancelRideByDriver(rideId)),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'reason': reason}),
+      );
+
+      debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
+      debugPrint('🟣 [Response] Body: ${response.body}');
+
+      final responseData = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        debugPrint('🟢 [ApiService] cancelRideByDriver Success');
+        return responseData;
+      } else if (response.statusCode == 400) {
+        debugPrint(
+          '🔴 [ApiService] cancelRideByDriver Failed: ${responseData['message']}',
+        );
+        return {
+          'success': false,
+          'message': responseData['message'] ?? 'Cannot cancel ride',
+          'error': responseData['error'] ?? 'Bad Request',
+        };
+      } else {
+        debugPrint('🔴 [ApiService] cancelRideByDriver Failed');
+        return {
+          'success': false,
+          'message': responseData['message'] ?? 'Failed to cancel ride',
+        };
+      }
+    } catch (e) {
+      debugPrint('🔴 [ApiService] cancelRideByDriver Error: $e');
+      return {'success': false, 'message': 'Error cancelling ride: $e'};
+    }
+  }
+
+  /// Driver ends ride early during an in-progress ride
+  /// Returns adjusted fare based on actual distance traveled
+  /// Valid reasons: user_requested, rider_misbehavior, safety_concern, wrong_destination, vehicle_issue
+  Future<Map<String, dynamic>> endRideEarly(
+    String rideId, {
+    required double latitude,
+    required double longitude,
+    required String reason,
+  }) async {
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
+    debugPrint('🔵 [ApiService] endRideEarly called');
+    debugPrint('🔵 [Request] URL: ${ApiConstants.endRideEarly(rideId)}');
+    debugPrint(
+      '🔵 [Request] Body: {latitude: $latitude, longitude: $longitude, reason: $reason}',
+    );
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+
+      if (token == null) {
+        throw Exception('No auth token found');
+      }
+
+      final response = await http.post(
+        Uri.parse(ApiConstants.endRideEarly(rideId)),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'latitude': latitude,
+          'longitude': longitude,
+          'reason': reason,
+        }),
+      );
+
+      debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
+      debugPrint('🟣 [Response] Body: ${response.body}');
+
+      final responseData = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        debugPrint('🟢 [ApiService] endRideEarly Success');
+        return responseData;
+      } else if (response.statusCode == 400) {
+        debugPrint(
+          '🔴 [ApiService] endRideEarly Failed: ${responseData['message']}',
+        );
+        return {
+          'success': false,
+          'message': responseData['message'] ?? 'Cannot end ride early',
+          'error': responseData['error'] ?? 'Bad Request',
+        };
+      } else {
+        debugPrint('🔴 [ApiService] endRideEarly Failed');
+        return {
+          'success': false,
+          'message': responseData['message'] ?? 'Failed to end ride early',
+        };
+      }
+    } catch (e) {
+      debugPrint('🔴 [ApiService] endRideEarly Error: $e');
+      return {'success': false, 'message': 'Error ending ride early: $e'};
+    }
+  }
+
   Future<Map<String, dynamic>> rateRide({
     required String bookingId,
     required int rating,
