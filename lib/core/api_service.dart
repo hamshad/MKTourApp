@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart'; // For debugPrint
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'constants/api_constants.dart';
@@ -1094,8 +1095,38 @@ class ApiService {
       );
       request.headers['Authorization'] = 'Bearer $token';
 
+      // Get the file extension and determine the correct MIME type
+      final filePath = licenseDocument.path;
+      final fileName = filePath.split('/').last;
+      final extension = fileName.split('.').last.toLowerCase();
+
+      String contentType;
+      switch (extension) {
+        case 'pdf':
+          contentType = 'application/pdf';
+          break;
+        case 'doc':
+          contentType = 'application/msword';
+          break;
+        case 'docx':
+          contentType =
+              'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+          break;
+        default:
+          contentType = 'application/octet-stream';
+      }
+
+      debugPrint('🔵 [Request] File name: $fileName');
+      debugPrint('🔵 [Request] Extension: $extension');
+      debugPrint('🔵 [Request] Content-Type: $contentType');
+
       request.files.add(
-        await http.MultipartFile.fromPath('document', licenseDocument.path),
+        await http.MultipartFile.fromPath(
+          'document',
+          licenseDocument.path,
+          filename: fileName,
+          contentType: MediaType.parse(contentType),
+        ),
       );
 
       debugPrint('🔵 [Request] Sending multipart request...');
