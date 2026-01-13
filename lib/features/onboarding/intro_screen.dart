@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../core/theme.dart';
 
@@ -14,23 +15,11 @@ class IntroScreen extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Spacer(),
-              // Lottie Animation Placeholder
-              // In a real app, use Lottie.asset('assets/taxi_animation.json')
-              // For now, we'll use a network one or a placeholder container
-              Container(
+              Image.file(
+                File('/Users/mokshassd/.gemini/antigravity/brain/21bdd7cf-e750-443f-a619-eae979b78097/onboarding_taxi_illustration_1768307016254.png'),
                 height: 300,
                 width: 300,
-                decoration: BoxDecoration(
-                  color: Colors.grey[200],
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: Icon(
-                    Icons.local_taxi_rounded,
-                    size: 100,
-                    color: Theme.of(context).primaryColor,
-                  ),
-                ),
+                fit: BoxFit.contain,
               ),
               const SizedBox(height: 40),
               Text(

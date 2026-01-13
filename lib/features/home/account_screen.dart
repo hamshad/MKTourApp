@@ -112,17 +112,17 @@ class _AccountScreenState extends State<AccountScreen> {
                               color: AppTheme.surfaceColor,
                               borderRadius: BorderRadius.circular(16),
                             ),
-                            child: const Row(
+                            child: Row(
                               children: [
-                                Icon(
+                                const Icon(
                                   Icons.star,
                                   size: 14,
                                   color: AppTheme.textPrimary,
                                 ),
-                                SizedBox(width: 4),
+                                const SizedBox(width: 4),
                                 Text(
-                                  '4.8',
-                                  style: TextStyle(
+                                  (user?['rating'] ?? 5.0).toString(),
+                                  style: const TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w600,
                                     color: AppTheme.textPrimary,

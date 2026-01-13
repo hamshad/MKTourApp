@@ -53,9 +53,15 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _initLocation();
+    _fetchRideHistory();
     _startBannerTimer();
     _setupSocketListeners();
     _setupConnectionListener();
+  }
+
+  Future<void> _fetchRideHistory() async {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    await auth.fetchRideHistory();
   }
 
   /// Setup connection listener to re-emit user online on reconnection
@@ -748,7 +754,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ),
                           TextButton(
-                            onPressed: () {},
+                            onPressed: () =>
+                                setState(() => _selectedIndex = 1),
                             child: Text(
                               'See all',
                               style: GoogleFonts.outfit(
@@ -760,114 +767,37 @@ class _HomeScreenState extends State<HomeScreen> {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      InkWell(
-                        onTap: () {
-                          // Action for recent activity
-                        },
-                        borderRadius: BorderRadius.circular(20),
-                        child: Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(20),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.05),
-                                blurRadius: 15,
-                                offset: const Offset(0, 5),
-                              ),
-                            ],
-                            border: Border.all(color: Colors.grey[100]!),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFF5F5F5),
-                                  borderRadius: BorderRadius.circular(12),
+                      Consumer<AuthProvider>(
+                        builder: (context, auth, child) {
+                          if (auth.rideHistory.isEmpty) {
+                            return Center(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 24,
                                 ),
-                                child: const Icon(
-                                  Icons.location_on,
-                                  color: Color(0xFFFF6B35),
+                                child: Text(
+                                  'Your ride history will appear here',
+                                  style: GoogleFonts.outfit(
+                                    color: Colors.grey[500],
+                                    fontSize: 14,
+                                  ),
                                 ),
                               ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Office',
-                                      style: GoogleFonts.outfit(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.black87,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      '2.4 mi • 15 min',
-                                      style: GoogleFonts.outfit(
-                                        fontSize: 13,
-                                        color: Colors.grey[500],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const Icon(
-                                Icons.arrow_forward_ios,
-                                size: 16,
-                                color: Colors.grey,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+                            );
+                          }
 
+                          // Show only the 2 most recent rides
+                          final displays = auth.rideHistory.take(2).toList();
+
+                          return Column(
+                            children:
+                                displays.map((ride) => _buildRideItem(ride)).toList(),
+                          );
+                        },
+                      ),
                       const SizedBox(height: 32),
 
-                      // Explore Section
-                      Text(
-                        'Explore',
-                        style: GoogleFonts.outfit(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            _buildExploreCard(
-                              title: 'Rentals',
-                              subtitle: 'Rent by the hour',
-                              icon: Icons.access_time,
-                              color: const Color(0xFFE3F2FD),
-                            ),
-                            const SizedBox(width: 12),
-                            _buildExploreCard(
-                              title: 'Outstation',
-                              subtitle: 'Ride out of town',
-                              icon: Icons.map,
-                              color: const Color(0xFFE8F5E9),
-                            ),
-                            const SizedBox(width: 12),
-                            _buildExploreCard(
-                              title: 'Electric',
-                              subtitle: 'Eco-friendly rides',
-                              icon: Icons.electric_car,
-                              color: const Color(0xFFFFF3E0),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(
-                        height: 100,
-                      ), // Bottom padding for scrolling
+                      const SizedBox(height: 100),
                     ],
                   ),
                 ),
@@ -1101,6 +1031,91 @@ class _HomeScreenState extends State<HomeScreen> {
       return 'Good Afternoon';
     } else {
       return 'Good Evening';
+    }
+  }
+
+  Widget _buildRideItem(Map<String, dynamic> ride) {
+    final dropoff = ride['dropoffLocation']?['address'] ?? 'Unknown Destination';
+    final date = _formatDate(ride['createdAt']);
+    final fare = ride['fare'] ?? 0.0;
+
+    return InkWell(
+      onTap: () {
+        // Navigate to ride details if needed
+      },
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 15,
+              offset: const Offset(0, 5),
+            ),
+          ],
+          border: Border.all(color: Colors.grey[100]!),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF5F5F5),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.history,
+                color: Color(0xFFFF6B35),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    dropoff,
+                    style: GoogleFonts.outfit(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '$date • £${fare.toStringAsFixed(2)}',
+                    style: GoogleFonts.outfit(
+                      fontSize: 13,
+                      color: Colors.grey[500],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.arrow_forward_ios,
+              size: 16,
+              color: Colors.grey,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatDate(String? dateStr) {
+    if (dateStr == null) return '';
+    try {
+      final dateTime = DateTime.parse(dateStr);
+      return '${dateTime.day}/${dateTime.month}/${dateTime.year}';
+    } catch (e) {
+      return '';
     }
   }
 }

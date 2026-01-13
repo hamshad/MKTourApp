@@ -195,9 +195,9 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                                   ),
                                 ),
                                 const SizedBox(height: 4),
-                                const Text(
-                                  'Visa ****4242',
-                                  style: TextStyle(
+                                Text(
+                                  widget.rideData['paymentMethod'] ?? 'Paid via Card',
+                                  style: const TextStyle(
                                     fontWeight: FontWeight.w600,
                                     fontSize: 16,
                                   ),
@@ -232,11 +232,11 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                           ),
                           const SizedBox(height: 20),
 
-                          _buildFareRow('Base fare', '£50.00'),
+                           _buildFareRow('Base fare', '£${(widget.rideData['vehicle']?['basePrice'] ?? 15.0).toStringAsFixed(2)}'),
                           const SizedBox(height: 12),
                           _buildFareRow(
                             'Distance (${_distance.toStringAsFixed(1)} mi)',
-                            '£${(_fare - 50).toStringAsFixed(2)}',
+                            '£${(_fare - (widget.rideData['vehicle']?['basePrice'] ?? 15.0)).toStringAsFixed(2)}',
                           ),
 
                           if (_selectedTip > 0) ...[

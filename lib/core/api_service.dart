@@ -35,23 +35,8 @@ class ApiService {
         throw Exception('Failed to login: ${response.body}');
       }
     } catch (e) {
-      // Return mock success if server is unreachable for demo purposes
-      print('API Error: $e. Returning mock success.');
-      // Mock token saving
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_prefsAuthTokenKey, 'mock_token_fallback');
-      await prefs.setString(_prefsAuthRoleKey, 'user');
-
-      return {
-        'success': true,
-        'token': 'mock_token_fallback',
-        'user': {
-          'id': 1,
-          'firstName': 'Demo',
-          'lastName': 'User',
-          'email': email,
-        },
-      };
+      debugPrint('🔴 API Error (login): $e');
+      rethrow;
     }
   }
 
@@ -86,22 +71,8 @@ class ApiService {
         throw Exception('Failed to signup: ${response.body}');
       }
     } catch (e) {
-      print('API Error: $e. Returning mock success.');
-      // Mock token saving
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_prefsAuthTokenKey, 'mock_token_fallback');
-      await prefs.setString(_prefsAuthRoleKey, 'user');
-
-      return {
-        'success': true,
-        'token': 'mock_token_fallback',
-        'user': {
-          'id': 2,
-          'firstName': firstName,
-          'lastName': lastName,
-          'email': email,
-        },
-      };
+      debugPrint('🔴 API Error (signup): $e');
+      rethrow;
     }
   }
 
@@ -121,21 +92,8 @@ class ApiService {
         throw Exception('Failed to book ride');
       }
     } catch (e) {
-      print('API Error: $e. Returning mock booking.');
-      return {
-        'success': true,
-        'bookingId': "book_mock_${DateTime.now().millisecondsSinceEpoch}",
-        'status': "driver_assigned",
-        'otp': "1234", // Add OTP to mock
-        'driver': {
-          "name": "Mock Driver",
-          "vehicle": "Mock Car",
-          "plate": "MOCK 123",
-          "rating": 5.0,
-        },
-        'eta': "5 mins",
-        'fare': 15.50,
-      };
+      debugPrint('🔴 API Error (bookRide): $e');
+      rethrow;
     }
   }
 
@@ -150,11 +108,8 @@ class ApiService {
         throw Exception('Failed to get status');
       }
     } catch (e) {
-      // Mock status for demo
-      return {
-        'status': 'driver_assigned',
-        'location': {'lat': 51.5074, 'lng': -0.1278},
-      };
+      debugPrint('🔴 API Error (getRideStatus): $e');
+      rethrow;
     }
   }
 
