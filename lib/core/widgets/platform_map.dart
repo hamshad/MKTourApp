@@ -8,6 +8,7 @@ class MapMarker {
   final double lng;
   final Widget? child; // Not used in Google Maps but kept for API compatibility
   final String? title;
+  final Color? markerColor; // Used for custom marker colors
 
   MapMarker({
     required this.id,
@@ -15,7 +16,34 @@ class MapMarker {
     required this.lng,
     this.child,
     this.title,
+    this.markerColor,
   });
+
+  /// Convert Color to Google Maps marker hue
+  double? get markerHue {
+    if (markerColor == null) return null;
+    
+    // Convert common colors to Google Maps hue values
+    if (markerColor == Colors.green || markerColor!.value == Colors.green.value) {
+      return BitmapDescriptor.hueGreen;
+    } else if (markerColor == Colors.red || markerColor!.value == Colors.red.value) {
+      return BitmapDescriptor.hueRed;
+    } else if (markerColor == Colors.blue || markerColor!.value == Colors.blue.value) {
+      return BitmapDescriptor.hueBlue;
+    } else if (markerColor == Colors.orange || markerColor!.value == Colors.orange.value) {
+      return BitmapDescriptor.hueOrange;
+    } else if (markerColor == Colors.yellow || markerColor!.value == Colors.yellow.value) {
+      return BitmapDescriptor.hueYellow;
+    } else if (markerColor == Colors.cyan || markerColor!.value == Colors.cyan.value) {
+      return BitmapDescriptor.hueCyan;
+    } else if (markerColor == Colors.purple || markerColor!.value == Colors.purple.value) {
+      return BitmapDescriptor.hueViolet;
+    }
+    
+    // Default: try to extract hue from the color
+    final hslColor = HSLColor.fromColor(markerColor!);
+    return hslColor.hue;
+  }
 }
 
 class MapPolyline {
@@ -108,32 +136,58 @@ class _PlatformMapState extends State<PlatformMap> {
     );
   }
   void _fitBounds() {
-    if (_controller == null || widget.bounds == null) return;
+    if (_controller == null || widget.bounds == null) {
+      debugPrint('🗺️ PlatformMap: Cannot fit bounds - controller: ${_controller != null}, bounds: ${widget.bounds != null}');
+      return;
+    }
 
     try {
       final bounds = widget.bounds;
+      final swLat = bounds.southWest.latitude;
+      final swLng = bounds.southWest.longitude;
+      final neLat = bounds.northEast.latitude;
+      final neLng = bounds.northEast.longitude;
+      
+      debugPrint('🗺️ PlatformMap: Fitting bounds...');
+      debugPrint('   → SW: ($swLat, $swLng)');
+      debugPrint('   → NE: ($neLat, $neLng)');
+      
+      // Calculate center point
+      final centerLat = (swLat + neLat) / 2;
+      final centerLng = (swLng + neLng) / 2;
+      
+      debugPrint('   → Center: ($centerLat, $centerLng)');
+      
       final googleBounds = LatLngBounds(
-        southwest: LatLng(
-          bounds.southWest.latitude,
-          bounds.southWest.longitude,
-        ),
-        northeast: LatLng(
-          bounds.northEast.latitude,
-          bounds.northEast.longitude,
-        ),
+        southwest: LatLng(swLat, swLng),
+        northeast: LatLng(neLat, neLng),
       );
 
-      _controller!.animateCamera(
-        CameraUpdate.newLatLngBounds(googleBounds, 100),
+      // Use moveCamera instead of animateCamera for more reliable initial positioning
+      _controller!.moveCamera(
+        CameraUpdate.newLatLngBounds(googleBounds, 40), // Smaller padding for 180px height map
       );
+      debugPrint('🗺️ PlatformMap: Bounds fitted successfully');
     } catch (e) {
       debugPrint('🗺️ PlatformMap: Error fitting bounds: $e');
+      // Fallback: try to at least center on the first marker
+      if (widget.markers.isNotEmpty) {
+        final m = widget.markers.first;
+        _controller?.moveCamera(
+          CameraUpdate.newLatLngZoom(LatLng(m.lat, m.lng), 14),
+        );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     debugPrint('🗺️ PlatformMap: Building with Google Maps');
+    debugPrint('   → Markers: ${widget.markers.length}');
+    debugPrint('   → Polylines: ${widget.polylines.length}');
+    if (widget.polylines.isNotEmpty) {
+      debugPrint('   → First polyline points: ${widget.polylines.first.points.length}');
+    }
 
     // Convert MapMarker to Google Maps Marker (Moved to build for reactivity)
     final googleMarkers = widget.markers.map((m) {
@@ -141,6 +195,10 @@ class _PlatformMapState extends State<PlatformMap> {
         markerId: MarkerId(m.id),
         position: LatLng(m.lat, m.lng),
         infoWindow: InfoWindow(title: m.title ?? m.id),
+        // Use custom colored marker if markerColor is specified
+        icon: m.markerHue != null
+            ? BitmapDescriptor.defaultMarkerWithHue(m.markerHue!)
+            : BitmapDescriptor.defaultMarker,
       );
     }).toSet();
 
@@ -161,10 +219,19 @@ class _PlatformMapState extends State<PlatformMap> {
       );
     }).toSet();
 
+    // Determine initial camera target: prefer center of bounds, fallback to initialLat/Lng
+    LatLng initialTarget = LatLng(widget.initialLat, widget.initialLng);
+    if (widget.bounds != null) {
+      initialTarget = LatLng(
+        (widget.bounds.southWest.latitude + widget.bounds.northEast.latitude) / 2,
+        (widget.bounds.southWest.longitude + widget.bounds.northEast.longitude) / 2,
+      );
+    }
+
     return GoogleMap(
       initialCameraPosition: CameraPosition(
-        target: LatLng(widget.initialLat, widget.initialLng),
-        zoom: 14.0,
+        target: initialTarget,
+        zoom: widget.bounds != null ? 12.0 : 14.0, // Zoom out slightly if showing bounds
         bearing: widget.bearing,
         tilt: widget.tilt,
       ),
@@ -174,7 +241,8 @@ class _PlatformMapState extends State<PlatformMap> {
         debugPrint('🗺️ PlatformMap: Google Map created successfully');
         _controller = controller;
         if (widget.bounds != null) {
-          Future.delayed(const Duration(milliseconds: 100), _fitBounds);
+          // Extra delay to ensure layout is complete
+          Future.delayed(const Duration(milliseconds: 600), _fitBounds);
         }
       },
       onTap: (LatLng position) {

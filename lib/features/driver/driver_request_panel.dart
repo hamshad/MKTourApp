@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/theme.dart';
 import '../../core/services/places_service.dart';
+import '../../core/enums/vehicle_type.dart';
 
 class DriverRequestPanel extends StatefulWidget {
   final VoidCallback onAccept;
@@ -66,6 +67,20 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
 
     if (mounted) {
       setState(() => _isLoadingAddresses = false);
+    }
+  }
+
+  /// Get display name for vehicle type from backend
+  /// Handles the exact backend keys: sedan, suv, hatchback, van
+  String _getVehicleDisplayName(String? vehicleType) {
+    if (vehicleType == null) return 'Standard';
+    
+    try {
+      final type = VehicleType.fromString(vehicleType);
+      return type.displayName;
+    } catch (e) {
+      // Fallback for unknown types
+      return vehicleType.substring(0, 1).toUpperCase() + vehicleType.substring(1);
     }
   }
 
@@ -148,12 +163,22 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                           color: AppTheme.textPrimary,
                         ),
                       ),
+                      const SizedBox(height: 4),
+                      // Display vehicle type from backend
+                      Text(
+                        _getVehicleDisplayName(widget.rideData?['vehicleType']),
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[600],
+                        ),
+                      ),
                     ],
                   ),
                 ),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
+                    // Display fare from backend (already calculated with surge/night/weekend)
                     Text(
                       '£${(widget.rideData?['fare'] ?? 0.0).toStringAsFixed(2)}',
                       style: const TextStyle(
@@ -222,7 +247,7 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                       ),
                     ),
                     Text(
-                      '${(widget.rideData?['distance'] ?? 0.0).toStringAsFixed(1)} km trip',
+                      '${(widget.rideData?['distance'] ?? 0.0).toStringAsFixed(1)} mi trip',
                       style: TextStyle(
                         color: AppTheme.textSecondary,
                         fontSize: 13,

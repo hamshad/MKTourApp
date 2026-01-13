@@ -807,7 +807,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
-                                      '2.4 km • 15 min',
+                                      '2.4 mi • 15 min',
                                       style: GoogleFonts.outfit(
                                         fontSize: 13,
                                         color: Colors.grey[500],

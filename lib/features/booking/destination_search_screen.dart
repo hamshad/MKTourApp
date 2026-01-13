@@ -25,6 +25,7 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
     text: "Current Location",
   );
   final TextEditingController _dropoffController = TextEditingController();
+  final FocusNode _pickupFocus = FocusNode();
   final FocusNode _dropoffFocus = FocusNode();
   final PanelController _panelController = PanelController();
 
@@ -100,12 +101,16 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
       }
     });
 
-    _dropoffController.addListener(
-      () => _onSearchChanged(_dropoffController.text),
-    );
-    _pickupController.addListener(
-      () => _onSearchChanged(_pickupController.text),
-    );
+    _dropoffController.addListener(() {
+      if (_dropoffFocus.hasFocus) {
+        _onSearchChanged(_dropoffController.text);
+      }
+    });
+    _pickupController.addListener(() {
+      if (_pickupFocus.hasFocus) {
+        _onSearchChanged(_pickupController.text);
+      }
+    });
   }
 
   Future<void> _getCurrentLocation() async {
@@ -178,6 +183,7 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
   void dispose() {
     _pickupController.dispose();
     _dropoffController.dispose();
+    _pickupFocus.dispose();
     _dropoffFocus.dispose();
     super.dispose();
   }
@@ -692,12 +698,12 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
   Widget _buildTextField(
     TextEditingController controller,
     String hint,
-    bool autoFocus, {
+    bool isDropoff, {
     VoidCallback? onTap,
   }) {
     return TextField(
       controller: controller,
-      focusNode: autoFocus ? _dropoffFocus : null,
+      focusNode: isDropoff ? _dropoffFocus : _pickupFocus,
       onTap: onTap,
       decoration: InputDecoration(
         hintText: hint,

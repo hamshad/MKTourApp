@@ -726,6 +726,10 @@ class ApiService {
   /// Driver ends ride early during an in-progress ride
   /// Returns adjusted fare based on actual distance traveled
   /// Valid reasons: user_requested, rider_misbehavior, safety_concern, wrong_destination, vehicle_issue
+  /// 
+  /// Backend API: PATCH /api/v1/rides/{rideId}/end-early
+  /// Request body: { driverLat, driverLon, earlyEndReason }
+  /// Response: { status, actualDistance, fare, paymentStatus }
   Future<Map<String, dynamic>> endRideEarly(
     String rideId, {
     required double latitude,
@@ -738,7 +742,7 @@ class ApiService {
     debugPrint('🔵 [ApiService] endRideEarly called');
     debugPrint('🔵 [Request] URL: ${ApiConstants.endRideEarly(rideId)}');
     debugPrint(
-      '🔵 [Request] Body: {latitude: $latitude, longitude: $longitude, reason: $reason}',
+      '🔵 [Request] Body: {driverLat: $latitude, driverLon: $longitude, earlyEndReason: $reason}',
     );
 
     try {
@@ -749,16 +753,17 @@ class ApiService {
         throw Exception('No auth token found');
       }
 
-      final response = await http.post(
+      // Use PATCH method and match backend API field names
+      final response = await http.patch(
         Uri.parse(ApiConstants.endRideEarly(rideId)),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
         body: jsonEncode({
-          'latitude': latitude,
-          'longitude': longitude,
-          'reason': reason,
+          'driverLat': latitude,
+          'driverLon': longitude,
+          'earlyEndReason': reason, // Matches: user_requested, safety_concern, etc.
         }),
       );
 
@@ -769,6 +774,7 @@ class ApiService {
 
       if (response.statusCode == 200) {
         debugPrint('🟢 [ApiService] endRideEarly Success');
+        // Response contains: { status, actualDistance, fare, paymentStatus }
         return responseData;
       } else if (response.statusCode == 400) {
         debugPrint(

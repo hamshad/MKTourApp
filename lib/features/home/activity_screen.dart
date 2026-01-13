@@ -99,14 +99,17 @@ class _ActivityScreenState extends State<ActivityScreen> {
             // Ongoing includes everything that is NOT terminal
             return status != 'completed' &&
                 status != 'cancelled' &&
-                status != 'expired';
+                status != 'expired' &&
+                status != 'early_completed';
           }).toList();
         } else {
           // All Tab - apply chip filter
           rides = allRidesFromSource.where((ride) {
             if (_selectedFilter == 'All') return true;
             final status = (ride['status'] as String?)?.toLowerCase() ?? '';
-            return status == _selectedFilter.toLowerCase();
+            // Handle "In Progress" filter matching "in_progress" status
+            final filterValue = _selectedFilter.toLowerCase().replaceAll(' ', '_');
+            return status == filterValue;
           }).toList();
         }
 
@@ -165,7 +168,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
   }
 
   Widget _buildFilterBar() {
-    final filters = ['All', 'Pending', 'Completed', 'Cancelled', 'Expired'];
+    final filters = ['All', 'Requested', 'In Progress', 'Completed', 'Cancelled', 'Expired'];
     return Container(
       height: 60,
       padding: const EdgeInsets.symmetric(vertical: 12),
@@ -255,19 +258,23 @@ class _ActivityScreenState extends State<ActivityScreen> {
     switch (status.toLowerCase()) {
       case 'completed':
         return Colors.green;
+      case 'early_completed':
+        return Colors.lightGreen;
       case 'cancelled':
         return Colors.red;
       case 'expired':
         return Colors.orange;
-      case 'pending':
+      case 'requested':
+      case 'pending': // Legacy support
         return Colors.amber;
       case 'accepted':
       case 'driver_assigned':
         return Colors.blue;
-      case 'started':
       case 'in_progress':
+      case 'started': // Legacy support
         return Colors.purple;
       case 'arrived':
+      case 'driver_arrived':
         return Colors.teal;
       default:
         return Colors.grey;

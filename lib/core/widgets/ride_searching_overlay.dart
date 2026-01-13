@@ -326,7 +326,7 @@ class _RideSearchingOverlayState extends State<RideSearchingOverlay>
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '${distance.toStringAsFixed(1)} km',
+                            '${distance.toStringAsFixed(1)} mi',
                             style: GoogleFonts.outfit(
                               color: Colors.white,
                               fontSize: 20,

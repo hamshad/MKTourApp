@@ -906,7 +906,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             title: const Text('Ride Ended'),
             content: Text(
               'Adjusted fare: £${adjustedFare.toStringAsFixed(2)}\n'
-              'Distance traveled: ${actualDistance.toStringAsFixed(1)} km',
+              'Distance traveled: ${actualDistance.toStringAsFixed(1)} mi',
             ),
             actions: [
               ElevatedButton(

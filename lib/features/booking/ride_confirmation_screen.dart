@@ -37,17 +37,99 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   final PlacesService _placesService = PlacesService();
   bool _isLoading = false;
   bool _isFetchingFare = true;
+  String? _fareError; // Error message if fare fetch fails
   Map<String, dynamic>? _dynamicFareData;
+
+  // Route polyline points - initialized synchronously from passed data
+  late List<lat_lng.LatLng> _routePoints;
+  late fmap.LatLngBounds? _routeBounds;
 
   @override
   void initState() {
     super.initState();
+    // Initialize route synchronously from passed polyline
+    _initializeRouteSync();
+    // Only fetch fare asynchronously
     _fetchDirectionsAndFare();
+  }
+
+  /// Initialize route polyline synchronously from passed data
+  void _initializeRouteSync() {
+    final pickupCoords = widget.pickupLocation['coordinates'] as List;
+    final dropoffCoords = widget.dropoffLocation['coordinates'] as List;
+    
+    debugPrint('🗺️ RideConfirmationScreen: Initializing route...');
+    debugPrint('   → Polyline provided: ${widget.polyline != null}');
+    debugPrint('   → Polyline length: ${widget.polyline?.length ?? 0}');
+    
+    // If polyline was passed in, use it directly (synchronous)
+    if (widget.polyline != null && widget.polyline!.isNotEmpty) {
+      final points = <lat_lng.LatLng>[];
+      
+      // Debug: Check the first item type
+      if (widget.polyline!.isNotEmpty) {
+        final firstItem = widget.polyline!.first;
+        debugPrint('   → First polyline item type: ${firstItem.runtimeType}');
+        debugPrint('   → First polyline item: $firstItem');
+      }
+      
+      for (var p in widget.polyline!) {
+        if (p is lat_lng.LatLng) {
+          points.add(p);
+        } else if (p is Map) {
+          points.add(
+            lat_lng.LatLng(
+              (p['lat'] as num).toDouble(),
+              (p['lng'] as num).toDouble(),
+            ),
+          );
+        } else {
+          // Try to handle other LatLng types (e.g., from latlong2 without prefix)
+          try {
+            // Access latitude and longitude dynamically
+            final lat = (p as dynamic).latitude as double;
+            final lng = (p as dynamic).longitude as double;
+            points.add(lat_lng.LatLng(lat, lng));
+          } catch (e) {
+            debugPrint('   ⚠️ Could not convert point: $p (${p.runtimeType})');
+          }
+        }
+      }
+      
+      debugPrint('   → Converted points: ${points.length}');
+      
+      if (points.isNotEmpty) {
+        _routePoints = points;
+        _routeBounds = fmap.LatLngBounds.fromPoints(points);
+        debugPrint('   → Bounds: SW(${_routeBounds!.southWest.latitude}, ${_routeBounds!.southWest.longitude}) NE(${_routeBounds!.northEast.latitude}, ${_routeBounds!.northEast.longitude})');
+        debugPrint(
+          '✅ RideConfirmationScreen: Using provided polyline (${points.length} points)',
+        );
+        return;
+      }
+    }
+
+    // Fallback: straight line between pickup and dropoff (synchronous)
+    debugPrint('⚠️ RideConfirmationScreen: No polyline provided, using straight line');
+    _routePoints = [
+      lat_lng.LatLng(
+        (pickupCoords[1] as num).toDouble(),
+        (pickupCoords[0] as num).toDouble(),
+      ),
+      lat_lng.LatLng(
+        (dropoffCoords[1] as num).toDouble(),
+        (dropoffCoords[0] as num).toDouble(),
+      ),
+    ];
+    _routeBounds = fmap.LatLngBounds.fromPoints(_routePoints);
   }
 
   Future<void> _fetchDirectionsAndFare() async {
     debugPrint('🚀 RideConfirmationScreen: Initializing fare fetch...');
-    setState(() => _isFetchingFare = true);
+    setState(() {
+      _isFetchingFare = true;
+      _fareError = null; // Clear any previous error
+    });
 
     try {
       final pickupLat = widget.pickupLocation['coordinates'][1];
@@ -67,21 +149,38 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
         setState(() {
           _dynamicFareData = result;
           _isFetchingFare = false;
+          _fareError = null;
         });
-        debugPrint('✅ RideConfirmationScreen: Dynamic fare fetched: £${_dynamicFareData!['total_fare']}');
+        debugPrint(
+          '✅ RideConfirmationScreen: Dynamic fare fetched: £${_dynamicFareData!['total_fare']}',
+        );
       } else if (mounted) {
-        setState(() => _isFetchingFare = false);
-        debugPrint('⚠️ RideConfirmationScreen: Dynamic fare fetch failed, using initial partial data');
+        setState(() {
+          _isFetchingFare = false;
+          _fareError = 'Unable to calculate fare for this route. Please try a different location.';
+        });
+        debugPrint(
+          '❌ RideConfirmationScreen: Fare API returned null - cannot proceed',
+        );
       }
     } catch (e) {
-      debugPrint('❌ RideConfirmationScreen: Error fetching dynamic fare: $e');
+      debugPrint('❌ RideConfirmationScreen: Error fetching fare: $e');
       if (mounted) {
-        setState(() => _isFetchingFare = false);
+        setState(() {
+          _isFetchingFare = false;
+          _fareError = 'Failed to calculate fare. Please check your connection and try again.';
+        });
       }
     }
   }
 
-  Map<String, dynamic> get _currentFareData => _dynamicFareData ?? widget.fareData;
+  /// Retry fetching fare after an error
+  void _retryFetchFare() {
+    _fetchDirectionsAndFare();
+  }
+
+  Map<String, dynamic> get _currentFareData =>
+      _dynamicFareData ?? widget.fareData;
 
   String get _pickupAddress =>
       widget.pickupLocation['address'] ?? 'Pickup Location';
@@ -107,15 +206,23 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Calculate distance in km from meters
-      final distanceKm = (_currentFareData['distance_meters'] ?? 0) / 1000;
+      // Use the new distance_miles field from backend if available, 
+      // otherwise convert meters to miles (1m = 0.000621371 miles)
+      final distanceMiles = _currentFareData['distance_miles'] ?? 
+                           ((_currentFareData['distance_meters'] ?? 0) * 0.000621371);
 
+      // Build ride request matching backend API format: POST /api/v1/rides
+      // - pickupLocation: { coordinates: [lng, lat], address: string }
+      // - dropoffLocation: { coordinates: [lng, lat], address: string }
+      // - vehicleType: 'sedan' | 'suv' | 'hatchback' | 'van'
+      // - distance: number (in Miles)
+      // - paymentTiming: 'pay_later' | 'pay_now'
       final rideData = {
         'pickupLocation': widget.pickupLocation,
         'dropoffLocation': widget.dropoffLocation,
-        'vehicleType': widget.vehicleType,
-        'distance': distanceKm,
-        'fare': _fare,
+        'vehicleType': widget.vehicleType, // Uses backend type: sedan, suv, hatchback, van
+        'distance': distanceMiles,
+        'paymentTiming': 'pay_later', // Default to pay later
       };
 
       debugPrint(
@@ -130,13 +237,14 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
       if (mounted) {
         setState(() => _isLoading = false);
 
-        debugPrint('🏠 RideConfirmationScreen: Ride confirmed, returning to Home with searching state');
-        
+        debugPrint(
+          '🏠 RideConfirmationScreen: Ride confirmed, returning to Home with searching state',
+        );
+
         // Pop and pass the ride data back to Home Screen
-        Navigator.of(context).pop({
-          'status': 'searching',
-          'ride': response['data'],
-        });
+        Navigator.of(
+          context,
+        ).pop({'status': 'searching', 'ride': response['data']});
       }
     } catch (e) {
       debugPrint('❌ RideConfirmationScreen: Error creating ride: $e');
@@ -349,55 +457,33 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     );
   }
 
+  /// Build a static map snapshot showing the route from pickup to dropoff
   Widget _buildMapSnapshot() {
-    // Convert List<dynamic> from directions API or List<LatLng> to lat_lng.LatLng
-    final List<lat_lng.LatLng> points = [];
-    if (widget.polyline != null) {
-      for (var p in widget.polyline!) {
-        // Handle different possible types for the polyline points
-        if (p is lat_lng.LatLng) {
-          points.add(p);
-        } else if (p is Map) {
-          points.add(lat_lng.LatLng(
-            (p['lat'] as num).toDouble(),
-            (p['lng'] as num).toDouble(),
-          ));
-        }
-      }
-    }
-
-    final bounds =
-        points.isNotEmpty ? fmap.LatLngBounds.fromPoints(points) : null;
-
     final pickupCoords = widget.pickupLocation['coordinates'] as List;
     final dropoffCoords = widget.dropoffLocation['coordinates'] as List;
+
+    debugPrint('🗺️ RideConfirmationScreen: Building static map snapshot');
+    debugPrint('   → Route points: ${_routePoints.length}');
 
     final markers = [
       MapMarker(
         id: 'pickup',
         lat: pickupCoords[1],
         lng: pickupCoords[0],
-        child: Container(
-          decoration: const BoxDecoration(
-            color: Colors.green,
-            shape: BoxShape.circle,
-          ),
-          width: 8,
-          height: 8,
-        ),
         title: 'Pickup',
+        markerColor: Colors.green, // Green marker for pickup
       ),
       MapMarker(
         id: 'dropoff',
         lat: dropoffCoords[1],
         lng: dropoffCoords[0],
-        child: const Icon(Icons.location_on, color: Colors.red, size: 28),
         title: 'Dropoff',
+        markerColor: Colors.red, // Red marker for dropoff
       ),
     ];
 
     return Container(
-      height: 180,
+      height: 200, // Slightly taller for better visibility
       width: double.infinity,
       decoration: BoxDecoration(
         color: Colors.white,
@@ -416,17 +502,15 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
           initialLat: pickupCoords[1],
           initialLng: pickupCoords[0],
           markers: markers,
-          polylines: points.isNotEmpty
-              ? [
-                  MapPolyline(
-                    id: 'route',
-                    points: points,
-                    color: AppTheme.primaryColor,
-                    width: 4.0,
-                  ),
-                ]
-              : [],
-          bounds: bounds,
+          polylines: _routePoints.isNotEmpty ? [
+            MapPolyline(
+              id: 'route_confirmation',
+              points: _routePoints,
+              color: AppTheme.primaryColor,
+              width: 5.0, // Thicker line
+            ),
+          ] : [],
+          bounds: _routeBounds,
           interactive: false,
         ),
       ),
@@ -536,13 +620,22 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
           ),
           const SizedBox(height: 16),
           _buildDetailRow(
-              Icons.straighten, 'Distance', _isFetchingFare ? '...' : _distanceText),
+            Icons.straighten,
+            'Distance',
+            _isFetchingFare ? '...' : _distanceText,
+          ),
           const Divider(height: 24),
           _buildDetailRow(
-              Icons.access_time, 'Duration', _isFetchingFare ? '...' : _durationText),
+            Icons.access_time,
+            'Duration',
+            _isFetchingFare ? '...' : _durationText,
+          ),
           const Divider(height: 24),
           _buildDetailRow(
-              Icons.schedule, 'ETA', _isFetchingFare ? '...' : _estimatedArrival),
+            Icons.schedule,
+            'ETA',
+            _isFetchingFare ? '...' : _estimatedArrival,
+          ),
         ],
       ),
     );
@@ -623,6 +716,9 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   }
 
   Widget _buildBottomBar() {
+    // Check if there's a fare error
+    final hasError = _fareError != null;
+    
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -639,66 +735,127 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Fare Row
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Total Fare',
-                  style: TextStyle(fontSize: 16, color: AppTheme.textPrimary),
+            // Error Message (if any)
+            if (hasError) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red.shade200),
                 ),
-                _isFetchingFare
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: AppTheme.primaryColor,
-                        ),
-                      )
-                    : Text(
-                        '£${_fare.toStringAsFixed(2)}',
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.primaryColor,
+                child: Row(
+                  children: [
+                    Icon(Icons.error_outline, color: Colors.red.shade700, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _fareError!,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.red.shade700,
                         ),
                       ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            // Confirm Button
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+            
+            // Fare Row (only show if no error)
+            if (!hasError)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Total Fare',
+                    style: TextStyle(fontSize: 16, color: AppTheme.textPrimary),
+                  ),
+                  _isFetchingFare
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppTheme.primaryColor,
+                          ),
+                        )
+                      : Text(
+                          '£${_fare.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.primaryColor,
+                          ),
+                        ),
+                ],
+              ),
+            
+            if (!hasError) const SizedBox(height: 16),
+            
+            // Button Row
             SizedBox(
               width: double.infinity,
               height: 54,
-              child: ElevatedButton(
-                onPressed:
-                    (_isLoading || _isFetchingFare) ? null : _confirmRide,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryColor,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  elevation: 0,
-                ),
-                child: _isLoading
-                    ? const SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : const Text(
-                        'Confirm Ride',
-                        style: TextStyle(
+              child: hasError
+                  ? ElevatedButton.icon(
+                      onPressed: _isFetchingFare ? null : _retryFetchFare,
+                      icon: _isFetchingFare
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Icon(Icons.refresh),
+                      label: Text(
+                        _isFetchingFare ? 'Retrying...' : 'Retry',
+                        style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-              ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 0,
+                      ),
+                    )
+                  : ElevatedButton(
+                      onPressed: (_isLoading || _isFetchingFare)
+                          ? null
+                          : _confirmRide,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primaryColor,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: _isLoading
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Text(
+                              'Confirm Ride',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                    ),
             ),
           ],
         ),

@@ -88,7 +88,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
 
     if (widget.driver != null) {
       debugPrint('✅ [RideAssignedScreen] Initial driver data provided');
-      _rideStatus = 'driver_assigned';
+      _rideStatus = 'accepted';
       _driver = widget.driver!;
 
       // Try multiple possible OTP field names from initial data
@@ -303,7 +303,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
         }
 
         setState(() {
-          _rideStatus = 'driver_assigned';
+          _rideStatus = 'accepted';
           _driver = data['driver'] ?? {};
 
           // Try multiple possible OTP field names
@@ -357,8 +357,15 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
 
     _socketService.on('driver:locationChanged', (data) {
       debugPrint('📍 [RideAssignedScreen] Driver Location Updated: $data');
+      
+      // Handle location updates based on ride status:
+      // - driver_assigned/accepted: Car moving toward pickup
+      // - driver_arrived: Car stationary at pickup (still update position for accuracy)
+      // - in_progress: Car moving toward destination
       if (mounted &&
-          (_rideStatus == 'driver_assigned' || _rideStatus == 'in_progress')) {
+          (_rideStatus == 'accepted' || 
+           _rideStatus == 'driver_arrived' ||
+           _rideStatus == 'in_progress')) {
         // Use marker interpolation for smooth animation instead of direct update
         if (data['location']?['coordinates'] != null) {
           final coords = data['location']['coordinates'];
@@ -366,6 +373,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
 
           if (_markerInterpolation != null) {
             // Smooth interpolation to new position
+            // For driver_arrived, we still update but car appears stationary at pickup
             _markerInterpolation!.updatePosition(newPosition);
           } else {
             // Fallback: initialize interpolation if not set up
@@ -374,7 +382,10 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
 
           // Update navigation route in real-time (don't need to update annotations here,
           // the interpolation stream handles that)
-          _updateNavigationRoute();
+          // Skip route updates when driver has arrived (car is stationary)
+          if (_rideStatus != 'driver_arrived') {
+            _updateNavigationRoute();
+          }
         }
       }
     });
@@ -405,11 +416,17 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
         debugPrint('🚖 [RideAssignedScreen] Driver Arrived: $data');
         setState(() {
           _rideStatus = 'driver_arrived';
+          // Set driver position to pickup location (driver is at pickup)
+          _driverLocation = _pickupLocation;
+          // Clear navigation polyline - car is stationary
+          _polylines = [];
+          _updateMarkers();
         });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Driver has arrived!'),
+            content: Text('Driver has arrived at pickup!'),
             backgroundColor: Colors.green,
+            duration: Duration(seconds: 4),
           ),
         );
       }
@@ -508,7 +525,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
               'Your ride was ended early.\n\n'
               'Original fare: £${originalFare.toStringAsFixed(2)}\n'
               'Adjusted fare: £${fare.toStringAsFixed(2)}\n'
-              'Distance traveled: ${actualDistance.toStringAsFixed(1)} km\n\n'
+              'Distance traveled: ${actualDistance.toStringAsFixed(1)} mi\n\n'
               'Reason: $reason',
             ),
             actions: [
@@ -583,36 +600,62 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
   void _updateMarkers() {
     final List<MapMarker> newMarkers = [];
 
-    // Pickup Marker (User)
+    // Pickup Marker (User location) - Green
     newMarkers.add(
       MapMarker(
         id: 'pickup',
         lat: _pickupLocation.latitude,
         lng: _pickupLocation.longitude,
         title: 'Pickup',
+        markerColor: Colors.green,
       ),
     );
 
-    // Dropoff Marker
-    if (_rideStatus == 'in_progress') {
+    // Dropoff Marker - Red (show when driver arrived or ride in progress)
+    if (_rideStatus == 'driver_arrived' || _rideStatus == 'in_progress') {
       newMarkers.add(
         MapMarker(
           id: 'dropoff',
           lat: _dropoffLocation.latitude,
           lng: _dropoffLocation.longitude,
           title: 'Dropoff',
+          markerColor: Colors.red,
         ),
       );
     }
 
-    // Driver Marker
+    // Driver/Car Marker - Different colors based on status
+    // - driver_assigned: Blue (car moving toward pickup)
+    // - driver_arrived: Cyan (car stationary at pickup)
+    // - in_progress: Purple (car moving toward destination)
     if (_driverLocation != null && _rideStatus != 'searching') {
+      Color driverMarkerColor;
+      String driverTitle = _driver['name'] ?? 'Driver';
+      
+      switch (_rideStatus) {
+        case 'accepted':
+          driverMarkerColor = Colors.blue;
+          driverTitle = '${_driver['name'] ?? 'Driver'} (Coming to you)';
+          break;
+        case 'driver_arrived':
+          driverMarkerColor = Colors.cyan;
+          driverTitle = '${_driver['name'] ?? 'Driver'} (Arrived)';
+          break;
+        case 'in_progress':
+          driverMarkerColor = Colors.purple;
+          driverTitle = '${_driver['name'] ?? 'Driver'} (In transit)';
+          break;
+        default:
+          driverMarkerColor = Colors.blue;
+      }
+      
       newMarkers.add(
         MapMarker(
           id: 'driver',
           lat: _driverLocation!.latitude,
           lng: _driverLocation!.longitude,
-          title: _driver['name'] ?? 'Driver',
+          title: driverTitle,
+          markerColor: driverMarkerColor,
         ),
       );
     }
@@ -623,18 +666,27 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
   }
 
   /// Fetch navigation route based on current ride status
+  /// - driver_assigned: Fetch route from driver to pickup (car moving toward user)
+  /// - driver_arrived: No route needed (car is stationary at pickup)
+  /// - in_progress: Fetch route from current position to dropoff (car moving to destination)
   Future<void> _fetchNavigationRoute() async {
     if (_driverLocation == null) return;
 
     latlong2.LatLng origin = _driverLocation!;
     latlong2.LatLng destination;
 
-    if (_rideStatus == 'driver_assigned' || _rideStatus == 'driver_arrived') {
+    if (_rideStatus == 'accepted') {
       // Driver navigating to pickup
       destination = _pickupLocation;
     } else if (_rideStatus == 'in_progress') {
       // Driver navigating to dropoff
       destination = _dropoffLocation;
+    } else if (_rideStatus == 'driver_arrived') {
+      // Car is stationary - no navigation route needed
+      setState(() {
+        _polylines = [];
+      });
+      return;
     } else {
       return;
     }
@@ -648,16 +700,20 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
   }
 
   /// Update navigation route in real-time
+  /// Called when driver location changes to update the polyline
   Future<void> _updateNavigationRoute() async {
     if (_driverLocation == null) return;
 
     latlong2.LatLng destination;
 
-    if (_rideStatus == 'driver_assigned' || _rideStatus == 'driver_arrived') {
+    if (_rideStatus == 'accepted') {
       destination = _pickupLocation;
     } else if (_rideStatus == 'in_progress') {
+      // For in_progress, the user said "using the polyline from pickup to dropoff"
+      // However, to keep it "moving", we'll update the route from current driver location
       destination = _dropoffLocation;
     } else {
+      // driver_arrived or other states - no route updates needed
       return;
     }
 
@@ -944,7 +1000,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
                   'Estimated Fare: £${widget.fare.toStringAsFixed(2)}',
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
-                // Text('Distance: 5.2 km'), // Mock distance for now
+                // Text('Distance: 5.2 mi'), // Mock distance for now
               ],
             ),
             const SizedBox(height: 24),

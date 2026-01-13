@@ -165,7 +165,7 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
                                         const SizedBox(width: 8),
                                         const Icon(Icons.person, size: 14, color: AppTheme.textSecondary),
                                         Text(
-                                          '4',
+                                          '${vehicle['capacity'] ?? vehicle['seats'] ?? 4}',
                                           style: TextStyle(
                                             fontSize: 14,
                                             color: AppTheme.textSecondary,
@@ -185,11 +185,11 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
                                 ),
                               ),
                               
-                              // Price
+                              // Price (use baseFare or basePrice for backwards compatibility)
                               Padding(
                                 padding: const EdgeInsets.only(right: 16),
                                 child: Text(
-                                  '£${vehicle['basePrice']}',
+                                  '£${vehicle['baseFare'] ?? vehicle['basePrice']}',
                                   style: const TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold,

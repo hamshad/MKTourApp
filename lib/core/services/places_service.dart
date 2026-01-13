@@ -318,11 +318,9 @@ class PlacesService {
                       '')
                   .toString();
           if (distanceText.isEmpty && distanceMeters > 0) {
-            if (distanceMeters >= 1000) {
-              distanceText = '${(distanceMeters / 1000).toStringAsFixed(1)} km';
-            } else {
-              distanceText = '$distanceMeters m';
-            }
+            // Convert meters to miles (1m = 0.000621371 miles)
+            final miles = distanceMeters * 0.000621371;
+            distanceText = '${miles.toStringAsFixed(1)} mi';
           }
 
           final int durationSeconds =
@@ -376,6 +374,7 @@ class PlacesService {
           return {
             'polyline': polylinePoints,
             'distance_meters': distanceMeters,
+            'distance_miles': payload['distance_miles'] ?? (distanceMeters * 0.000621371),
             'distance_text': distanceText,
             'duration_seconds': durationSeconds,
             'duration_text': durationText,
@@ -463,6 +462,7 @@ class PlacesService {
 
           return {
             'distance_meters': data['distance_meters'] ?? 0,
+            'distance_miles': data['distance_miles'] ?? ((data['distance_meters'] ?? 0) * 0.000621371),
             'distance_text': data['distance_text'] ?? '',
             'duration_seconds': data['duration_seconds'] ?? 0,
             'duration_text': data['duration_text'] ?? '',

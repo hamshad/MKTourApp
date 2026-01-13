@@ -235,7 +235,7 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                           _buildFareRow('Base fare', '£50.00'),
                           const SizedBox(height: 12),
                           _buildFareRow(
-                            'Distance (${_distance.toStringAsFixed(1)} km)',
+                            'Distance (${_distance.toStringAsFixed(1)} mi)',
                             '£${(_fare - 50).toStringAsFixed(2)}',
                           ),
 
