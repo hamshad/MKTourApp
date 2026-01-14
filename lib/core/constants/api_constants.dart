@@ -1,10 +1,8 @@
 class ApiConstants {
-  static const String socketUrl =
-      'http://192.168.1.13:5000'; // TODO: Replace with actual base URL
-  // static const String socketUrl = 'https://api.mktours.co.uk';
-  static const String baseUrl =
-      '$socketUrl/api/v1'; // TODO: Replace with actual base URL
-  // static const String baseUrl = 'https://api.mktours.co.uk';
+  // static const String socketUrl = 'http://192.168.1.13:5000'; // TODO: Replace with actual base URL
+  static const String socketUrl = 'https://api.mktours.co.uk';
+  // static const String baseUrl = '$socketUrl/api/v1'; // TODO: Replace with actual base URL
+  static const String baseUrl = '$socketUrl/api/v1';
 
   // Auth Endpoints
   static const String sendOtp = '$baseUrl/auth/send-otp';
@@ -34,6 +32,7 @@ class ApiConstants {
   static const String updateDriver = '$baseUrl/drivers/update';
   static const String updateDriverLocation = '$baseUrl/drivers/location';
   static const String driverProfileStatus = '$baseUrl/drivers/profile-status';
+  static const String driverRides = '$baseUrl/drivers/rides';
 
   // Ride Endpoints
   static const String createRide = '$baseUrl/rides/create';

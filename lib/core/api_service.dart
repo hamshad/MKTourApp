@@ -1405,6 +1405,54 @@ class ApiService {
       debugPrint(
         '🔵 ------------------------------------------------------------------',
       );
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> getDriverRides() async {
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
+    debugPrint('🔵 [ApiService] getDriverRides called');
+    debugPrint('🔵 [Request] URL: ${ApiConstants.driverRides}');
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString(_prefsAuthTokenKey);
+
+      if (token == null) {
+        throw Exception('No auth token found');
+      }
+
+      final response = await http.get(
+        Uri.parse(ApiConstants.driverRides),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
+      debugPrint('🟣 [Response] Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        debugPrint('🟢 [ApiService] getDriverRides Success');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
+        return jsonDecode(response.body);
+      } else {
+        debugPrint('🔴 [ApiService] getDriverRides Failed: ${response.body}');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
+        throw Exception('Failed to get ride history: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('🟠 [ApiService] Exception caught: $e');
+      debugPrint(
+        '🔵 ------------------------------------------------------------------',
+      );
       throw Exception('Failed to get ride history: $e');
     }
   }

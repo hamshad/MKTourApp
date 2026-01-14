@@ -7,12 +7,14 @@ import 'dart:async';
 class RideSearchingOverlay extends StatefulWidget {
   final Map<String, dynamic>? rideData;
   final VoidCallback onCancel;
+  final VoidCallback? onTimerEnd; // Added callback for expiration
   final bool isLoading;
 
   const RideSearchingOverlay({
     super.key,
     this.rideData,
     required this.onCancel,
+    this.onTimerEnd,
     this.isLoading = false,
   });
 
@@ -26,7 +28,6 @@ class _RideSearchingOverlayState extends State<RideSearchingOverlay>
   late Animation<double> _pulseAnimation;
   int _dotCount = 0;
   Timer? _dotTimer;
-  Timer? _expirationTimer;
   int _remainingSeconds = 300; // 5 minutes
 
   @override
@@ -34,7 +35,6 @@ class _RideSearchingOverlayState extends State<RideSearchingOverlay>
     super.initState();
     _setupAnimations();
     _startDotAnimation();
-    _startExpirationTimer();
   }
 
   void _setupAnimations() {
@@ -58,38 +58,13 @@ class _RideSearchingOverlayState extends State<RideSearchingOverlay>
     });
   }
 
-  void _startExpirationTimer() {
-    // Parse expiresAt from ride data if available
-    if (widget.rideData?['expiresAt'] != null) {
-      try {
-        final expiresAt = DateTime.parse(widget.rideData!['expiresAt']);
-        _remainingSeconds = expiresAt.difference(DateTime.now()).inSeconds;
-        if (_remainingSeconds < 0) _remainingSeconds = 0;
-      } catch (_) {
-        _remainingSeconds = 300;
-      }
-    }
 
-    _expirationTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted && _remainingSeconds > 0) {
-        setState(() {
-          _remainingSeconds--;
-        });
-      }
-    });
-  }
-
-  String get _formattedTime {
-    final minutes = _remainingSeconds ~/ 60;
-    final seconds = _remainingSeconds % 60;
-    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-  }
+  String get _formattedTime => "05:00"; // Placeholder or remove usage
 
   @override
   void dispose() {
     _pulseController.dispose();
     _dotTimer?.cancel();
-    _expirationTimer?.cancel();
     super.dispose();
   }
 
@@ -103,283 +78,279 @@ class _RideSearchingOverlayState extends State<RideSearchingOverlay>
     final distance = widget.rideData?['distance'] ?? 0;
 
     return Container(
-      color: Colors.black.withOpacity(0.85),
-      child: SafeArea(
-        child: Column(
-          children: [
-            // Top section with close button
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  // Timer display
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.timer_outlined,
-                          color: Colors.white70,
-                          size: 16,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          _formattedTime,
-                          style: GoogleFonts.outfit(
-                            color: Colors.white70,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+      color: Colors.black.withOpacity(0.7),
+      child: Stack(
+        children: [
+          // Background Blur for premium feel
+          Positioned.fill(
+            child: BackdropFilter(
+              filter: ColorFilter.mode(
+                Colors.black.withOpacity(0.3),
+                BlendMode.darken,
               ),
+              child: Container(color: Colors.transparent),
             ),
-
-            const Spacer(),
-
-            // Animated car icon with pulse
-            AnimatedBuilder(
-              animation: _pulseAnimation,
-              builder: (context, child) {
-                return Transform.scale(
-                  scale: _pulseAnimation.value,
-                  child: Container(
-                    width: 120,
-                    height: 120,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFF6B35).withOpacity(0.2),
-                      shape: BoxShape.circle,
+          ),
+          SafeArea(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight,
                     ),
-                    child: Center(
-                      child: Container(
-                        width: 80,
-                        height: 80,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFFF6B35),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.local_taxi,
-                          color: Colors.white,
-                          size: 40,
-                        ),
+                    child: IntrinsicHeight(
+                      child: Column(
+                        children: [
+                          const SizedBox(height: 56),
+
+                          const SizedBox(height: 40),
+
+                          // Animated car icon with pulse
+                          AnimatedBuilder(
+                            animation: _pulseAnimation,
+                            builder: (context, child) {
+                              return Transform.scale(
+                                scale: _pulseAnimation.value,
+                                child: Container(
+                                  width: 140,
+                                  height: 140,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFF6B35).withOpacity(
+                                      0.15,
+                                    ),
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: const Color(
+                                          0xFFFF6B35,
+                                        ).withOpacity(0.3),
+                                        blurRadius: 30,
+                                        spreadRadius: 5,
+                                      ),
+                                    ],
+                                  ),
+                                  child: Center(
+                                    child: Container(
+                                      width: 90,
+                                      height: 90,
+                                      decoration: const BoxDecoration(
+                                        color: Color(0xFFFF6B35),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(
+                                        Icons.local_taxi,
+                                        color: Colors.white,
+                                        size: 45,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+
+                          const SizedBox(height: 40),
+
+                          // Finding driver text
+                          Text(
+                            'Finding your driver${'.' * _dotCount}',
+                            style: GoogleFonts.outfit(
+                              color: Colors.white,
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: -0.5,
+                            ),
+                          ),
+
+                          const SizedBox(height: 12),
+
+                          Text(
+                            'Connecting you with nearby drivers',
+                            style: GoogleFonts.outfit(
+                              color: Colors.white.withOpacity(0.7),
+                              fontSize: 16,
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+
+                          const Spacer(),
+
+                          // Trip summary card with glassmorphism
+                          Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 24),
+                            padding: const EdgeInsets.all(24),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.12),
+                              ),
+                            ),
+                            child: Column(
+                              children: [
+                                // Locations
+                                _buildLocationRow(
+                                  Colors.green,
+                                  pickupAddress,
+                                  isLast: false,
+                                ),
+                                _buildLocationRow(
+                                  Colors.red,
+                                  dropoffAddress,
+                                  isLast: true,
+                                ),
+
+                                const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 20),
+                                  child: Divider(color: Colors.white12),
+                                ),
+
+                                // Fare and distance
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    _buildInfoColumn('Estimated Fare',
+                                        '£${fare.toStringAsFixed(2)}'),
+                                    _buildInfoColumn('Distance',
+                                        '${distance.toStringAsFixed(1)} mi'),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          const Spacer(),
+
+                          // Cancel button
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+                            child: SizedBox(
+                              width: double.infinity,
+                              height: 56,
+                              child: OutlinedButton(
+                                onPressed:
+                                    widget.isLoading ? null : widget.onCancel,
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.white,
+                                  side: BorderSide(
+                                    color: Colors.white.withOpacity(0.3),
+                                    width: 1.5,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                ),
+                                child: widget.isLoading
+                                    ? const SizedBox(
+                                        width: 24,
+                                        height: 24,
+                                        child: CircularProgressIndicator(
+                                          color: Colors.white,
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : Text(
+                                        'Cancel Request',
+                                        style: GoogleFonts.outfit(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
                 );
               },
             ),
+          ),
+        ],
+      ),
+    );
+  }
 
-            const SizedBox(height: 32),
-
-            // Finding driver text with animated dots
-            Text(
-              'Finding your driver${'.' * _dotCount}',
-              style: GoogleFonts.outfit(
-                color: Colors.white,
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-
-            const SizedBox(height: 8),
-
-            Text(
-              'Connecting you with nearby drivers',
-              style: GoogleFonts.outfit(color: Colors.white70, fontSize: 16),
-            ),
-
-            const SizedBox(height: 48),
-
-            // Trip summary card
+  Widget _buildLocationRow(Color color, String address, {bool isLast = false}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Column(
+          children: [
             Container(
-              margin: const EdgeInsets.symmetric(horizontal: 24),
-              padding: const EdgeInsets.all(20),
+              width: 12,
+              height: 12,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.white.withOpacity(0.2)),
-              ),
-              child: Column(
-                children: [
-                  // Pickup row
-                  Row(
-                    children: [
-                      Container(
-                        width: 12,
-                        height: 12,
-                        decoration: const BoxDecoration(
-                          color: Colors.green,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          pickupAddress,
-                          style: GoogleFonts.outfit(
-                            color: Colors.white,
-                            fontSize: 14,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  // Dotted line
-                  Padding(
-                    padding: const EdgeInsets.only(left: 5),
-                    child: Row(
-                      children: [
-                        Column(
-                          children: List.generate(
-                            3,
-                            (index) => Container(
-                              width: 2,
-                              height: 6,
-                              margin: const EdgeInsets.symmetric(vertical: 2),
-                              color: Colors.white30,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // Dropoff row
-                  Row(
-                    children: [
-                      Container(
-                        width: 12,
-                        height: 12,
-                        decoration: const BoxDecoration(
-                          color: Colors.red,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          dropoffAddress,
-                          style: GoogleFonts.outfit(
-                            color: Colors.white,
-                            fontSize: 14,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 16),
-                  const Divider(color: Colors.white24),
-                  const SizedBox(height: 12),
-
-                  // Fare and distance
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Estimated Fare',
-                            style: GoogleFonts.outfit(
-                              color: Colors.white60,
-                              fontSize: 12,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '£${fare.toStringAsFixed(2)}',
-                            style: GoogleFonts.outfit(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            'Distance',
-                            style: GoogleFonts.outfit(
-                              color: Colors.white60,
-                              fontSize: 12,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${distance.toStringAsFixed(1)} mi',
-                            style: GoogleFonts.outfit(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                color: color,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withOpacity(0.4),
+                    blurRadius: 8,
+                    spreadRadius: 2,
                   ),
                 ],
               ),
             ),
-
-            const Spacer(),
-
-            // Cancel button
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: widget.isLoading ? null : widget.onCancel,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    side: const BorderSide(color: Colors.white54),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
-                    ),
+            if (!isLast)
+              Container(
+                width: 2,
+                height: 24,
+                margin: const EdgeInsets.symmetric(vertical: 4),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [color.withOpacity(0.5), Colors.white10],
                   ),
-                  child: widget.isLoading
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
-                      : Text(
-                          'Cancel Request',
-                          style: GoogleFonts.outfit(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
                 ),
               ),
-            ),
           ],
         ),
-      ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Text(
+            address,
+            style: GoogleFonts.outfit(
+              color: Colors.white,
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInfoColumn(String label, String value) {
+    return Column(
+      crossAxisAlignment:
+          label == 'Distance' ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: GoogleFonts.outfit(
+            color: Colors.white.withOpacity(0.5),
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          value,
+          style: GoogleFonts.outfit(
+            color: Colors.white,
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
     );
   }
 }

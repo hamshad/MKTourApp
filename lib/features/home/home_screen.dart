@@ -15,6 +15,7 @@ import 'dart:async';
 import '../../core/services/socket_service.dart';
 import '../../core/api_service.dart';
 import '../ride/ride_assigned_screen.dart';
+import '../booking/ride_confirmation_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -44,6 +45,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final ApiService _apiService = ApiService();
   bool _isSearching = false;
   Map<String, dynamic>? _activeRide;
+  Map<String, dynamic>? _lastRideConfirmationData; // To support ride restart
   bool _isLoading = false;
 
   // Connection status subscription
@@ -159,16 +161,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _socketService.on('ride:expired', (data) {
       debugPrint('⏰ [HomeScreen] Ride Expired: $data');
       if (mounted && _isSearching) {
-        setState(() {
-          _isSearching = false;
-          _activeRide = null;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Ride request expired. Please try again.'),
-            backgroundColor: Colors.orange,
-          ),
-        );
+        _handleRideExpiration();
       }
     });
 
@@ -245,6 +238,136 @@ class _HomeScreenState extends State<HomeScreen> {
           SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
         );
       }
+    }
+  }
+
+  void _handleRideExpiration() {
+    if (!mounted) return;
+
+    debugPrint('⏰ [HomeScreen] Ride request expired - showing popup');
+    setState(() {
+      _isSearching = false;
+    });
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.timer_off_outlined,
+                  color: Colors.orange, size: 32),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Ride Expired',
+              style: GoogleFonts.outfit(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'We couldn\'t find a driver for your request in time. would you like to try again?',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.outfit(
+            fontSize: 16,
+            color: AppTheme.textSecondary,
+          ),
+        ),
+        actions: [
+          Column(
+            children: [
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _restartRideBooking();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryColor,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Text(
+                    'Restart Ride Request',
+                    style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    setState(() => _activeRide = null);
+                  },
+                  child: Text(
+                    'Cancel',
+                    style: GoogleFonts.outfit(
+                      color: AppTheme.textSecondary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _restartRideBooking() async {
+    if (_lastRideConfirmationData == null) {
+      debugPrint('🔴 [HomeScreen] No saved ride data to restart');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cannot restart: Ride data missing')),
+      );
+      return;
+    }
+
+    debugPrint('🔄 [HomeScreen] Restarting ride booking flow');
+
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => RideConfirmationScreen(
+          pickupLocation: _lastRideConfirmationData!['pickupLocation'],
+          dropoffLocation: _lastRideConfirmationData!['dropoffLocation'],
+          vehicleType: _lastRideConfirmationData!['vehicleType'],
+          vehicleName: _lastRideConfirmationData!['vehicleName'],
+          fareData: _lastRideConfirmationData!['fareData'],
+          polyline: _lastRideConfirmationData!['polyline'],
+        ),
+      ),
+    );
+
+    if (result != null && result is Map && result['status'] == 'searching') {
+      setState(() {
+        _isSearching = true;
+        _activeRide = result['ride'];
+        _lastRideConfirmationData = result['confirmationData'];
+      });
     }
   }
 
@@ -384,6 +507,7 @@ class _HomeScreenState extends State<HomeScreen> {
             child: RideSearchingOverlay(
               rideData: _activeRide,
               onCancel: _cancelRide,
+              onTimerEnd: _handleRideExpiration,
               isLoading: _isLoading,
             ),
           ),
@@ -560,6 +684,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             setState(() {
                               _isSearching = true;
                               _activeRide = result['ride'];
+                              _lastRideConfirmationData =
+                                  result['confirmationData'];
                             });
                           }
                         },

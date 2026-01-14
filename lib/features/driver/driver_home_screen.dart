@@ -15,6 +15,8 @@ import '../../core/services/socket_service.dart';
 import '../../core/services/location_service.dart';
 import '../../core/services/navigation_service.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:intl/intl.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class DriverHomeScreen extends StatefulWidget {
   const DriverHomeScreen({super.key});
@@ -47,6 +49,15 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   NavigationState? _navigationState;
   List<MapPolyline> _navigationPolylines = [];
 
+  // Data State
+  List<dynamic> _recentRides = [];
+  Map<String, dynamic> _todayStats = {
+    'trips': '0',
+    'hours': '0.0',
+    'earnings': '0.0',
+  };
+  bool _isHistoryLoading = false;
+
   // Connection status subscription for reconnection handling
   StreamSubscription<bool>? _connectionSubscription;
 
@@ -77,6 +88,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   }
 
   void _initLocation() async {
+    _fetchRideHistory(); // Added history fetch
     debugPrint("📍 _initLocation called in DriverHomeScreen");
     final position = await _locationService.getCurrentLocation();
     if (position != null && mounted) {
@@ -129,6 +141,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     _socketService.off('ride:newRequest');
     _socketService.off('ride:reminder');
     _socketService.off('ride:longRunning');
+    _socketService.off('ride:expired');
     _socketService.off('ride:cancelled');
     _socketService.off('driver:status');
     _socketService.off('driver:locationUpdated');
@@ -450,6 +463,23 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         CustomSnackbar.show(context, message: message, type: SnackbarType.info);
       }
     });
+
+    // Ride expired (no driver accepted in time)
+    _socketService.on('ride:expired', (data) {
+      debugPrint('⏰ [DriverHomeScreen] Ride Expired: $data');
+      if (mounted) {
+        setState(() {
+          _status = 'online';
+          _currentRideId = null;
+          _rideData = null;
+        });
+        CustomSnackbar.show(
+          context,
+          message: 'Ride request expired.',
+          type: SnackbarType.info,
+        );
+      }
+    });
   }
 
   void _handleNewRideRequest(dynamic data) {
@@ -540,7 +570,56 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         setState(() {
           _isLoading = false;
         });
+        if (_status == 'online') {
+          _fetchRideHistory();
+        }
       }
+    }
+  }
+
+  Future<void> _fetchRideHistory() async {
+    if (!mounted) return;
+    setState(() => _isHistoryLoading = true);
+
+    try {
+      final response = await _apiService.getDriverRides();
+      if (response['success'] == true) {
+        final rides = response['data'] as List<dynamic>;
+
+        // Process today's stats
+        final now = DateTime.now();
+        final todayRides = rides.where((ride) {
+          if (ride['createdAt'] == null) return false;
+          final createdAt = DateTime.parse(ride['createdAt']);
+          return createdAt.year == now.year &&
+              createdAt.month == now.month &&
+              createdAt.day == now.day;
+        }).toList();
+
+        double totalHours = 0;
+        double totalEarnings = 0;
+        for (var ride in todayRides) {
+          if (ride['status'] == 'completed') {
+            totalHours += (ride['duration'] ?? 0) / 60.0;
+            totalEarnings += (ride['fare'] ?? 0.0);
+          }
+        }
+
+        if (mounted) {
+          setState(() {
+            _recentRides = rides.take(5).toList();
+            _todayStats = {
+              'trips': todayRides.length.toString(),
+              'hours': totalHours.toStringAsFixed(1),
+              'earnings': totalEarnings.toStringAsFixed(2),
+            };
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('🔴 [DriverHomeScreen] Error fetching history: $e');
+    } finally {
+      if (mounted) setState(() => _isHistoryLoading = false);
     }
   }
 
@@ -1179,7 +1258,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                             ),
                           ],
                         ),
-                        child: const Row(
+                        child: Row(
                           children: [
                             Icon(
                               Icons.account_balance_wallet,
@@ -1187,10 +1266,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                             ),
                             SizedBox(width: 8),
                             Text(
-                              '£142.50',
-                              style: TextStyle(
+                              '£${_todayStats['earnings']}',
+                              style: GoogleFonts.outfit(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 16,
+                                color: AppTheme.textPrimary,
                               ),
                             ),
                           ],
@@ -1244,9 +1324,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    const Text(
-                      'You earned £14.50',
-                      style: TextStyle(
+                    Text(
+                      'You earned £${(_rideData?['fare'] ?? 0.0).toStringAsFixed(2)}',
+                      style: GoogleFonts.outfit(
                         fontSize: 18,
                         color: AppTheme.textSecondary,
                       ),
@@ -1282,151 +1362,260 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   }
 
   Widget _buildOfflineOnlineContent() {
-    return Column(
-      children: [
-        const SizedBox(height: 12),
-        Center(
-          child: Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: Colors.grey[300],
-              borderRadius: BorderRadius.circular(2),
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+      ),
+      child: Column(
+        children: [
+          const SizedBox(height: 12),
+          // Handle
+          Center(
+            child: Container(
+              width: 48,
+              height: 5,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2.5),
+              ),
             ),
           ),
-        ),
-        const SizedBox(height: 24),
+          const SizedBox(height: 28),
 
-        // Go Online Button
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: GestureDetector(
-            onTap: _toggleOnline,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              height: 60,
-              decoration: BoxDecoration(
-                color: _status == 'online' ? Colors.red : AppTheme.primaryColor,
-                borderRadius: BorderRadius.circular(30),
-                boxShadow: [
-                  BoxShadow(
-                    color:
-                        (_status == 'online'
-                                ? Colors.red
-                                : AppTheme.primaryColor)
-                            .withValues(alpha: 0.3),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
+          // Prominent Toggle Button
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: GestureDetector(
+              onTap: _toggleOnline,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                height: 72,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: _status == 'online'
+                        ? [Colors.redAccent, Colors.red]
+                        : [const Color(0xFFFF6B35), const Color(0xFFFF8E53)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   ),
-                ],
-              ),
-              child: Center(
-                child: _isLoading
-                    ? const SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: (_status == 'online'
+                              ? Colors.red
+                              : const Color(0xFFFF6B35))
+                          .withOpacity(0.3),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: _isLoading
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : Text(
+                          _status == 'online' ? 'GO OFFLINE' : 'GO ONLINE',
+                          style: GoogleFonts.outfit(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1.5,
+                          ),
                         ),
-                      )
-                    : Text(
-                        _status == 'online' ? 'GO OFFLINE' : 'GO ONLINE',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 36),
+
+          // Content section
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              physics: const BouncingScrollPhysics(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Today's Summary Header
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        "Today's Summary",
+                        style: GoogleFonts.outfit(
+                          fontSize: 20,
                           fontWeight: FontWeight.bold,
-                          letterSpacing: 1.2,
+                          color: AppTheme.textPrimary,
                         ),
                       ),
+                      TextButton(
+                        onPressed: () {},
+                        child: Text(
+                          'See All',
+                          style: GoogleFonts.outfit(
+                            color: AppTheme.primaryColor,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Stats row
+                  Row(
+                    children: [
+                      _buildStatCard(
+                        'Trips',
+                        _todayStats['trips']!,
+                        Icons.local_taxi_outlined,
+                      ),
+                      const SizedBox(width: 16),
+                      _buildStatCard(
+                        'Hours',
+                        _todayStats['hours']!,
+                        Icons.access_time_rounded,
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 32),
+
+                  // Recent Activity Header
+                  Text(
+                    'Recent Activity',
+                    style: GoogleFonts.outfit(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Activity List
+                  if (_isHistoryLoading && _recentRides.isEmpty)
+                    const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(20.0),
+                        child: CircularProgressIndicator(),
+                      ),
+                    )
+                  else if (_recentRides.isEmpty)
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 40),
+                        child: Column(
+                          children: [
+                            Icon(Icons.history,
+                                size: 48, color: Colors.grey[300]),
+                            const SizedBox(height: 12),
+                            Text(
+                              'No recent rides yet',
+                              style: GoogleFonts.outfit(color: Colors.grey),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  else
+                    ..._recentRides.map((ride) => _buildRideItem(ride)),
+                  const SizedBox(height: 20),
+                ],
               ),
             ),
           ),
-        ),
-
-        const SizedBox(height: 32),
-
-        // Stats / Recent Activity
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            physics: const BouncingScrollPhysics(),
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Today\'s Summary',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  TextButton(
-                    onPressed: () =>
-                        Navigator.pushNamed(context, '/driver-activity'),
-                    child: const Text('See All'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  _buildStatCard('Trips', '12', Icons.directions_car),
-                  const SizedBox(width: 16),
-                  _buildStatCard('Hours', '4.5', Icons.access_time),
-                ],
-              ),
-              const SizedBox(height: 24),
-              const Text(
-                'Recent Activity',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-              _buildActivityItem('Heathrow Drop-off', '£24.50', '10:30 AM'),
-              _buildActivityItem('City Center Ride', '£12.20', '09:15 AM'),
-              _buildActivityItem('Morning Commute', '£8.50', '08:45 AM'),
-            ],
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
   Widget _buildStatCard(String label, String value, IconData icon) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: Colors.grey[50],
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.grey[200]!),
+          color: const Color(0xFFF8F9FA),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.grey.withOpacity(0.05)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, color: AppTheme.textSecondary),
-            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.04),
+                    blurRadius: 8,
+                  ),
+                ],
+              ),
+              child: Icon(icon, color: AppTheme.primaryColor, size: 20),
+            ),
+            const SizedBox(height: 16),
             Text(
               value,
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              style: GoogleFonts.outfit(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textPrimary,
+              ),
             ),
-            Text(label, style: const TextStyle(color: AppTheme.textSecondary)),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: GoogleFonts.outfit(
+                color: Colors.grey[600],
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildActivityItem(String title, String amount, String time) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
+  Widget _buildRideItem(dynamic ride) {
+    final createdAt = DateTime.parse(ride['createdAt']);
+    final timeStr = DateFormat('hh:mm a').format(createdAt);
+    final isCancelled = ride['status'].toString().contains('cancelled');
+    final pickupAddr = ride['pickupLocation']?['address'] ?? 'Unknown Pickup';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: AppTheme.surfaceColor,
-              borderRadius: BorderRadius.circular(12),
+              color: isCancelled
+                  ? Colors.red.withOpacity(0.1)
+                  : AppTheme.primaryColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(16),
             ),
-            child: const Icon(Icons.history, color: AppTheme.textPrimary),
+            child: Icon(
+              Icons.history,
+              color: isCancelled ? Colors.red : AppTheme.primaryColor,
+              size: 24,
+            ),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -1434,29 +1623,47 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  title,
-                  style: const TextStyle(
+                  pickupAddr,
+                  style: GoogleFonts.outfit(
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
+                    color: AppTheme.textPrimary,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
+                const SizedBox(height: 4),
                 Text(
-                  time,
-                  style: const TextStyle(
+                  timeStr,
+                  style: GoogleFonts.outfit(
                     color: AppTheme.textSecondary,
-                    fontSize: 14,
+                    fontSize: 13,
                   ),
                 ),
               ],
             ),
           ),
-          Text(
-            amount,
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-              color: AppTheme.primaryColor,
-            ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '£${(ride['fare'] ?? 0.0).toStringAsFixed(2)}',
+                style: GoogleFonts.outfit(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  color: isCancelled ? Colors.red : AppTheme.primaryColor,
+                ),
+              ),
+              if (isCancelled)
+                Text(
+                  'Cancelled',
+                  style: GoogleFonts.outfit(
+                    color: Colors.red,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+            ],
           ),
         ],
       ),

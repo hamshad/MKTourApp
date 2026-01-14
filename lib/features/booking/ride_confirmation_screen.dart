@@ -210,6 +210,10 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   }
 
   Future<void> _confirmRide() async {
+    // Proceed with Pay Later (Auth now, charge later) by default
+    _processBooking(PaymentTiming.payLater);
+
+    /* Original Pay Now / Pay Later selection logic - Commented for future iteration
     // Show payment choice popup
     final PaymentTiming?
     selectedTiming = await showModalBottomSheet<PaymentTiming>(
@@ -289,8 +293,10 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     if (selectedTiming != null) {
       _processBooking(selectedTiming);
     }
+    */
   }
 
+  /* Commented out for now - used in _confirmRide's bottom sheet
   Widget _buildPopupOption(
     BuildContext context, {
     required String title,
@@ -345,6 +351,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
       ),
     );
   }
+  */
 
   Future<void> _processBooking(PaymentTiming timing) async {
     debugPrint(
@@ -381,7 +388,18 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
           // Pop and pass the ride data back to Home Screen
           Navigator.of(
             context,
-          ).pop({'status': 'searching', 'ride': result.data});
+          ).pop({
+            'status': 'searching',
+            'ride': result.data,
+            'confirmationData': {
+              'pickupLocation': widget.pickupLocation,
+              'dropoffLocation': widget.dropoffLocation,
+              'vehicleType': widget.vehicleType,
+              'vehicleName': widget.vehicleName,
+              'fareData': widget.fareData,
+              'polyline': widget.polyline,
+            },
+          });
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
