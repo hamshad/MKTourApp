@@ -65,8 +65,10 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
             _selectedVehicle = vehicles.first.type.apiValue;
           }
         });
-        debugPrint('✅ VehicleSelectionWidget: Loaded ${vehicles.length} vehicles');
-        
+        debugPrint(
+          '✅ VehicleSelectionWidget: Loaded ${vehicles.length} vehicles',
+        );
+
         // Fetch fare estimates for all vehicles if locations are available
         _fetchFareEstimates();
       }
@@ -83,11 +85,13 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
 
   /// Fetch fare estimates for all vehicle types from backend
   Future<void> _fetchFareEstimates() async {
-    if (widget.pickupLat == null || 
+    if (widget.pickupLat == null ||
         widget.pickupLng == null ||
         widget.dropoffLat == null ||
         widget.dropoffLng == null) {
-      debugPrint('⚠️ VehicleSelectionWidget: Missing coordinates for fare estimation');
+      debugPrint(
+        '⚠️ VehicleSelectionWidget: Missing coordinates for fare estimation',
+      );
       return;
     }
 
@@ -108,10 +112,14 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
           setState(() {
             _fareEstimates[vehicle.type.apiValue] = result;
           });
-          debugPrint('✅ VehicleSelectionWidget: Got fare for ${vehicle.type.apiValue}: £${result['total_fare']}');
+          debugPrint(
+            '✅ VehicleSelectionWidget: Got fare for ${vehicle.type.apiValue}: £${result['total_fare']}',
+          );
         }
       } catch (e) {
-        debugPrint('❌ VehicleSelectionWidget: Error getting fare for ${vehicle.type.apiValue}: $e');
+        debugPrint(
+          '❌ VehicleSelectionWidget: Error getting fare for ${vehicle.type.apiValue}: $e',
+        );
       }
     }
 
@@ -168,12 +176,14 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
             final vehicle = _vehicles[index];
             final vehicleId = vehicle.type.apiValue;
             final isSelected = _selectedVehicle == vehicleId;
-            
+
             // Get fare estimate from backend or use base fare
             final fareData = _fareEstimates[vehicleId];
             final price = fareData?['total_fare'] ?? vehicle.baseFare;
             final durationSeconds = fareData?['duration_seconds'] ?? 600;
-            final durationText = fareData?['duration_text'] ?? '${(durationSeconds / 60).round()} mins';
+            final durationText =
+                fareData?['duration_text'] ??
+                '${(durationSeconds / 60).round()} mins';
 
             return InkWell(
               onTap: () {
@@ -272,15 +282,17 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                               ? const SizedBox(
                                   width: 16,
                                   height: 16,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
                                 )
                               : Text(
                                   '£${price.toStringAsFixed(0)}',
                                   style: TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold,
-                                    color: isSelected 
-                                        ? AppTheme.primaryColor 
+                                    color: isSelected
+                                        ? AppTheme.primaryColor
                                         : AppTheme.textPrimary,
                                   ),
                                 ),
@@ -318,18 +330,24 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                         (v) => v.type.apiValue == _selectedVehicle,
                         orElse: () => _vehicles.first,
                       );
-                      
-                      // Use fare data from backend if available
-                      final fareData = _fareEstimates[_selectedVehicle] ?? {
-                        'total_fare': vehicle.baseFare,
-                        'distance_text': 'Calculation pending',
-                        'duration_text': 'Calculating...',
-                        'duration_seconds': 600,
-                      };
 
-                      debugPrint('🚗 VehicleSelectionWidget: Select Vehicle pressed');
-                      debugPrint('🚗 VehicleSelectionWidget: Type: $_selectedVehicle, Fare: £${fareData['total_fare']}');
-                      
+                      // Use fare data from backend if available
+                      final fareData =
+                          _fareEstimates[_selectedVehicle] ??
+                          {
+                            'total_fare': vehicle.baseFare,
+                            'distance_text': 'Calculation pending',
+                            'duration_text': 'Calculating...',
+                            'duration_seconds': 600,
+                          };
+
+                      debugPrint(
+                        '🚗 VehicleSelectionWidget: Select Vehicle pressed',
+                      );
+                      debugPrint(
+                        '🚗 VehicleSelectionWidget: Type: $_selectedVehicle, Fare: £${fareData['total_fare']}',
+                      );
+
                       widget.onSelectVehicle(
                         _selectedVehicle,
                         vehicle.name,

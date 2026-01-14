@@ -106,6 +106,15 @@ class _HomeScreenState extends State<HomeScreen> {
       debugPrint('💰 [HomeScreen] fare: ${data['fare']}');
 
       if (mounted && _isSearching) {
+        final activeRide = _activeRide;
+
+        String? clientSecret;
+        String? paymentTiming;
+        if (activeRide is Map<String, dynamic>) {
+          clientSecret = activeRide['clientSecret']?.toString();
+          paymentTiming = activeRide['paymentTiming']?.toString();
+        }
+
         setState(() {
           _isSearching = false;
           _activeRide = data;
@@ -136,6 +145,8 @@ class _HomeScreenState extends State<HomeScreen> {
               dropoff: data['dropoffLocation'],
               fare: (data['fare'] ?? 0.0).toDouble(),
               driver: driverWithOtp, // Pass driver info with OTP included
+              paymentTiming: paymentTiming,
+              clientSecret: clientSecret,
             ),
           ),
         );

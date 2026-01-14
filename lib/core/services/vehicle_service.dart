@@ -81,9 +81,7 @@ class VehicleService {
         headers: headers,
       );
 
-      debugPrint(
-        '🚗 [VehicleService] Response Status: ${response.statusCode}',
-      );
+      debugPrint('🚗 [VehicleService] Response Status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
@@ -91,8 +89,9 @@ class VehicleService {
 
         if (responseData['success'] == true && responseData['data'] != null) {
           final List<dynamic> vehiclesJson = responseData['data'];
-          final vehicles =
-              vehiclesJson.map((json) => Vehicle.fromJson(json)).toList();
+          final vehicles = vehiclesJson
+              .map((json) => Vehicle.fromJson(json))
+              .toList();
 
           // Cache the result
           _cachedVehicles = vehicles;
@@ -139,20 +138,22 @@ class VehicleService {
   /// with existing UI components that expect Map<String, dynamic>
   List<Map<String, dynamic>> vehiclesToLegacyFormat(List<Vehicle> vehicles) {
     return vehicles
-        .map((v) => {
-              'id': v.type.apiValue,
-              'type': v.type.apiValue,
-              'name': v.name,
-              'description': _getVehicleDescription(v.type),
-              'seats': v.capacity,
-              'capacity': v.capacity,
-              'basePrice': v.baseFare,
-              'baseFare': v.baseFare,
-              'pricePerMile': v.perMileRate,
-              'perMileRate': v.perMileRate,
-              'icon': v.icon,
-              'image': _getVehicleImage(v.type),
-            })
+        .map(
+          (v) => {
+            'id': v.type.apiValue,
+            'type': v.type.apiValue,
+            'name': v.name,
+            'description': _getVehicleDescription(v.type),
+            'seats': v.capacity,
+            'capacity': v.capacity,
+            'basePrice': v.baseFare,
+            'baseFare': v.baseFare,
+            'pricePerMile': v.perMileRate,
+            'perMileRate': v.perMileRate,
+            'icon': v.icon,
+            'image': _getVehicleImage(v.type),
+          },
+        )
         .toList();
   }
 

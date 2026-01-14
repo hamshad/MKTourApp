@@ -15,7 +15,7 @@ class VehicleSelectionScreen extends StatefulWidget {
 class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
   final PanelController _panelController = PanelController();
   int _selectedVehicleIndex = 0;
-  
+
   // Route points (Mock)
   final List<LatLng> _route = [
     const LatLng(51.5074, -0.1278), // Start
@@ -26,8 +26,10 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
-    final destination = args?['destination'] ?? {'name': 'Destination', 'address': ''};
+    final args =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final destination =
+        args?['destination'] ?? {'name': 'Destination', 'address': ''};
 
     return Scaffold(
       body: Stack(
@@ -64,13 +66,17 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
                     point: _route.last,
                     width: 30,
                     height: 30,
-                    child: const Icon(Icons.location_on, color: Colors.red, size: 30),
+                    child: const Icon(
+                      Icons.location_on,
+                      color: Colors.red,
+                      size: 30,
+                    ),
                   ),
                 ],
               ),
             ],
           ),
-          
+
           // Back Button
           Positioned(
             top: 50,
@@ -106,28 +112,37 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
                 const SizedBox(height: 16),
                 Text(
                   'Choose a ride',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 16),
                 Expanded(
                   child: ListView.separated(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     itemCount: AppConstants.vehicleTypes.length,
-                    separatorBuilder: (context, index) => const Divider(height: 1),
+                    separatorBuilder: (context, index) =>
+                        const Divider(height: 1),
                     itemBuilder: (context, index) {
                       final vehicle = AppConstants.vehicleTypes[index];
                       final isSelected = _selectedVehicleIndex == index;
-                      
+
                       return InkWell(
-                        onTap: () => setState(() => _selectedVehicleIndex = index),
+                        onTap: () =>
+                            setState(() => _selectedVehicleIndex = index),
                         child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           decoration: BoxDecoration(
-                            color: isSelected ? AppTheme.surfaceColor : Colors.transparent,
+                            color: isSelected
+                                ? AppTheme.surfaceColor
+                                : Colors.transparent,
                             borderRadius: BorderRadius.circular(12),
-                            border: isSelected ? Border.all(color: AppTheme.primaryColor, width: 2) : null,
+                            border: isSelected
+                                ? Border.all(
+                                    color: AppTheme.primaryColor,
+                                    width: 2,
+                                  )
+                                : null,
                           ),
                           child: Row(
                             children: [
@@ -135,7 +150,9 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
                               Container(
                                 width: 80,
                                 height: 60,
-                                margin: const EdgeInsets.symmetric(horizontal: 12),
+                                margin: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                ),
                                 decoration: BoxDecoration(
                                   color: Colors.grey[100],
                                   borderRadius: BorderRadius.circular(8),
@@ -146,7 +163,7 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
                                   color: AppTheme.primaryColor,
                                 ),
                               ),
-                              
+
                               // Details
                               Expanded(
                                 child: Column(
@@ -163,7 +180,11 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
                                           ),
                                         ),
                                         const SizedBox(width: 8),
-                                        const Icon(Icons.person, size: 14, color: AppTheme.textSecondary),
+                                        const Icon(
+                                          Icons.person,
+                                          size: 14,
+                                          color: AppTheme.textSecondary,
+                                        ),
                                         Text(
                                           '${vehicle['capacity'] ?? vehicle['seats'] ?? 4}',
                                           style: TextStyle(
@@ -184,7 +205,7 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
                                   ],
                                 ),
                               ),
-                              
+
                               // Price (use baseFare or basePrice for backwards compatibility)
                               Padding(
                                 padding: const EdgeInsets.only(right: 16),
@@ -204,7 +225,7 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
                     },
                   ),
                 ),
-                
+
                 // Payment & Book Button
                 Container(
                   padding: const EdgeInsets.all(20),
@@ -222,7 +243,10 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
                     children: [
                       Row(
                         children: [
-                          const Icon(Icons.payment, color: AppTheme.textPrimary),
+                          const Icon(
+                            Icons.payment,
+                            color: AppTheme.textPrimary,
+                          ),
                           const SizedBox(width: 12),
                           const Text(
                             'Personal • Visa **** 4242',
@@ -241,9 +265,10 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
                         height: 56,
                         child: ElevatedButton(
                           onPressed: () {
-                            final selectedVehicle = AppConstants.vehicleTypes[_selectedVehicleIndex];
+                            final selectedVehicle = AppConstants
+                                .vehicleTypes[_selectedVehicleIndex];
                             Navigator.pushNamed(
-                              context, 
+                              context,
                               '/confirm-booking',
                               arguments: {
                                 'vehicle': selectedVehicle,

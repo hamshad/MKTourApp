@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:http/http.dart' as http;
@@ -53,11 +52,69 @@ class PaymentResult {
 
 /// Service for handling payments with Stripe
 class PaymentService {
+  static const String _merchantDisplayName = 'MK Tours';
+
+  static Future<void> _presentPaymentSheet({
+    required Color primaryColor,
+    required String clientSecret,
+  }) async {
+    await Stripe.instance.initPaymentSheet(
+      paymentSheetParameters: SetupPaymentSheetParameters(
+        paymentIntentClientSecret: clientSecret,
+        merchantDisplayName: _merchantDisplayName,
+        style: ThemeMode.system,
+        appearance: PaymentSheetAppearance(
+          colors: PaymentSheetAppearanceColors(
+            primary: primaryColor,
+          ),
+          shapes: const PaymentSheetShape(borderRadius: 12),
+        ),
+        applePay: const PaymentSheetApplePay(merchantCountryCode: 'GB'),
+        googlePay: const PaymentSheetGooglePay(
+          merchantCountryCode: 'GB',
+          testEnv: true,
+        ),
+      ),
+    );
+
+    await Stripe.instance.presentPaymentSheet();
+  }
+
+  /// Present Stripe Payment Sheet for an existing PaymentIntent.
+  ///
+  /// Used by the pay_later flow when the ride completes.
+  static Future<PaymentResult> payForCompletedRide({
+    required BuildContext context,
+    required String rideId,
+    required String clientSecret,
+  }) async {
+    try {
+      final primaryColor = Theme.of(context).primaryColor;
+      debugPrint('💳 PaymentService: Presenting payment sheet for ride: $rideId');
+      await _presentPaymentSheet(
+        primaryColor: primaryColor,
+        clientSecret: clientSecret,
+      );
+      return PaymentResult.success(
+        rideId: rideId,
+        message: 'Payment successful! Thank you.',
+      );
+    } on StripeException catch (e) {
+      debugPrint('⚠️ PaymentService: Stripe error (completion) - ${e.error.message}');
+      return PaymentResult.failure(error: StripeService.getErrorMessage(e));
+    } catch (e) {
+      debugPrint('❌ PaymentService: Error (completion) - $e');
+      return PaymentResult.failure(
+        error: e.toString().replaceAll('Exception: ', ''),
+      );
+    }
+  }
+
   /// Book a ride with Stripe payment
   ///
   /// This method:
   /// 1. Creates a ride on the backend and gets a payment intent
-  /// 2. Presents the Stripe payment sheet
+  /// 2. If paymentTiming is payNow: presents the Stripe payment sheet
   /// 3. Returns the result of the booking
   static Future<PaymentResult> bookRideWithPayment({
     required BuildContext context,
@@ -70,7 +127,9 @@ class PaymentService {
     String? notes,
   }) async {
     String? rideId;
+    final bool shouldPresentPaymentSheet = paymentTiming == PaymentTiming.payNow;
     try {
+      final primaryColor = Theme.of(context).primaryColor;
       debugPrint('💳 PaymentService: Starting payment flow');
       debugPrint(
         '💳 PaymentService: Vehicle: $vehicleType, Distance: $distance, Fare: $fare',
@@ -85,7 +144,6 @@ class PaymentService {
         'dropoffLocation': dropoffLocation,
         'vehicleType': vehicleType,
         'distance': distance,
-        'fare': fare,
         'paymentTiming': paymentTiming == PaymentTiming.payNow
             ? 'pay_now'
             : 'pay_later',
@@ -116,42 +174,25 @@ class PaymentService {
       rideId = rideData['_id'] ?? rideData['id'];
 
       debugPrint('💳 PaymentService: Ride created: $rideId');
-      debugPrint(
-        '💳 PaymentService: Got client secret, initializing payment sheet...',
-      );
-
-      // Step 2: Initialize Payment Sheet
-      await Stripe.instance.initPaymentSheet(
-        paymentSheetParameters: SetupPaymentSheetParameters(
-          paymentIntentClientSecret: clientSecret,
-          merchantDisplayName: 'MK Tours',
-          style: ThemeMode.system,
-          appearance: PaymentSheetAppearance(
-            colors: PaymentSheetAppearanceColors(
-              primary: Theme.of(context).primaryColor,
-            ),
-            shapes: const PaymentSheetShape(borderRadius: 12),
-          ),
-          // Enable Apple Pay and Google Pay
-          applePay: const PaymentSheetApplePay(merchantCountryCode: 'GB'),
-          googlePay: const PaymentSheetGooglePay(
-            merchantCountryCode: 'GB',
-            testEnv: true, // Set to false in production
-          ),
-        ),
-      );
-
-      debugPrint('💳 PaymentService: Payment sheet initialized, presenting...');
-
-      // Step 3: Present Payment Sheet
-      await Stripe.instance.presentPaymentSheet();
-
-      debugPrint('✅ PaymentService: Payment successful!');
+      if (shouldPresentPaymentSheet) {
+        debugPrint(
+          '💳 PaymentService: Got client secret, presenting payment sheet...',
+        );
+        await _presentPaymentSheet(
+          primaryColor: primaryColor,
+          clientSecret: clientSecret,
+        );
+        debugPrint('✅ PaymentService: Payment sheet completed (pay_now)');
+      } else {
+        debugPrint(
+          '💳 PaymentService: pay_later selected; skipping payment sheet at booking time',
+        );
+      }
 
       // Step 4: Return success result
       final message = paymentTiming == PaymentTiming.payNow
-          ? 'Payment successful! Your ride is confirmed.'
-          : 'Payment authorized! You\'ll be charged after the ride completes.';
+          ? 'Payment authorized! You\'ll be charged after the ride completes.'
+          : 'Ride booked! You\'ll pay when the ride completes.';
 
       return PaymentResult.success(
         rideId: rideId!,
@@ -162,7 +203,7 @@ class PaymentService {
       debugPrint('⚠️ PaymentService: Stripe error - ${e.error.message}');
       
       // Cleanup: Cancel ride on backend if payment was cancelled or failed
-      if (rideId != null) {
+      if (shouldPresentPaymentSheet && rideId != null) {
         debugPrint('🧹 PaymentService: Cleaning up cancelled ride: $rideId');
         try {
           final headers = await ApiConfig.getAuthHeaders();

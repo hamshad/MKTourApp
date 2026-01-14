@@ -59,22 +59,22 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   void _initializeRouteSync() {
     final pickupCoords = widget.pickupLocation['coordinates'] as List;
     final dropoffCoords = widget.dropoffLocation['coordinates'] as List;
-    
+
     debugPrint('🗺️ RideConfirmationScreen: Initializing route...');
     debugPrint('   → Polyline provided: ${widget.polyline != null}');
     debugPrint('   → Polyline length: ${widget.polyline?.length ?? 0}');
-    
+
     // If polyline was passed in, use it directly (synchronous)
     if (widget.polyline != null && widget.polyline!.isNotEmpty) {
       final points = <lat_lng.LatLng>[];
-      
+
       // Debug: Check the first item type
       if (widget.polyline!.isNotEmpty) {
         final firstItem = widget.polyline!.first;
         debugPrint('   → First polyline item type: ${firstItem.runtimeType}');
         debugPrint('   → First polyline item: $firstItem');
       }
-      
+
       for (var p in widget.polyline!) {
         if (p is lat_lng.LatLng) {
           points.add(p);
@@ -97,13 +97,15 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
           }
         }
       }
-      
+
       debugPrint('   → Converted points: ${points.length}');
-      
+
       if (points.isNotEmpty) {
         _routePoints = points;
         _routeBounds = fmap.LatLngBounds.fromPoints(points);
-        debugPrint('   → Bounds: SW(${_routeBounds!.southWest.latitude}, ${_routeBounds!.southWest.longitude}) NE(${_routeBounds!.northEast.latitude}, ${_routeBounds!.northEast.longitude})');
+        debugPrint(
+          '   → Bounds: SW(${_routeBounds!.southWest.latitude}, ${_routeBounds!.southWest.longitude}) NE(${_routeBounds!.northEast.latitude}, ${_routeBounds!.northEast.longitude})',
+        );
         debugPrint(
           '✅ RideConfirmationScreen: Using provided polyline (${points.length} points)',
         );
@@ -112,7 +114,9 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     }
 
     // Fallback: straight line between pickup and dropoff (synchronous)
-    debugPrint('⚠️ RideConfirmationScreen: No polyline provided, using straight line');
+    debugPrint(
+      '⚠️ RideConfirmationScreen: No polyline provided, using straight line',
+    );
     _routePoints = [
       lat_lng.LatLng(
         (pickupCoords[1] as num).toDouble(),
@@ -159,7 +163,8 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
       } else if (mounted) {
         setState(() {
           _isFetchingFare = false;
-          _fareError = 'Unable to calculate fare for this route. Please try a different location.';
+          _fareError =
+              'Unable to calculate fare for this route. Please try a different location.';
         });
         debugPrint(
           '❌ RideConfirmationScreen: Fare API returned null - cannot proceed',
@@ -170,7 +175,8 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
       if (mounted) {
         setState(() {
           _isFetchingFare = false;
-          _fareError = 'Failed to calculate fare. Please check your connection and try again.';
+          _fareError =
+              'Failed to calculate fare. Please check your connection and try again.';
         });
       }
     }
@@ -205,7 +211,8 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
 
   Future<void> _confirmRide() async {
     // Show payment choice popup
-    final PaymentTiming? selectedTiming = await showModalBottomSheet<PaymentTiming>(
+    final PaymentTiming?
+    selectedTiming = await showModalBottomSheet<PaymentTiming>(
       context: context,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
@@ -239,19 +246,20 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-              
+
               // Pay Now Option
               _buildPopupOption(
                 context,
                 title: 'Pay Now',
-                subtitle: 'Pay £${_fare.toStringAsFixed(2)} immediately via Stripe',
+                subtitle:
+                    'Pay £${_fare.toStringAsFixed(2)} immediately via Stripe',
                 icon: Icons.flash_on,
                 color: Colors.orange,
                 value: PaymentTiming.payNow,
               ),
-              
+
               const SizedBox(height: 12),
-              
+
               // Pay Later Option
               _buildPopupOption(
                 context,
@@ -261,9 +269,9 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                 color: Colors.blue,
                 value: PaymentTiming.payLater,
               ),
-              
+
               const SizedBox(height: 32),
-              
+
               SizedBox(
                 width: double.infinity,
                 child: Text(
@@ -339,15 +347,18 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   }
 
   Future<void> _processBooking(PaymentTiming timing) async {
-    debugPrint('🚀 RideConfirmationScreen: Processing booking with timing: $timing');
+    debugPrint(
+      '🚀 RideConfirmationScreen: Processing booking with timing: $timing',
+    );
     setState(() {
       _paymentTiming = timing;
       _isLoading = true;
     });
 
     try {
-      final distanceMiles = _currentFareData['distance_miles'] ?? 
-                           ((_currentFareData['distance_meters'] ?? 0) * 0.000621371);
+      final distanceMiles =
+          _currentFareData['distance_miles'] ??
+          ((_currentFareData['distance_meters'] ?? 0) * 0.000621371);
 
       // Use PaymentService to handle both API call and Stripe payment sheet
       final result = await PaymentService.bookRideWithPayment(
@@ -368,7 +379,9 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
             '🏠 RideConfirmationScreen: Ride confirmed, returning to Home with searching state',
           );
           // Pop and pass the ride data back to Home Screen
-          Navigator.of(context).pop({'status': 'searching', 'ride': result.data});
+          Navigator.of(
+            context,
+          ).pop({'status': 'searching', 'ride': result.data});
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -383,10 +396,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
       if (mounted) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -634,14 +644,16 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
           initialLat: pickupCoords[1],
           initialLng: pickupCoords[0],
           markers: markers,
-          polylines: _routePoints.isNotEmpty ? [
-            MapPolyline(
-              id: 'route_confirmation',
-              points: _routePoints,
-              color: AppTheme.primaryColor,
-              width: 5.0, // Thicker line
-            ),
-          ] : [],
+          polylines: _routePoints.isNotEmpty
+              ? [
+                  MapPolyline(
+                    id: 'route_confirmation',
+                    points: _routePoints,
+                    color: AppTheme.primaryColor,
+                    width: 5.0, // Thicker line
+                  ),
+                ]
+              : [],
           bounds: _routeBounds,
           interactive: false,
         ),
@@ -826,7 +838,11 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                   color: Colors.grey[100],
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.credit_card, color: AppTheme.primaryColor, size: 24),
+                child: const Icon(
+                  Icons.credit_card,
+                  color: AppTheme.primaryColor,
+                  size: 24,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -842,7 +858,9 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                       ),
                     ),
                     Text(
-                      _paymentTiming == PaymentTiming.payNow ? 'Pay Now' : 'Pay After Ride',
+                      _paymentTiming == PaymentTiming.payNow
+                          ? 'Pay Now'
+                          : 'Pay After Ride',
                       style: TextStyle(fontSize: 13, color: Colors.grey[600]),
                     ),
                   ],
@@ -856,11 +874,10 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     );
   }
 
-
   Widget _buildBottomBar() {
     // Check if there's a fare error
     final hasError = _fareError != null;
-    
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -888,7 +905,11 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.error_outline, color: Colors.red.shade700, size: 20),
+                    Icon(
+                      Icons.error_outline,
+                      color: Colors.red.shade700,
+                      size: 20,
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -904,7 +925,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
               ),
               const SizedBox(height: 12),
             ],
-            
+
             // Fare Row (only show if no error)
             if (!hasError)
               Row(
@@ -933,9 +954,9 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                         ),
                 ],
               ),
-            
+
             if (!hasError) const SizedBox(height: 16),
-            
+
             // Button Row
             SizedBox(
               width: double.infinity,

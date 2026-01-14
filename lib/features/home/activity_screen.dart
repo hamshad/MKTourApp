@@ -108,7 +108,10 @@ class _ActivityScreenState extends State<ActivityScreen> {
             if (_selectedFilter == 'All') return true;
             final status = (ride['status'] as String?)?.toLowerCase() ?? '';
             // Handle "In Progress" filter matching "in_progress" status
-            final filterValue = _selectedFilter.toLowerCase().replaceAll(' ', '_');
+            final filterValue = _selectedFilter.toLowerCase().replaceAll(
+              ' ',
+              '_',
+            );
             return status == filterValue;
           }).toList();
         }
@@ -128,9 +131,11 @@ class _ActivityScreenState extends State<ActivityScreen> {
                             const Divider(height: 32),
                         itemBuilder: (context, index) {
                           final ride = rides[index];
-                          final pickup = ride['pickupLocation']?['address'] ??
+                          final pickup =
+                              ride['pickupLocation']?['address'] ??
                               'Unknown Pickup';
-                          final dropoff = ride['dropoffLocation']?['address'] ??
+                          final dropoff =
+                              ride['dropoffLocation']?['address'] ??
                               'Unknown Dropoff';
                           final price = ride['fare'] != null
                               ? '£${ride['fare']}'
@@ -142,8 +147,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
                           if (dateStr != null) {
                             try {
                               final date = DateTime.parse(dateStr).toLocal();
-                              formattedDate =
-                                  DateFormat('MMM d, h:mm a').format(date);
+                              formattedDate = DateFormat(
+                                'MMM d, h:mm a',
+                              ).format(date);
                             } catch (e) {
                               formattedDate = dateStr;
                             }
@@ -168,7 +174,14 @@ class _ActivityScreenState extends State<ActivityScreen> {
   }
 
   Widget _buildFilterBar() {
-    final filters = ['All', 'Requested', 'In Progress', 'Completed', 'Cancelled', 'Expired'];
+    final filters = [
+      'All',
+      'Requested',
+      'In Progress',
+      'Completed',
+      'Cancelled',
+      'Expired',
+    ];
     return Container(
       height: 60,
       padding: const EdgeInsets.symmetric(vertical: 12),
@@ -199,7 +212,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
                 side: BorderSide(
-                  color: isSelected ? AppTheme.primaryColor : Colors.transparent,
+                  color: isSelected
+                      ? AppTheme.primaryColor
+                      : Colors.transparent,
                 ),
               ),
             ),

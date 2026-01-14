@@ -1,5 +1,5 @@
 /// Enum representing the different statuses a ride can have.
-/// 
+///
 /// Status flow:
 /// - [requested] - Initial state when rider requests a ride
 /// - [accepted] - Driver has accepted the ride request

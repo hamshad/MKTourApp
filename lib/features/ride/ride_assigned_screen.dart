@@ -9,6 +9,7 @@ import '../../core/api_service.dart';
 import '../../core/services/navigation_service.dart';
 import '../../core/services/places_service.dart';
 import '../../core/services/marker_interpolation_service.dart';
+import '../../core/services/payment_service.dart';
 import '../../core/widgets/platform_map.dart';
 import 'ride_complete_screen.dart';
 
@@ -18,6 +19,8 @@ class RideAssignedScreen extends StatefulWidget {
   final Map<String, dynamic>? dropoff;
   final double fare;
   final Map<String, dynamic>? driver; // Added initial driver data
+  final String? paymentTiming; // 'pay_now' or 'pay_later'
+  final String? clientSecret; // for pay_later (saved from createRide)
 
   const RideAssignedScreen({
     super.key,
@@ -26,6 +29,8 @@ class RideAssignedScreen extends StatefulWidget {
     this.dropoff,
     this.fare = 15.50,
     this.driver,
+    this.paymentTiming,
+    this.clientSecret,
   });
 
   @override
@@ -70,6 +75,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
 
   // Cancellation state
   bool _isCancelling = false;
+  bool _isProcessingPayment = false;
 
   @override
   void initState() {
@@ -357,15 +363,15 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
 
     _socketService.on('driver:locationChanged', (data) {
       debugPrint('📍 [RideAssignedScreen] Driver Location Updated: $data');
-      
+
       // Handle location updates based on ride status:
       // - driver_assigned/accepted: Car moving toward pickup
       // - driver_arrived: Car stationary at pickup (still update position for accuracy)
       // - in_progress: Car moving toward destination
       if (mounted &&
-          (_rideStatus == 'accepted' || 
-           _rideStatus == 'driver_arrived' ||
-           _rideStatus == 'in_progress')) {
+          (_rideStatus == 'accepted' ||
+              _rideStatus == 'driver_arrived' ||
+              _rideStatus == 'in_progress')) {
         // Use marker interpolation for smooth animation instead of direct update
         if (data['location']?['coordinates'] != null) {
           final coords = data['location']['coordinates'];
@@ -403,12 +409,26 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
     });
 
     _socketService.on('ride:completed', (data) {
-      if (mounted) {
-        debugPrint('🏁 [RideAssignedScreen] Ride Completed: $data');
-        setState(() {
-          _rideStatus = 'completed';
-        });
+      if (!mounted) return;
+      debugPrint('🏁 [RideAssignedScreen] Ride Completed: $data');
+
+      final timing = widget.paymentTiming ?? data['paymentTiming']?.toString();
+      final bool isPayLater = timing == 'pay_later';
+      final completedFare = (data['fare'] as num?)?.toDouble() ?? widget.fare;
+      final completedDistance = (data['distance'] as num?)?.toDouble();
+
+      if (isPayLater) {
+        _handlePayLaterCompletion(
+          fare: completedFare,
+          distance: completedDistance,
+          rideData: data is Map<String, dynamic> ? data : null,
+        );
+        return;
       }
+
+      setState(() {
+        _rideStatus = 'completed';
+      });
     });
 
     _socketService.on('ride:driverArrived', (data) {
@@ -507,14 +527,33 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
     _socketService.on('ride:earlyCompleted', (data) {
       if (mounted) {
         debugPrint('🏁 [RideAssignedScreen] Ride Early Completed: $data');
-        final fare = data['fare'] ?? 0.0;
-        final originalFare = data['originalFare'] ?? widget.fare;
-        final actualDistance = data['actualDistance'] ?? 0.0;
+        final double fare = (data['fare'] as num?)?.toDouble() ?? 0.0;
+        final double originalFare =
+            (data['originalFare'] as num?)?.toDouble() ?? widget.fare;
+        final double actualDistance =
+            (data['actualDistance'] as num?)?.toDouble() ?? 0.0;
         final reason = data['reason'] ?? 'Driver ended ride early';
 
         setState(() {
           _rideStatus = 'early_completed';
         });
+
+        final timing = widget.paymentTiming ?? data['paymentTiming']?.toString();
+        final bool isPayLater = timing == 'pay_later';
+
+        if (isPayLater) {
+          _handlePayLaterCompletion(
+            fare: fare,
+            distance: actualDistance,
+            earlyCompleted: true,
+            extraRideData: {
+              'originalFare': originalFare,
+              'actualDistance': actualDistance,
+              'reason': reason,
+            },
+          );
+          return;
+        }
 
         showDialog(
           context: context,
@@ -532,7 +571,6 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
               TextButton(
                 onPressed: () {
                   Navigator.pop(context); // Close dialog
-                  // Navigate to ride complete screen with adjusted fare
                   Navigator.pushReplacement(
                     context,
                     MaterialPageRoute(
@@ -631,7 +669,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
     if (_driverLocation != null && _rideStatus != 'searching') {
       Color driverMarkerColor;
       String driverTitle = _driver['name'] ?? 'Driver';
-      
+
       switch (_rideStatus) {
         case 'accepted':
           driverMarkerColor = Colors.blue;
@@ -648,7 +686,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
         default:
           driverMarkerColor = Colors.blue;
       }
-      
+
       newMarkers.add(
         MapMarker(
           id: 'driver',
@@ -937,6 +975,82 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
 
           // Status Panel
           Positioned(bottom: 0, left: 0, right: 0, child: _buildStatusPanel()),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handlePayLaterCompletion({
+    required double fare,
+    double? distance,
+    Map<String, dynamic>? rideData,
+    bool earlyCompleted = false,
+    Map<String, dynamic>? extraRideData,
+  }) async {
+    if (!mounted || _isProcessingPayment) return;
+
+    final clientSecret = widget.clientSecret;
+    if (clientSecret == null || clientSecret.isEmpty) {
+      debugPrint('⚠️ [RideAssignedScreen] Missing clientSecret for pay_later');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Payment info missing. Please contact support.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    setState(() => _isProcessingPayment = true);
+
+    final result = await PaymentService.payForCompletedRide(
+      context: context,
+      rideId: widget.rideId,
+      clientSecret: clientSecret,
+    );
+
+    if (!mounted) return;
+    setState(() => _isProcessingPayment = false);
+
+    if (!result.success) {
+      _showPaymentRequiredDialog(fare: fare, distance: distance);
+      return;
+    }
+
+    final Map<String, dynamic> finalRideData = {
+      'bookingId': widget.rideId,
+      'driver': _driver,
+      'fare': fare,
+      if (distance != null) 'distance': distance,
+      if (rideData != null) ...rideData,
+      if (extraRideData != null) ...extraRideData,
+      if (earlyCompleted) 'earlyCompleted': true,
+      'paymentMethod': 'Paid via Card',
+    };
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => RideCompleteScreen(rideData: finalRideData)),
+    );
+  }
+
+  void _showPaymentRequiredDialog({required double fare, double? distance}) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        title: const Text('Payment Required'),
+        content: const Text('Please complete payment for your ride.'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _handlePayLaterCompletion(fare: fare, distance: distance);
+            },
+            child: const Text('Try Again'),
+          ),
         ],
       ),
     );

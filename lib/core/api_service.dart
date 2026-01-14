@@ -688,7 +688,7 @@ class ApiService {
   /// Driver ends ride early during an in-progress ride
   /// Returns adjusted fare based on actual distance traveled
   /// Valid reasons: user_requested, rider_misbehavior, safety_concern, wrong_destination, vehicle_issue
-  /// 
+  ///
   /// Backend API: PATCH /api/v1/rides/{rideId}/end-early
   /// Request body: { driverLat, driverLon, earlyEndReason }
   /// Response: { status, actualDistance, fare, paymentStatus }
@@ -725,7 +725,8 @@ class ApiService {
         body: jsonEncode({
           'driverLat': latitude,
           'driverLon': longitude,
-          'earlyEndReason': reason, // Matches: user_requested, safety_concern, etc.
+          'earlyEndReason':
+              reason, // Matches: user_requested, safety_concern, etc.
         }),
       );
 

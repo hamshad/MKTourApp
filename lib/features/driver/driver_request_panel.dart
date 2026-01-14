@@ -42,11 +42,17 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
       final pickupCoords = widget.rideData!['pickupLocation']['coordinates'];
       final pickupLat = pickupCoords[1];
       final pickupLng = pickupCoords[0];
-      
-      final pickupAddr = await _placesService.getAddressFromLatLng(pickupLat, pickupLng);
+
+      final pickupAddr = await _placesService.getAddressFromLatLng(
+        pickupLat,
+        pickupLng,
+      );
       if (mounted) {
         setState(() {
-          _pickupAddress = pickupAddr ?? widget.rideData!['pickupLocation']?['address'] ?? 'Pickup Location';
+          _pickupAddress =
+              pickupAddr ??
+              widget.rideData!['pickupLocation']?['address'] ??
+              'Pickup Location';
         });
       }
     }
@@ -56,11 +62,17 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
       final dropoffCoords = widget.rideData!['dropoffLocation']['coordinates'];
       final dropoffLat = dropoffCoords[1];
       final dropoffLng = dropoffCoords[0];
-      
-      final dropoffAddr = await _placesService.getAddressFromLatLng(dropoffLat, dropoffLng);
+
+      final dropoffAddr = await _placesService.getAddressFromLatLng(
+        dropoffLat,
+        dropoffLng,
+      );
       if (mounted) {
         setState(() {
-          _dropoffAddress = dropoffAddr ?? widget.rideData!['dropoffLocation']?['address'] ?? 'Dropoff Location';
+          _dropoffAddress =
+              dropoffAddr ??
+              widget.rideData!['dropoffLocation']?['address'] ??
+              'Dropoff Location';
         });
       }
     }
@@ -74,13 +86,14 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
   /// Handles the exact backend keys: sedan, suv, hatchback, van
   String _getVehicleDisplayName(String? vehicleType) {
     if (vehicleType == null) return 'Standard';
-    
+
     try {
       final type = VehicleType.fromString(vehicleType);
       return type.displayName;
     } catch (e) {
       // Fallback for unknown types
-      return vehicleType.substring(0, 1).toUpperCase() + vehicleType.substring(1);
+      return vehicleType.substring(0, 1).toUpperCase() +
+          vehicleType.substring(1);
     }
   }
 
@@ -103,7 +116,7 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
             ),
           ),
           const SizedBox(height: 20),
-          
+
           // Header
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -134,7 +147,7 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
             ],
           ),
           const SizedBox(height: 24),
-          
+
           // Passenger Info Card
           Container(
             padding: const EdgeInsets.all(16),
@@ -148,7 +161,11 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                 const CircleAvatar(
                   radius: 28,
                   backgroundColor: Colors.white,
-                  child: Icon(Icons.person, size: 30, color: AppTheme.textSecondary),
+                  child: Icon(
+                    Icons.person,
+                    size: 30,
+                    color: AppTheme.textSecondary,
+                  ),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -167,10 +184,7 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                       // Display vehicle type from backend
                       Text(
                         _getVehicleDisplayName(widget.rideData?['vehicleType']),
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[600],
-                        ),
+                        style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                       ),
                     ],
                   ),
@@ -189,25 +203,26 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                     ),
                     Text(
                       'Est. Fare',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[500],
-                      ),
+                      style: TextStyle(fontSize: 12, color: Colors.grey[500]),
                     ),
                   ],
                 ),
               ],
             ),
           ),
-          
+
           const SizedBox(height: 24),
-          
+
           // Route Details
           Row(
             children: [
               Column(
                 children: [
-                  const Icon(Icons.my_location, color: AppTheme.primaryColor, size: 20),
+                  const Icon(
+                    Icons.my_location,
+                    color: AppTheme.primaryColor,
+                    size: 20,
+                  ),
                   Container(
                     height: 30,
                     width: 2,
@@ -221,29 +236,39 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                 ],
               ),
               const SizedBox(width: 16),
-               Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _isLoadingAddresses 
-                        ? 'Loading address...'
-                        : (_pickupAddress.isNotEmpty ? _pickupAddress : (widget.rideData?['pickupLocation']?['address'] ?? 'Pickup Location')),
+                      _isLoadingAddresses
+                          ? 'Loading address...'
+                          : (_pickupAddress.isNotEmpty
+                                ? _pickupAddress
+                                : (widget.rideData?['pickupLocation']?['address'] ??
+                                      'Pickup Location')),
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 16,
-                        color: _isLoadingAddresses ? Colors.grey : AppTheme.textPrimary,
+                        color: _isLoadingAddresses
+                            ? Colors.grey
+                            : AppTheme.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 24),
                     Text(
-                      _isLoadingAddresses 
-                        ? 'Loading address...'
-                        : (_dropoffAddress.isNotEmpty ? _dropoffAddress : (widget.rideData?['dropoffLocation']?['address'] ?? 'Dropoff Location')),
+                      _isLoadingAddresses
+                          ? 'Loading address...'
+                          : (_dropoffAddress.isNotEmpty
+                                ? _dropoffAddress
+                                : (widget.rideData?['dropoffLocation']?['address'] ??
+                                      'Dropoff Location')),
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 16,
-                        color: _isLoadingAddresses ? Colors.grey : AppTheme.textPrimary,
+                        color: _isLoadingAddresses
+                            ? Colors.grey
+                            : AppTheme.textPrimary,
                       ),
                     ),
                     Text(
@@ -258,9 +283,9 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
               ),
             ],
           ),
-          
+
           const Spacer(),
-          
+
           // Action Buttons
           Row(
             children: [
@@ -269,7 +294,10 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                   onPressed: widget.onDecline,
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 18),
-                    side: BorderSide(color: Colors.red.withOpacity(0.5), width: 2),
+                    side: BorderSide(
+                      color: Colors.red.withOpacity(0.5),
+                      width: 2,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
