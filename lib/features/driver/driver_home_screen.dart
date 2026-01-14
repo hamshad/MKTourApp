@@ -611,7 +611,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         _showOtpDialog();
       } else if (_status == 'in_progress') {
         // Complete Ride
-        final response = await _apiService.completeRide(_currentRideId!);
+        final pos = _currentLocation;
+        final response = await _apiService.completeRide(
+          _currentRideId!,
+          pos.latitude,
+          pos.longitude,
+        );
         if (response['success'] == true) {
           setState(() => _status = 'complete');
           // Reset to online after short delay

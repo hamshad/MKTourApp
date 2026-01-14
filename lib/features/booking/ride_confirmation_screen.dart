@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../../core/theme.dart';
 import '../../core/api_service.dart';
 import '../../core/services/places_service.dart';
+import '../../core/services/payment_service.dart';
 import '../ride/ride_assigned_screen.dart';
 import '../../core/widgets/platform_map.dart';
 import 'package:latlong2/latlong.dart' as lat_lng;
@@ -39,6 +40,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   bool _isFetchingFare = true;
   String? _fareError; // Error message if fare fetch fails
   Map<String, dynamic>? _dynamicFareData;
+  PaymentTiming _paymentTiming = PaymentTiming.payLater;
 
   // Route polyline points - initialized synchronously from passed data
   late List<lat_lng.LatLng> _routePoints;
@@ -202,57 +204,187 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   }
 
   Future<void> _confirmRide() async {
-    debugPrint('🚀 RideConfirmationScreen: Confirming ride...');
-    setState(() => _isLoading = true);
+    // Show payment choice popup
+    final PaymentTiming? selectedTiming = await showModalBottomSheet<PaymentTiming>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Handle
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'Choose Payment Option',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 24),
+              
+              // Pay Now Option
+              _buildPopupOption(
+                context,
+                title: 'Pay Now',
+                subtitle: 'Pay £${_fare.toStringAsFixed(2)} immediately via Stripe',
+                icon: Icons.flash_on,
+                color: Colors.orange,
+                value: PaymentTiming.payNow,
+              ),
+              
+              const SizedBox(height: 12),
+              
+              // Pay Later Option
+              _buildPopupOption(
+                context,
+                title: 'Pay After Ride',
+                subtitle: 'Authorize card now, charge after completion',
+                icon: Icons.schedule,
+                color: Colors.blue,
+                value: PaymentTiming.payLater,
+              ),
+              
+              const SizedBox(height: 32),
+              
+              SizedBox(
+                width: double.infinity,
+                child: Text(
+                  'Your payment is securely processed by Stripe.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (selectedTiming != null) {
+      _processBooking(selectedTiming);
+    }
+  }
+
+  Widget _buildPopupOption(
+    BuildContext context, {
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+    required PaymentTiming value,
+  }) {
+    return InkWell(
+      onTap: () => Navigator.pop(context, value),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey[200]!),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: color, size: 24),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: Colors.grey[400]),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _processBooking(PaymentTiming timing) async {
+    debugPrint('🚀 RideConfirmationScreen: Processing booking with timing: $timing');
+    setState(() {
+      _paymentTiming = timing;
+      _isLoading = true;
+    });
 
     try {
-      // Use the new distance_miles field from backend if available, 
-      // otherwise convert meters to miles (1m = 0.000621371 miles)
       final distanceMiles = _currentFareData['distance_miles'] ?? 
                            ((_currentFareData['distance_meters'] ?? 0) * 0.000621371);
 
-      // Build ride request matching backend API format: POST /api/v1/rides
-      // - pickupLocation: { coordinates: [lng, lat], address: string }
-      // - dropoffLocation: { coordinates: [lng, lat], address: string }
-      // - vehicleType: 'sedan' | 'suv' | 'hatchback' | 'van'
-      // - distance: number (in Miles)
-      // - paymentTiming: 'pay_later' | 'pay_now'
-      final rideData = {
-        'pickupLocation': widget.pickupLocation,
-        'dropoffLocation': widget.dropoffLocation,
-        'vehicleType': widget.vehicleType, // Uses backend type: sedan, suv, hatchback, van
-        'distance': distanceMiles,
-        'paymentTiming': 'pay_later', // Default to pay later
-      };
-
-      debugPrint(
-        '🚀 RideConfirmationScreen: Creating ride with data: $rideData',
+      // Use PaymentService to handle both API call and Stripe payment sheet
+      final result = await PaymentService.bookRideWithPayment(
+        context: context,
+        pickupLocation: widget.pickupLocation,
+        dropoffLocation: widget.dropoffLocation,
+        vehicleType: widget.vehicleType,
+        distance: (distanceMiles as num).toDouble(),
+        fare: _fare,
+        paymentTiming: timing,
       );
-
-      final response = await _apiService.createRide(rideData);
-
-      debugPrint('✅ RideConfirmationScreen: Ride created successfully');
-      debugPrint('📋 RideConfirmationScreen: Response: $response');
 
       if (mounted) {
         setState(() => _isLoading = false);
 
-        debugPrint(
-          '🏠 RideConfirmationScreen: Ride confirmed, returning to Home with searching state',
-        );
-
-        // Pop and pass the ride data back to Home Screen
-        Navigator.of(
-          context,
-        ).pop({'status': 'searching', 'ride': response['data']});
+        if (result.success) {
+          debugPrint(
+            '🏠 RideConfirmationScreen: Ride confirmed, returning to Home with searching state',
+          );
+          // Pop and pass the ride data back to Home Screen
+          Navigator.of(context).pop({'status': 'searching', 'ride': result.data});
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result.error ?? 'Failed to book ride'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     } catch (e) {
-      debugPrint('❌ RideConfirmationScreen: Error creating ride: $e');
+      debugPrint('❌ RideConfirmationScreen: Error scaling booking: $e');
       if (mounted) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to book ride: $e'),
+            content: Text('Error: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -678,7 +810,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Payment',
+            'Payment Method',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
@@ -694,26 +826,36 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                   color: Colors.grey[100],
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Icon(Icons.money, color: Colors.green[700], size: 24),
+                child: const Icon(Icons.credit_card, color: AppTheme.primaryColor, size: 24),
               ),
               const SizedBox(width: 12),
-              const Expanded(
-                child: Text(
-                  'Cash',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                    color: AppTheme.textPrimary,
-                  ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Stripe Secure Payment',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                    Text(
+                      _paymentTiming == PaymentTiming.payNow ? 'Pay Now' : 'Pay After Ride',
+                      style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                    ),
+                  ],
                 ),
               ),
-              Icon(Icons.chevron_right, color: Colors.grey[400]),
+              Icon(Icons.lock_outline, color: Colors.grey[400], size: 18),
             ],
           ),
         ],
       ),
     );
   }
+
 
   Widget _buildBottomBar() {
     // Check if there's a fare error

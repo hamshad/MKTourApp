@@ -537,8 +537,15 @@ class ApiService {
     return await _postRequest(ApiConstants.startRide(rideId), {'otp': otp});
   }
 
-  Future<Map<String, dynamic>> completeRide(String rideId) async {
-    return await _postRequest(ApiConstants.completeRide(rideId), {});
+  Future<Map<String, dynamic>> completeRide(
+    String rideId,
+    double latitude,
+    double longitude,
+  ) async {
+    return await _postRequest(ApiConstants.completeRide(rideId), {
+      'latitude': latitude,
+      'longitude': longitude,
+    });
   }
 
   Future<Map<String, dynamic>> cancelRide(

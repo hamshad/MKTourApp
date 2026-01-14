@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import '../../core/theme.dart';
 import '../../core/api_service.dart';
+import '../../core/services/socket_service.dart';
+import '../../core/widgets/custom_snackbar.dart';
 
 class DriverAssignedScreen extends StatefulWidget {
   final Map<String, dynamic> bookingData;
@@ -15,8 +17,9 @@ class DriverAssignedScreen extends StatefulWidget {
 class _DriverAssignedScreenState extends State<DriverAssignedScreen> {
   Timer? _statusTimer;
   String _currentStatus = 'driver_assigned';
-  String _statusText = 'Driver is on the way';
+   String _statusText = 'Driver is on the way';
   int _eta = 5;
+  final SocketService _socketService = SocketService();
 
   @override
   void initState() {
@@ -24,12 +27,115 @@ class _DriverAssignedScreenState extends State<DriverAssignedScreen> {
     print('🚕 DRIVER ASSIGNED: Screen loaded');
     print('🚕 DRIVER ASSIGNED: OTP = ${widget.bookingData['otp']}');
     print('🚕 DRIVER ASSIGNED: Driver = ${widget.bookingData['driver']?['name']}');
+    _setupSocketListeners();
     _startStatusPolling();
+  }
+
+  void _setupSocketListeners() {
+    final rideId = widget.bookingData['bookingId'] ?? widget.bookingData['_id'];
+    if (rideId == null) return;
+
+    // Listen for driver status updates via socket
+    _socketService.on('ride:statusUpdate', (data) {
+      if (!mounted) return;
+      if (data['rideId'] == rideId) {
+        _updateStatus(data['status']);
+      }
+    });
+
+    // Listen for driver cancellation
+    _socketService.on('ride:cancelledByDriver', (data) {
+      if (!mounted) return;
+      if (data['rideId'] == rideId) {
+        _handleDriverCancellation(data);
+      }
+    });
+
+    // Listen for early completion (adjusted fare)
+    _socketService.on('ride:earlyCompleted', (data) {
+      if (!mounted) return;
+      if (data['rideId'] == rideId) {
+        _handleEarlyCompletion(data);
+      }
+    });
+  }
+
+  void _updateStatus(String status) {
+    if (!mounted) return;
+    setState(() {
+      _currentStatus = status;
+      switch (_currentStatus) {
+        case 'driver_assigned':
+        case 'accepted':
+          _statusText = 'Driver is on the way';
+          _eta = 5;
+          break;
+        case 'driver_arrived':
+          _statusText = 'Driver has arrived';
+          _eta = 0;
+          break;
+        case 'in_progress':
+          _statusText = 'Trip in progress';
+          _eta = 12; // In a real app, this would be dynamic
+          break;
+        case 'completed':
+          _statusText = 'Trip completed';
+          _eta = 0;
+          _showRideCompletionScreen();
+          break;
+      }
+    });
+  }
+
+  void _handleDriverCancellation(Map<String, dynamic> data) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Ride Cancelled'),
+        content: const Text(
+          'The driver had to cancel the ride. A full refund has been issued to your original payment method.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context); // Close dialog
+              Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+            },
+            child: const Text('Return Home'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _handleEarlyCompletion(Map<String, dynamic> data) {
+    // Show adjusted fare message and move to completion screen
+    CustomSnackbar.show(
+      context,
+      message: 'Ride ended early. Fare adjusted based on distance.',
+      type: SnackbarType.info,
+    );
+    
+    Navigator.pushReplacementNamed(
+      context,
+      '/ride-complete',
+      arguments: {
+        'bookingId': widget.bookingData['bookingId'],
+        'driver': widget.bookingData['driver'],
+        'fare': data['adjustedFare'],
+        'distance': data['actualDistance'],
+        'status': 'early_completion',
+      },
+    );
   }
 
   @override
   void dispose() {
     _statusTimer?.cancel();
+    _socketService.off('ride:statusUpdate');
+    _socketService.off('ride:cancelledByDriver');
+    _socketService.off('ride:earlyCompleted');
     super.dispose();
   }
 
@@ -39,35 +145,10 @@ class _DriverAssignedScreenState extends State<DriverAssignedScreen> {
       try {
         final status = await apiService.getRideStatus(widget.bookingData['bookingId'] ?? 'unknown');
         if (mounted) {
-          setState(() {
-            _currentStatus = status['status'] ?? 'driver_assigned';
-            
-            switch (_currentStatus) {
-              case 'driver_assigned':
-                _statusText = 'Driver is on the way';
-                _eta = 5;
-                print('🚕 DRIVER ASSIGNED: Status = driver_assigned, ETA = 5 min');
-                break;
-              case 'driver_arrived':
-                _statusText = 'Driver has arrived';
-                _eta = 0;
-                print('🚕 DRIVER ASSIGNED: Status = driver_arrived');
-                break;
-              case 'in_progress':
-                _statusText = 'Trip in progress';
-                _eta = 12;
-                print('🚕 DRIVER ASSIGNED: Status = in_progress, ETA to destination = 12 min');
-                break;
-              case 'completed':
-                _statusText = 'Trip completed';
-                _eta = 0;
-                print('🚕 DRIVER ASSIGNED: Status = completed');
-                print('🚕 DRIVER ASSIGNED: Navigating to /ride-complete');
-                timer.cancel();
-                _showRideCompletionScreen();
-                break;
-            }
-          });
+          _updateStatus(status['status'] ?? 'driver_assigned');
+          if (_currentStatus == 'completed') {
+            timer.cancel();
+          }
         }
       } catch (e) {
         // Continue polling even on error

@@ -1,6 +1,6 @@
 class ApiConstants {
   static const String socketUrl =
-      'http://192.168.1.17:5000'; // TODO: Replace with actual base URL
+      'http://192.168.1.13:5000'; // TODO: Replace with actual base URL
   // static const String socketUrl = 'https://api.mktours.co.uk';
   static const String baseUrl =
       '$socketUrl/api/v1'; // TODO: Replace with actual base URL
@@ -55,7 +55,7 @@ class ApiConstants {
   static String endRideEarly(String id) => '$baseUrl/rides/$id/end-early';
 
   // Payment Endpoints
-  static const String createRideWithPayment = '$baseUrl/rides';
+  static const String createRideWithPayment = '$baseUrl/rides/create';
   static const String paymentHistory = '$baseUrl/payments/history';
   static String paymentDetails(String id) => '$baseUrl/payments/$id';
 

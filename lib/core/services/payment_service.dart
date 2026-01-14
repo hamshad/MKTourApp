@@ -69,6 +69,7 @@ class PaymentService {
     PaymentTiming paymentTiming = PaymentTiming.payLater,
     String? notes,
   }) async {
+    String? rideId;
     try {
       debugPrint('💳 PaymentService: Starting payment flow');
       debugPrint(
@@ -112,7 +113,7 @@ class PaymentService {
       final rideData = responseData['data'];
 
       final String clientSecret = rideData['clientSecret'];
-      final String rideId = rideData['_id'] ?? rideData['id'];
+      rideId = rideData['_id'] ?? rideData['id'];
 
       debugPrint('💳 PaymentService: Ride created: $rideId');
       debugPrint(
@@ -153,12 +154,28 @@ class PaymentService {
           : 'Payment authorized! You\'ll be charged after the ride completes.';
 
       return PaymentResult.success(
-        rideId: rideId,
+        rideId: rideId!,
         message: message,
         data: rideData,
       );
     } on StripeException catch (e) {
       debugPrint('⚠️ PaymentService: Stripe error - ${e.error.message}');
+      
+      // Cleanup: Cancel ride on backend if payment was cancelled or failed
+      if (rideId != null) {
+        debugPrint('🧹 PaymentService: Cleaning up cancelled ride: $rideId');
+        try {
+          final headers = await ApiConfig.getAuthHeaders();
+          await http.post(
+            Uri.parse(ApiConstants.cancelRideByUser(rideId)),
+            headers: headers,
+            body: jsonEncode({'reason': 'payment_failed'}),
+          );
+        } catch (cleanupError) {
+          debugPrint('⚠️ PaymentService: Cleanup failed - $cleanupError');
+        }
+      }
+      
       return PaymentResult.failure(error: StripeService.getErrorMessage(e));
     } catch (e) {
       debugPrint('❌ PaymentService: Error - $e');
