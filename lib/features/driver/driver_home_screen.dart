@@ -281,13 +281,33 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   /// Setup navigation listener for route updates
   void _setupNavigationListener() {
     _navigationService.routeUpdates.listen((state) {
-      if (mounted) {
-        setState(() {
-          _navigationState = state;
-          _updateNavigationPolylines();
-        });
+      if (!mounted) return;
+
+      final bool isNavigationMode =
+          _status == 'pickup' || _status == 'arrived' || _status == 'in_progress';
+
+      // If the ride has ended (or driver is not navigating), ignore late route updates
+      // and ensure the map is cleared.
+      if (!isNavigationMode) {
+        if (_navigationState != null || _navigationPolylines.isNotEmpty) {
+          setState(() {
+            _clearNavigationUi();
+          });
+        }
+        return;
       }
+
+      setState(() {
+        _navigationState = state;
+        _updateNavigationPolylines();
+      });
     });
+  }
+
+  void _clearNavigationUi() {
+    _navigationService.clearRoute();
+    _navigationState = null;
+    _navigationPolylines = [];
   }
 
   /// Fetch navigation route based on current status
@@ -427,6 +447,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         setState(() {
           _status = 'online';
           _currentRideId = null;
+          _rideData = null;
+          _clearNavigationUi();
         });
 
         showDialog(
@@ -454,6 +476,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           _status = 'online';
           _currentRideId = null;
           _rideData = null;
+          _clearNavigationUi();
         });
 
         final message = cancellationFee > 0
@@ -472,6 +495,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           _status = 'online';
           _currentRideId = null;
           _rideData = null;
+          _clearNavigationUi();
         });
         CustomSnackbar.show(
           context,
@@ -524,6 +548,13 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       if (response['success'] == true) {
         setState(() {
           _status = isGoingOnline ? 'online' : 'offline';
+
+          // If going offline, ensure any previous ride route is cleared from the map.
+          if (!isGoingOnline) {
+            _currentRideId = null;
+            _rideData = null;
+            _clearNavigationUi();
+          }
         });
 
         if (mounted) {
@@ -697,13 +728,17 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           pos.longitude,
         );
         if (response['success'] == true) {
-          setState(() => _status = 'complete');
+          setState(() {
+            _status = 'complete';
+            _clearNavigationUi();
+          });
           // Reset to online after short delay
           Future.delayed(const Duration(seconds: 2), () {
             if (mounted) {
               setState(() {
                 _status = 'online';
                 _currentRideId = null;
+                _rideData = null;
               });
             }
           });
@@ -736,6 +771,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       setState(() {
         _status = 'online';
         _currentRideId = null;
+        _rideData = null;
+        _clearNavigationUi();
       });
 
       if (response['success'] == true) {
@@ -750,6 +787,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       setState(() {
         _status = 'online';
         _currentRideId = null;
+        _rideData = null;
+        _clearNavigationUi();
       });
     } finally {
       setState(() => _isLoading = false);
@@ -980,6 +1019,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
         setState(() {
           _status = 'complete';
+          _clearNavigationUi();
         });
 
         // Show result dialog
@@ -1000,6 +1040,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                     _status = 'online';
                     _currentRideId = null;
                     _rideData = null;
+                    _clearNavigationUi();
                   });
                 },
                 child: const Text('OK'),
