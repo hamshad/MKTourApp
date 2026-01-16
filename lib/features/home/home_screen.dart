@@ -264,8 +264,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 color: Colors.orange.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.timer_off_outlined,
-                  color: Colors.orange, size: 32),
+              child: const Icon(
+                Icons.timer_off_outlined,
+                color: Colors.orange,
+                size: 32,
+              ),
             ),
             const SizedBox(height: 16),
             Text(
@@ -720,47 +723,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     ),
                                   ),
                                 ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 8,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(20),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(0.05),
-                                        blurRadius: 4,
-                                        offset: const Offset(0, 2),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      const Icon(
-                                        Icons.access_time_filled,
-                                        size: 14,
-                                        color: Colors.black87,
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        'Now',
-                                        style: GoogleFonts.outfit(
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 14,
-                                          color: Colors.black87,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 4),
-                                      const Icon(
-                                        Icons.keyboard_arrow_down,
-                                        size: 16,
-                                        color: Colors.black87,
-                                      ),
-                                    ],
-                                  ),
-                                ),
+
                               ],
                             ),
                           ),
@@ -770,113 +733,113 @@ class _HomeScreenState extends State<HomeScreen> {
                       const SizedBox(height: 32),
 
                       // Suggestions Header
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'Suggestions',
-                            style: GoogleFonts.outfit(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black87,
-                            ),
-                          ),
-                          TextButton(
-                            onPressed: () {},
-                            child: Text(
-                              'See all',
-                              style: GoogleFonts.outfit(
-                                color: const Color(0xFFFF6B35),
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                      // Row(
+                      //   mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      //   children: [
+                      //     Text(
+                      //       'Suggestions',
+                      //       style: GoogleFonts.outfit(
+                      //         fontSize: 20,
+                      //         fontWeight: FontWeight.bold,
+                      //         color: Colors.black87,
+                      //       ),
+                      //     ),
+                      //     TextButton(
+                      //       onPressed: () {},
+                      //       child: Text(
+                      //         'See all',
+                      //         style: GoogleFonts.outfit(
+                      //           color: const Color(0xFFFF6B35),
+                      //           fontWeight: FontWeight.w500,
+                      //         ),
+                      //       ),
+                      //     ),
+                      //   ],
+                      // ),
 
-                      const SizedBox(height: 16),
+                      // const SizedBox(height: 16),
 
-                      // Suggestions Grid
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          _buildSuggestionCard(
-                            'Ride',
-                            Icons.directions_car,
-                            promo: true,
-                            onTap: () => Navigator.pushNamed(
-                              context,
-                              '/destination-search',
-                            ),
-                          ),
-                          _buildSuggestionCard('Package', Icons.local_shipping),
-                          _buildSuggestionCard('Reserve', Icons.calendar_today),
-                          _buildSuggestionCard('Intercity', Icons.commute),
-                        ],
-                      ),
+                      // // Suggestions Grid
+                      // Row(
+                      //   mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      //   children: [
+                      //     _buildSuggestionCard(
+                      //       'Ride',
+                      //       Icons.directions_car,
+                      //       promo: true,
+                      //       onTap: () => Navigator.pushNamed(
+                      //         context,
+                      //         '/destination-search',
+                      //       ),
+                      //     ),
+                      //     _buildSuggestionCard('Package', Icons.local_shipping),
+                      //     _buildSuggestionCard('Reserve', Icons.calendar_today),
+                      //     _buildSuggestionCard('Intercity', Icons.commute),
+                      //   ],
+                      // ),
 
-                      const SizedBox(height: 32),
+                      // const SizedBox(height: 32),
 
-                      // Banner Carousel
-                      SizedBox(
-                        height: 200,
-                        child: PageView(
-                          controller: _pageController,
-                          onPageChanged: (index) {
-                            setState(() {
-                              _currentBannerIndex = index;
-                            });
-                          },
-                          children: [
-                            _buildBannerCard(
-                              title: 'Safe and reliable\ncabs for everyday.',
-                              buttonText: 'Book Now',
-                              image:
-                                  'https://img.freepik.com/premium-vector/london-black-cab-illustration_637394-1846.jpg',
-                              color: const Color(0xFFFFF3E0),
-                              textColor: Colors.black87,
-                            ),
-                            _buildBannerCard(
-                              title: '50% OFF on your\nfirst 3 rides!',
-                              buttonText: 'Claim Offer',
-                              image:
-                                  'https://img.freepik.com/free-vector/taxi-app-concept-illustration_114360-673.jpg',
-                              color: const Color(0xFFE3F2FD),
-                              textColor: Colors.black87,
-                            ),
-                            _buildBannerCard(
-                              title: 'Invite friends &\nearn rewards.',
-                              buttonText: 'Invite',
-                              image:
-                                  'https://img.freepik.com/free-vector/refer-friend-concept-illustration_114360-7039.jpg',
-                              color: const Color(0xFFE8F5E9),
-                              textColor: Colors.black87,
-                            ),
-                          ],
-                        ),
-                      ),
+                      // // Banner Carousel
+                      // SizedBox(
+                      //   height: 200,
+                      //   child: PageView(
+                      //     controller: _pageController,
+                      //     onPageChanged: (index) {
+                      //       setState(() {
+                      //         _currentBannerIndex = index;
+                      //       });
+                      //     },
+                      //     children: [
+                      //       _buildBannerCard(
+                      //         title: 'Safe and reliable\ncabs for everyday.',
+                      //         buttonText: 'Book Now',
+                      //         image:
+                      //             'https://img.freepik.com/premium-vector/london-black-cab-illustration_637394-1846.jpg',
+                      //         color: const Color(0xFFFFF3E0),
+                      //         textColor: Colors.black87,
+                      //       ),
+                      //       _buildBannerCard(
+                      //         title: '50% OFF on your\nfirst 3 rides!',
+                      //         buttonText: 'Claim Offer',
+                      //         image:
+                      //             'https://img.freepik.com/free-vector/taxi-app-concept-illustration_114360-673.jpg',
+                      //         color: const Color(0xFFE3F2FD),
+                      //         textColor: Colors.black87,
+                      //       ),
+                      //       _buildBannerCard(
+                      //         title: 'Invite friends &\nearn rewards.',
+                      //         buttonText: 'Invite',
+                      //         image:
+                      //             'https://img.freepik.com/free-vector/refer-friend-concept-illustration_114360-7039.jpg',
+                      //         color: const Color(0xFFE8F5E9),
+                      //         textColor: Colors.black87,
+                      //       ),
+                      //     ],
+                      //   ),
+                      // ),
 
-                      const SizedBox(height: 12),
+                      // const SizedBox(height: 12),
 
                       // Page Indicators
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: List.generate(3, (index) {
-                          return AnimatedContainer(
-                            duration: const Duration(milliseconds: 300),
-                            margin: const EdgeInsets.symmetric(horizontal: 4),
-                            height: 8,
-                            width: _currentBannerIndex == index ? 24 : 8,
-                            decoration: BoxDecoration(
-                              color: _currentBannerIndex == index
-                                  ? const Color(0xFFFF6B35)
-                                  : Colors.grey[300],
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                          );
-                        }),
-                      ),
-                      const SizedBox(height: 32),
+                      // Row(
+                      //   mainAxisAlignment: MainAxisAlignment.center,
+                      //   children: List.generate(3, (index) {
+                      //     return AnimatedContainer(
+                      //       duration: const Duration(milliseconds: 300),
+                      //       margin: const EdgeInsets.symmetric(horizontal: 4),
+                      //       height: 8,
+                      //       width: _currentBannerIndex == index ? 24 : 8,
+                      //       decoration: BoxDecoration(
+                      //         color: _currentBannerIndex == index
+                      //             ? const Color(0xFFFF6B35)
+                      //             : Colors.grey[300],
+                      //         borderRadius: BorderRadius.circular(4),
+                      //       ),
+                      //     );
+                      //   }),
+                      // ),
+                      // const SizedBox(height: 32),
 
                       // Recent Activity
                       Row(
@@ -891,8 +854,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ),
                           TextButton(
-                            onPressed: () =>
-                                setState(() => _selectedIndex = 1),
+                            onPressed: () => setState(() => _selectedIndex = 1),
                             child: Text(
                               'See all',
                               style: GoogleFonts.outfit(
@@ -927,8 +889,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           final displays = auth.rideHistory.take(2).toList();
 
                           return Column(
-                            children:
-                                displays.map((ride) => _buildRideItem(ride)).toList(),
+                            children: displays
+                                .map((ride) => _buildRideItem(ride))
+                                .toList(),
                           );
                         },
                       ),
@@ -1172,7 +1135,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildRideItem(Map<String, dynamic> ride) {
-    final dropoff = ride['dropoffLocation']?['address'] ?? 'Unknown Destination';
+    final dropoff =
+        ride['dropoffLocation']?['address'] ?? 'Unknown Destination';
     final date = _formatDate(ride['createdAt']);
     final fare = ride['fare'] ?? 0.0;
 
@@ -1204,10 +1168,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 color: const Color(0xFFF5F5F5),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(
-                Icons.history,
-                color: Color(0xFFFF6B35),
-              ),
+              child: const Icon(Icons.history, color: Color(0xFFFF6B35)),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -1235,11 +1196,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ),
-            const Icon(
-              Icons.arrow_forward_ios,
-              size: 16,
-              color: Colors.grey,
-            ),
+            const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
           ],
         ),
       ),

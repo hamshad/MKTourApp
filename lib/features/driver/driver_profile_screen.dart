@@ -1104,18 +1104,18 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                               ),
                         showDivider: true,
                       ),
-                      _buildMenuItem(
-                        Icons.account_balance_wallet_outlined,
-                        'Payout Settings',
-                        'Bank Account',
-                        showDivider: true,
-                      ),
-                      _buildMenuItem(
-                        Icons.settings_outlined,
-                        'App Settings',
-                        'Navigation, Sound',
-                        showDivider: true,
-                      ),
+                      // _buildMenuItem(
+                      //   Icons.account_balance_wallet_outlined,
+                      //   'Payout Settings',
+                      //   'Bank Account',
+                      //   showDivider: true,
+                      // ),
+                      // _buildMenuItem(
+                      //   Icons.settings_outlined,
+                      //   'App Settings',
+                      //   'Navigation, Sound',
+                      //   showDivider: true,
+                      // ),
                       _buildMenuItem(
                         Icons.logout_rounded,
                         'Log Out',

@@ -1240,43 +1240,43 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     // Earnings Pill
-                    GestureDetector(
-                      onTap: () =>
-                          Navigator.pushNamed(context, '/driver-earnings'),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(24),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.1),
-                              blurRadius: 10,
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.account_balance_wallet,
-                              color: AppTheme.primaryColor,
-                            ),
-                            SizedBox(width: 8),
-                            Text(
-                              '£${_todayStats['earnings']}',
-                              style: GoogleFonts.outfit(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                                color: AppTheme.textPrimary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+                    // GestureDetector(
+                    //   onTap: () =>
+                    //       Navigator.pushNamed(context, '/driver-earnings'),
+                    //   child: Container(
+                    //     padding: const EdgeInsets.symmetric(
+                    //       horizontal: 16,
+                    //       vertical: 8,
+                    //     ),
+                    //     decoration: BoxDecoration(
+                    //       color: Colors.white,
+                    //       borderRadius: BorderRadius.circular(24),
+                    //       boxShadow: [
+                    //         BoxShadow(
+                    //           color: Colors.black.withValues(alpha: 0.1),
+                    //           blurRadius: 10,
+                    //         ),
+                    //       ],
+                    //     ),
+                    //     child: Row(
+                    //       children: [
+                    //         Icon(
+                    //           Icons.account_balance_wallet,
+                    //           color: AppTheme.primaryColor,
+                    //         ),
+                    //         SizedBox(width: 8),
+                    //         Text(
+                    //           '£${_todayStats['earnings']}',
+                    //           style: GoogleFonts.outfit(
+                    //             fontWeight: FontWeight.bold,
+                    //             fontSize: 16,
+                    //             color: AppTheme.textPrimary,
+                    //           ),
+                    //         ),
+                    //       ],
+                    //     ),
+                    //   ),
+                    // ),
 
                     // Profile Button
                     CircleAvatar(
@@ -1402,10 +1402,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
-                      color: (_status == 'online'
-                              ? Colors.red
-                              : const Color(0xFFFF6B35))
-                          .withOpacity(0.3),
+                      color:
+                          (_status == 'online'
+                                  ? Colors.red
+                                  : const Color(0xFFFF6B35))
+                              .withOpacity(0.3),
                       blurRadius: 20,
                       offset: const Offset(0, 10),
                     ),
@@ -1508,8 +1509,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                         padding: const EdgeInsets.symmetric(vertical: 40),
                         child: Column(
                           children: [
-                            Icon(Icons.history,
-                                size: 48, color: Colors.grey[300]),
+                            Icon(
+                              Icons.history,
+                              size: 48,
+                              color: Colors.grey[300],
+                            ),
                             const SizedBox(height: 12),
                             Text(
                               'No recent rides yet',

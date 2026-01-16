@@ -142,53 +142,53 @@ class _AccountScreenState extends State<AccountScreen> {
                   ),
                 ),
                 const SizedBox(height: 32),
-                _buildMenuOption(
-                  context,
-                  icon: Icons.help_outline,
-                  title: 'Help',
-                  onTap: () {},
-                ),
-                _buildMenuOption(
-                  context,
-                  icon: Icons.payment_outlined,
-                  title: 'Payment',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const PaymentMethodsScreen(),
-                    ),
-                  ),
-                ),
-                _buildMenuOption(
-                  context,
-                  icon: Icons.local_offer_outlined,
-                  title: 'Promotions',
-                  onTap: () {},
-                ),
-                _buildMenuOption(
-                  context,
-                  icon: Icons.work_outline,
-                  title: 'Business Hub',
-                  onTap: () {},
-                ),
-                _buildMenuOption(
-                  context,
-                  icon: Icons.card_giftcard,
-                  title: 'Send a Gift',
-                  onTap: () {},
-                ),
-                _buildMenuOption(
-                  context,
-                  icon: Icons.settings_outlined,
-                  title: 'Settings',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const SettingsScreen(),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 32),
+                // _buildMenuOption(
+                //   context,
+                //   icon: Icons.help_outline,
+                //   title: 'Help',
+                //   onTap: () {},
+                // ),
+                // _buildMenuOption(
+                //   context,
+                //   icon: Icons.payment_outlined,
+                //   title: 'Payment',
+                //   onTap: () => Navigator.push(
+                //     context,
+                //     MaterialPageRoute(
+                //       builder: (context) => const PaymentMethodsScreen(),
+                //     ),
+                //   ),
+                // ),
+                // _buildMenuOption(
+                //   context,
+                //   icon: Icons.local_offer_outlined,
+                //   title: 'Promotions',
+                //   onTap: () {},
+                // ),
+                // _buildMenuOption(
+                //   context,
+                //   icon: Icons.work_outline,
+                //   title: 'Business Hub',
+                //   onTap: () {},
+                // ),
+                // _buildMenuOption(
+                //   context,
+                //   icon: Icons.card_giftcard,
+                //   title: 'Send a Gift',
+                //   onTap: () {},
+                // ),
+                // _buildMenuOption(
+                //   context,
+                //   icon: Icons.settings_outlined,
+                //   title: 'Settings',
+                //   onTap: () => Navigator.push(
+                //     context,
+                //     MaterialPageRoute(
+                //       builder: (context) => const SettingsScreen(),
+                //     ),
+                //   ),
+                // ),
+                // const SizedBox(height: 32),
                 TextButton(
                   onPressed: () async {
                     // Clear auth token
