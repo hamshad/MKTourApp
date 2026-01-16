@@ -538,7 +538,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
           _rideStatus = 'early_completed';
         });
 
-        final timing = widget.paymentTiming ?? data['paymentTiming']?.toString();
+        final timing =
+            widget.paymentTiming ?? data['paymentTiming']?.toString();
         final bool isPayLater = timing == 'pay_later';
 
         if (isPayLater) {
@@ -787,7 +788,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
   void _showCancellationConfirmation() {
     // Determine if ride has been accepted (driver assigned)
     final bool hasDriverAssigned =
-        _rideStatus == 'driver_assigned' || _rideStatus == 'driver_arrived';
+        _rideStatus == 'accepted' || _rideStatus == 'driver_arrived';
 
     showDialog(
       context: context,
@@ -1032,7 +1033,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
 
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (_) => RideCompleteScreen(rideData: finalRideData)),
+      MaterialPageRoute(
+        builder: (_) => RideCompleteScreen(rideData: finalRideData),
+      ),
     );
   }
 
@@ -1180,9 +1183,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
               ),
             ),
 
-            // OTP Display - Show prominently when driver assigned or arrived
-            if ((_rideStatus == 'driver_assigned' ||
-                _rideStatus == 'driver_arrived'))
+            // OTP Display - Show prominently when driver accepted or arrived
+            if ((_rideStatus == 'accepted' || _rideStatus == 'driver_arrived'))
               Container(
                 margin: const EdgeInsets.only(bottom: 16),
                 padding: const EdgeInsets.symmetric(
@@ -1374,8 +1376,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
                 ),
               ),
             ],
-            // Cancel button - only show before ride starts (driver_assigned or driver_arrived)
-            if (_rideStatus == 'driver_assigned' ||
+            // Cancel button - only show before ride starts (accepted or driver_arrived)
+            if (_rideStatus == 'accepted' ||
                 _rideStatus == 'driver_arrived') ...[
               const SizedBox(height: 16),
               SizedBox(
