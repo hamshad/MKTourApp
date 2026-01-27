@@ -50,6 +50,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Connection status subscription
   StreamSubscription<bool>? _connectionSubscription;
+  bool _socketListenersInitialized = false;
 
   @override
   void initState() {
@@ -88,10 +89,18 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _setupSocketListeners() {
-    _socketService.initSocket().then((_) {
-      _emitUserOnline();
-    });
+  Future<void> _setupSocketListeners() async {
+    if (_socketListenersInitialized) return;
+    _socketListenersInitialized = true;
+
+    await _socketService.initSocket();
+    _emitUserOnline();
+
+    // Clear any stale listeners from previous HomeScreen instances
+    _socketService.off('ride:accepted');
+    _socketService.off('ride:expired');
+    _socketService.off('ride:cancelled');
+    _socketService.off('user:status');
 
     // Listen for ride accepted event
     _socketService.on('ride:accepted', (data) {
@@ -107,7 +116,18 @@ class _HomeScreenState extends State<HomeScreen> {
       debugPrint('📍 [HomeScreen] dropoffLocation: ${data['dropoffLocation']}');
       debugPrint('💰 [HomeScreen] fare: ${data['fare']}');
 
-      if (mounted && _isSearching) {
+      if (!mounted) return;
+
+      final incomingRideId =
+          data['rideId']?.toString() ?? data['_id']?.toString();
+      final activeRideId = _activeRide?['_id']?.toString() ??
+          _activeRide?['rideId']?.toString();
+
+      final shouldHandle = _isSearching ||
+          (incomingRideId != null && activeRideId == incomingRideId) ||
+          _activeRide == null;
+
+      if (shouldHandle) {
         final activeRide = _activeRide;
 
         String? clientSecret;
@@ -154,6 +174,10 @@ class _HomeScreenState extends State<HomeScreen> {
         );
 
         debugPrint('✅ [HomeScreen] Navigation to RideAssignedScreen initiated');
+      } else {
+        debugPrint(
+          '⚠️ [HomeScreen] Ignored ride:accepted (not searching, rideId mismatch): incoming=$incomingRideId active=$activeRideId',
+        );
       }
     });
 
@@ -427,11 +451,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
-    // Clean up socket listeners
-    _socketService.off('ride:accepted');
-    _socketService.off('ride:expired');
-    _socketService.off('ride:cancelled');
-    _socketService.off('user:status');
+    // Clean up connection listener
     _connectionSubscription?.cancel();
 
     _pageController.dispose();

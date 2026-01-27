@@ -40,8 +40,8 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
     _setupNavigation();
   }
   
-  void _initSocketListener() {
-    _socketService.initSocket();
+  Future<void> _initSocketListener() async {
+    await _socketService.initSocket();
     
     // Listen for driver location updates
     _socketService.on('driver:locationUpdate', (data) {

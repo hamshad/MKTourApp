@@ -162,13 +162,11 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
     debugPrint('🚗 [RideAssignedScreen] Marker interpolation initialized');
   }
 
-  /// Setup listener for connection status changes (reconnection handling)
   void _setupConnectionListener() {
     _connectionSubscription = _socketService.connectionStatus.listen((
       isConnected,
     ) {
       if (isConnected && _currentDriverId != null) {
-        // Rejoin driver room on reconnection
         debugPrint(
           '🔄 [RideAssignedScreen] Reconnected, rejoining driver room',
         );
@@ -244,24 +242,24 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
     });
   }
 
-  void _setupSocketListeners() {
+  Future<void> _setupSocketListeners() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final user = authProvider.user;
 
     debugPrint('🔌 [RideAssignedScreen] Initializing socket listeners...');
 
-    _socketService.initSocket().then((_) {
-      if (user != null) {
-        debugPrint(
-          '📤 [RideAssignedScreen] Emitting user:goOnline for user: ${user['_id']}',
-        );
-        _socketService.emit('user:goOnline', {'userId': user['_id']});
-      } else {
-        debugPrint(
-          '⚠️ [RideAssignedScreen] User is null, cannot emit user:goOnline',
-        );
-      }
-    });
+    await _socketService.initSocket();
+
+    if (user != null) {
+      debugPrint(
+        '📤 [RideAssignedScreen] Emitting user:goOnline for user: ${user['_id']}',
+      );
+      _socketService.emit('user:goOnline', {'userId': user['_id']});
+    } else {
+      debugPrint(
+        '⚠️ [RideAssignedScreen] User is null, cannot emit user:goOnline',
+      );
+    }
 
     _socketService.on('user:status', (data) {
       debugPrint('📩 [RideAssignedScreen] User status: ${data['status']}');
@@ -968,19 +966,15 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
     }
 
     // Clean up socket listeners
-    _socketService.off('ride:accepted');
     _socketService.off('driver:locationChanged');
     _socketService.off('ride:started');
     _socketService.off('ride:completed');
     _socketService.off('ride:driverArrived');
     _socketService.off('ride:otpExpired');
-    _socketService.off('ride:cancelled');
     _socketService.off('ride:cancelledByDriver');
     _socketService.off('ride:earlyCompleted');
     _socketService.off('payment:succeeded');
-    _socketService.off('ride:expired');
     _socketService.off('ride:longRunning');
-    _socketService.off('user:status');
 
     // Clean up navigation
     _navigationService.dispose();

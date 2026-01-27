@@ -27,8 +27,13 @@ class _DriverAssignedScreenState extends State<DriverAssignedScreen> {
     print('🚕 DRIVER ASSIGNED: Screen loaded');
     print('🚕 DRIVER ASSIGNED: OTP = ${widget.bookingData['otp']}');
     print('🚕 DRIVER ASSIGNED: Driver = ${widget.bookingData['driver']?['name']}');
-    _setupSocketListeners();
+    _initSocketAndListeners();
     _startStatusPolling();
+  }
+
+  Future<void> _initSocketAndListeners() async {
+    await _socketService.initSocket();
+    _setupSocketListeners();
   }
 
   void _setupSocketListeners() {
