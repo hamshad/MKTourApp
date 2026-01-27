@@ -76,6 +76,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
   // Cancellation state
   bool _isCancelling = false;
   bool _isProcessingPayment = false;
+  bool _isAwaitingPaymentConfirmation = false;
+  Map<String, dynamic>? _pendingPaymentRideData;
 
   @override
   void initState() {
@@ -429,6 +431,41 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
       setState(() {
         _rideStatus = 'completed';
       });
+    });
+
+    _socketService.on('payment:succeeded', (data) {
+      if (!mounted) return;
+
+      debugPrint('✅ [RideAssignedScreen] Payment Succeeded: $data');
+
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+      String? eventRideId;
+      if (data is Map) {
+        eventRideId = data['bookingId']?.toString() ??
+            data['rideId']?.toString() ??
+            data['_id']?.toString();
+      }
+
+      if (eventRideId != null && eventRideId != widget.rideId) {
+        return;
+      }
+
+      final bool hasPendingConfirmation =
+          _isAwaitingPaymentConfirmation || _pendingPaymentRideData != null;
+
+      if (!hasPendingConfirmation && _rideStatus != 'completed') {
+        debugPrint(
+          'ℹ️ [RideAssignedScreen] Payment succeeded without pending state; showing success screen anyway.',
+        );
+      }
+
+      final Map<String, dynamic> mergedRideData = {
+        if (_pendingPaymentRideData != null) ..._pendingPaymentRideData!,
+        if (data is Map<String, dynamic>) ...data,
+      };
+
+      _showPaymentSuccessScreen(mergedRideData);
     });
 
     _socketService.on('ride:driverArrived', (data) {
@@ -940,6 +977,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
     _socketService.off('ride:cancelled');
     _socketService.off('ride:cancelledByDriver');
     _socketService.off('ride:earlyCompleted');
+    _socketService.off('payment:succeeded');
     _socketService.off('ride:expired');
     _socketService.off('ride:longRunning');
     _socketService.off('user:status');
@@ -1029,6 +1067,31 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
       if (extraRideData != null) ...extraRideData,
       if (earlyCompleted) 'earlyCompleted': true,
       'paymentMethod': 'Paid via Card',
+    };
+
+    _pendingPaymentRideData = finalRideData;
+    _isAwaitingPaymentConfirmation = true;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Payment processing... waiting for confirmation.'),
+        backgroundColor: Colors.blue,
+        duration: Duration(seconds: 6),
+      ),
+    );
+  }
+
+  void _showPaymentSuccessScreen(Map<String, dynamic> rideData) {
+    if (!mounted) return;
+
+    _isAwaitingPaymentConfirmation = false;
+
+    final Map<String, dynamic> finalRideData = {
+      'bookingId': widget.rideId,
+      'driver': _driver,
+      'fare': widget.fare,
+      ...rideData,
+      'paymentMethod': rideData['paymentMethod'] ?? 'Paid via Card',
     };
 
     Navigator.pushReplacement(

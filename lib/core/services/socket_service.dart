@@ -50,9 +50,15 @@ class SocketService {
     _socket = IO.io(
       ApiConstants.socketUrl,
       IO.OptionBuilder()
-          .setTransports(['websocket'])
+          .setTransports(['websocket', 'polling'])
+          .setTimeout(20000)
+          .enableForceNew()
+          .enableReconnection()
+          .setReconnectionAttempts(_maxReconnectionAttempts)
+          .setReconnectionDelay(_reconnectionDelayMs)
           .disableAutoConnect() // Disable auto connect to control when it connects
           .setExtraHeaders({'Authorization': 'Bearer $token'})
+          .setAuth({'token': token})
           .build(),
     );
 
