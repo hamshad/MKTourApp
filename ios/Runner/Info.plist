@@ -28,6 +28,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>We need access to your camera to take profile pictures and scan documents.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>This app needs location access to enable rides, navigation, and background location updates during trips.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>This app needs access to location to show your position on the map.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
