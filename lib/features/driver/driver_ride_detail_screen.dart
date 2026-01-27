@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:intl/intl.dart';
 import '../../core/theme.dart';
 
 class DriverRideDetailScreen extends StatelessWidget {
@@ -10,6 +11,15 @@ class DriverRideDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fare = _toDouble(rideData['fare']);
+    final tip = _toDouble(rideData['tip']);
+    final surge = _toDouble(rideData['surge']);
+    final total = fare + tip + surge;
+    final status = (rideData['status'] ?? 'completed').toString();
+    final passenger = rideData['user'] is Map
+      ? rideData['user'] as Map<String, dynamic>
+      : rideData['passenger'] as Map<String, dynamic>?;
+
     return Scaffold(
       body: CustomScrollView(
         slivers: [
@@ -41,7 +51,7 @@ class DriverRideDetailScreen extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            rideData['time'] ?? '10:30 AM',
+                            _formatDateTime(rideData['createdAt']),
                             style: const TextStyle(
                               color: AppTheme.textSecondary,
                               fontSize: 14,
@@ -49,7 +59,7 @@ class DriverRideDetailScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            rideData['amount'] ?? '£24.50',
+                            _formatCurrency(total),
                             style: const TextStyle(
                               fontSize: 24,
                               fontWeight: FontWeight.bold,
@@ -64,13 +74,13 @@ class DriverRideDetailScreen extends StatelessWidget {
                           vertical: 6,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.green.withValues(alpha: 0.1),
+                          color: _statusColor(status).withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(20),
                         ),
-                        child: const Text(
-                          'Completed',
+                        child: Text(
+                          _statusLabel(status),
                           style: TextStyle(
-                            color: Colors.green,
+                            color: _statusColor(status),
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -107,7 +117,7 @@ class DriverRideDetailScreen extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            rideData['passenger']?['name'] ?? 'Passenger',
+                            passenger?['name'] ?? 'Passenger',
                             style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
@@ -118,7 +128,7 @@ class DriverRideDetailScreen extends StatelessWidget {
                               Icon(Icons.star, size: 14, color: Colors.amber),
                               SizedBox(width: 4),
                               Text(
-                                '${rideData['passenger']?['rating'] ?? '5.0'}',
+                                '${passenger?['rating'] ?? '5.0'}',
                               ),
                             ],
                           ),
@@ -151,7 +161,7 @@ class DriverRideDetailScreen extends StatelessWidget {
                     Icons.my_location,
                     Colors.green,
                     'Pickup',
-                    _formatTime(rideData['pickupTime']),
+                    _formatTime(rideData['pickupTime'] ?? rideData['acceptedAt']),
                     rideData['pickupLocation']?['address'] ??
                         'Unknown Location',
                   ),
@@ -160,7 +170,7 @@ class DriverRideDetailScreen extends StatelessWidget {
                     Icons.location_on,
                     Colors.red,
                     'Drop-off',
-                    _formatTime(rideData['dropoffTime']),
+                    _formatTime(rideData['dropoffTime'] ?? rideData['completedAt']),
                     rideData['dropoffLocation']?['address'] ??
                         'Unknown Destination',
                   ),
@@ -179,14 +189,14 @@ class DriverRideDetailScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  _buildFareRow('Trip Fare', '£20.00'),
-                  _buildFareRow('Surge', '£2.50'),
-                  _buildFareRow('Tip', '£2.00'),
+                  _buildFareRow('Trip Fare', _formatCurrency(fare)),
+                  if (surge > 0) _buildFareRow('Surge', _formatCurrency(surge)),
+                  if (tip > 0) _buildFareRow('Tip', _formatCurrency(tip)),
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 8),
                     child: Divider(),
                   ),
-                  _buildFareRow('Total Earnings', '£24.50', isTotal: true),
+                  _buildFareRow('Total Earnings', _formatCurrency(total), isTotal: true),
                 ],
               ),
             ),
@@ -194,6 +204,56 @@ class DriverRideDetailScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  double _toDouble(dynamic value) {
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? 0.0;
+    return 0.0;
+  }
+
+  String _formatCurrency(double value) => '£${value.toStringAsFixed(2)}';
+
+  String _formatDateTime(dynamic isoString) {
+    if (isoString == null) return '--:--';
+    try {
+      final date = DateTime.parse(isoString.toString()).toLocal();
+      return DateFormat('hh:mm a').format(date);
+    } catch (_) {
+      return '--:--';
+    }
+  }
+
+  String _statusLabel(String status) {
+    switch (status.toLowerCase()) {
+      case 'completed':
+        return 'Completed';
+      case 'early_completed':
+      case 'earlycompleted':
+        return 'Ended Early';
+      case 'cancelled':
+      case 'cancelled_by_user':
+      case 'cancelled_by_driver':
+        return 'Cancelled';
+      default:
+        return status;
+    }
+  }
+
+  Color _statusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'completed':
+        return Colors.green;
+      case 'early_completed':
+      case 'earlycompleted':
+        return Colors.orange;
+      case 'cancelled':
+      case 'cancelled_by_user':
+      case 'cancelled_by_driver':
+        return Colors.red;
+      default:
+        return Colors.blueGrey;
+    }
   }
 
   Widget _buildLocationRow(

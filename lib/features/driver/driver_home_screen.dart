@@ -145,6 +145,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     _socketService.off('ride:cancelled');
     _socketService.off('driver:status');
     _socketService.off('driver:locationUpdated');
+    _socketService.off('payment:succeeded');
 
     // Clean up streams
     _positionStreamSubscription?.cancel();
@@ -402,6 +403,30 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       debugPrint('📩 [DriverHomeScreen] Driver status: $data');
       if (mounted && data['status'] == 'online') {
         // Successfully went online
+      }
+    });
+
+    // Listen for payment success to finalize ride completion
+    _socketService.on('payment:succeeded', (data) {
+      debugPrint('💳 [DriverHomeScreen] Payment succeeded: $data');
+      if (!mounted) return;
+
+      final rideId = data['bookingId']?.toString() ?? data['rideId']?.toString();
+      if (rideId == _currentRideId) {
+        CustomSnackbar.show(
+          context,
+          message: 'Payment completed! Ride finalized.',
+          type: SnackbarType.success,
+        );
+
+        // Reset to online and refetch ride history
+        setState(() {
+          _status = 'online';
+          _currentRideId = null;
+          _rideData = null;
+          _clearNavigationUi();
+        });
+        _fetchRideHistory();
       }
     });
 
@@ -729,19 +754,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         );
         if (response['success'] == true) {
           setState(() {
-            _status = 'complete';
-            _clearNavigationUi();
+            _status = 'awaiting_payment';
           });
-          // Reset to online after short delay
-          Future.delayed(const Duration(seconds: 2), () {
-            if (mounted) {
-              setState(() {
-                _status = 'online';
-                _currentRideId = null;
-                _rideData = null;
-              });
-            }
-          });
+          CustomSnackbar.show(
+            context,
+            message: 'Ride completed. Waiting for passenger payment...',
+            type: SnackbarType.info,
+          );
+          // payment:succeeded socket will finalize
         } else {
           CustomSnackbar.show(
             context,
@@ -1015,39 +1035,17 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
       if (response['success'] == true) {
         final adjustedFare = response['data']?['adjustedFare'] ?? 0.0;
-        final actualDistance = response['data']?['actualDistance'] ?? 0.0;
 
         setState(() {
-          _status = 'complete';
-          _clearNavigationUi();
+          _status = 'awaiting_payment';
         });
 
-        // Show result dialog
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => AlertDialog(
-            title: const Text('Ride Ended'),
-            content: Text(
-              'Adjusted fare: £${adjustedFare.toStringAsFixed(2)}\n'
-              'Distance traveled: ${actualDistance.toStringAsFixed(1)} mi',
-            ),
-            actions: [
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  setState(() {
-                    _status = 'online';
-                    _currentRideId = null;
-                    _rideData = null;
-                    _clearNavigationUi();
-                  });
-                },
-                child: const Text('OK'),
-              ),
-            ],
-          ),
+        CustomSnackbar.show(
+          context,
+          message: 'Ride ended early (£${adjustedFare.toStringAsFixed(2)}). Waiting for passenger payment...',
+          type: SnackbarType.info,
         );
+        // payment:succeeded socket will finalize
       } else {
         CustomSnackbar.show(
           context,
@@ -1390,7 +1388,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         onAccept: _handleRideAction,
         onDecline: _declineRide,
       );
-    } else {
+    } else if (_status == 'pickup' ||
+        _status == 'arrived' ||
+        _status == 'in_progress' ||
+        _status == 'awaiting_payment') {
       return DriverNavigationPanel(
         status: _status,
         rideData: _rideData,
@@ -1399,6 +1400,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         onEndEarly: _showEndRideEarlyDialog,
         navigationState: _navigationState,
       );
+    } else {
+      return _buildOfflineOnlineContent();
     }
   }
 
@@ -1493,7 +1496,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                         ),
                       ),
                       TextButton(
-                        onPressed: () {},
+                        onPressed: () {
+                          Navigator.pushNamed(context, '/driver-ride-history');
+                        },
                         child: Text(
                           'See All',
                           style: GoogleFonts.outfit(
@@ -1632,21 +1637,29 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     final isCancelled = ride['status'].toString().contains('cancelled');
     final pickupAddr = ride['pickupLocation']?['address'] ?? 'Unknown Pickup';
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
+    return GestureDetector(
+      onTap: () {
+        Navigator.pushNamed(
+          context,
+          '/driver-ride-detail',
+          arguments: ride,
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(12),
@@ -1712,6 +1725,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           ),
         ],
       ),
+    ),
     );
   }
 }
