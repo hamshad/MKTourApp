@@ -63,6 +63,7 @@ class PaymentService {
         paymentIntentClientSecret: clientSecret,
         merchantDisplayName: _merchantDisplayName,
         style: ThemeMode.system,
+        paymentMethodOrder: const ['apple_pay', 'card'],
         appearance: PaymentSheetAppearance(
           colors: PaymentSheetAppearanceColors(
             primary: primaryColor,
