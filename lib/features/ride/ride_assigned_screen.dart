@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
 import 'package:provider/provider.dart';
 import 'package:latlong2/latlong.dart' as latlong2;
@@ -10,8 +11,10 @@ import '../../core/services/navigation_service.dart';
 import '../../core/services/places_service.dart';
 import '../../core/services/marker_interpolation_service.dart';
 import '../../core/services/payment_service.dart';
+import '../../core/services/stripe_service.dart';
 import '../../core/widgets/platform_map.dart';
 import 'ride_complete_screen.dart';
+import 'payment_webview_screen.dart';
 
 class RideAssignedScreen extends StatefulWidget {
   final String rideId;
@@ -78,6 +81,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
   bool _isProcessingPayment = false;
   bool _isAwaitingPaymentConfirmation = false;
   Map<String, dynamic>? _pendingPaymentRideData;
+  bool _isPaymentMethodSelected = false;
+  String _selectedPaymentMethodDisplay = '';
 
   @override
   void initState() {
@@ -431,6 +436,63 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
       });
     });
 
+    // New listener for Payment Link Authorization (happens when user pays via link)
+    _socketService.on('payment:authorized', (data) {
+      if (!mounted) return;
+      debugPrint('✅ [RideAssignedScreen] Payment Authorized: $data');
+
+      final eventRideId = data['rideId']?.toString();
+      if (eventRideId != null && eventRideId != widget.rideId) return;
+
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Payment authorized! Ride can now begin.'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 4),
+        ),
+      );
+
+      setState(() {
+        _isPaymentMethodSelected = true;
+        // Optionally close WebView if it's open (handled by user navigation usually)
+      });
+    });
+
+    // New listener for Payment Failure (expired link or failed payment)
+    _socketService.on('payment:failed', (data) {
+      if (!mounted) return;
+      debugPrint('❌ [RideAssignedScreen] Payment Failed: $data');
+
+      final eventRideId = data['rideId']?.toString();
+      if (eventRideId != null && eventRideId != widget.rideId) return;
+
+      final message = data['message'] ?? 'Payment failed. Please try again.';
+
+      // Show error
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: const Text('Payment Failed'),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context); // Close dialog
+                _showPaymentSelectionModal(); // Allow retry
+              },
+              child: const Text('Select Payment Method'),
+            ),
+          ],
+        ),
+      );
+
+      setState(() {
+        _isPaymentMethodSelected = false;
+      });
+    });
+
     _socketService.on('payment:succeeded', (data) {
       if (!mounted) return;
 
@@ -440,7 +502,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
 
       String? eventRideId;
       if (data is Map) {
-        eventRideId = data['bookingId']?.toString() ??
+        eventRideId =
+            data['bookingId']?.toString() ??
             data['rideId']?.toString() ??
             data['_id']?.toString();
       }
@@ -479,11 +542,12 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Driver has arrived at pickup!'),
-            backgroundColor: Colors.green,
+            content: Text('Driver has arrived! Please select payment method.'),
+            backgroundColor: Colors.blue,
             duration: Duration(seconds: 4),
           ),
         );
+        _showPaymentSelectionModal();
       }
     });
 
@@ -586,6 +650,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
               'originalFare': originalFare,
               'actualDistance': actualDistance,
               'reason': reason,
+              'paymentMethod': data['paymentMethod'],
             },
           );
           return;
@@ -618,6 +683,10 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
                           'originalFare': originalFare,
                           'actualDistance': actualDistance,
                           'earlyCompleted': true,
+                          'paymentMethod':
+                              data['paymentMethod'], // Pass payment method
+                          'paymentStatus':
+                              'pending', // Assume pending if early complete + cash
                         },
                       ),
                     ),
@@ -974,6 +1043,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
     _socketService.off('ride:cancelledByDriver');
     _socketService.off('ride:earlyCompleted');
     _socketService.off('payment:succeeded');
+    _socketService.off('payment:authorized');
+    _socketService.off('payment:failed');
     _socketService.off('ride:longRunning');
 
     // Clean up navigation
@@ -981,6 +1052,30 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
 
     debugPrint('🔴 [RideAssignedScreen] Disposed');
     super.dispose();
+  }
+
+  void _makePhoneCall(String phoneNumber) async {
+    final Uri launchUri = Uri(
+      scheme: 'tel',
+      path: phoneNumber,
+    );
+    if (await canLaunchUrl(launchUri)) {
+      await launchUrl(launchUri);
+    } else {
+      debugPrint('Could not launch dialer for $phoneNumber');
+    }
+  }
+
+  void _launchWhatsApp(String phoneNumber) async {
+    // Clean phone number: remove non-digits
+    final cleanNumber = phoneNumber.replaceAll(RegExp(r'\D'), '');
+    final whatsappUrl = Uri.parse("https://wa.me/$cleanNumber");
+    
+    if (await canLaunchUrl(whatsappUrl)) {
+      await launchUrl(whatsappUrl, mode: LaunchMode.externalApplication);
+    } else {
+      debugPrint('Could not launch WhatsApp for $phoneNumber');
+    }
   }
 
   @override
@@ -1020,37 +1115,13 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
     bool earlyCompleted = false,
     Map<String, dynamic>? extraRideData,
   }) async {
-    if (!mounted || _isProcessingPayment) return;
-
-    final clientSecret = widget.clientSecret;
-    if (clientSecret == null || clientSecret.isEmpty) {
-      debugPrint('⚠️ [RideAssignedScreen] Missing clientSecret for pay_later');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Payment info missing. Please contact support.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-      return;
-    }
-
-    setState(() => _isProcessingPayment = true);
-
-    final result = await PaymentService.payForCompletedRide(
-      context: context,
-      rideId: widget.rideId,
-      clientSecret: clientSecret,
-    );
-
     if (!mounted) return;
-    setState(() => _isProcessingPayment = false);
 
-    if (!result.success) {
-      _showPaymentRequiredDialog(fare: fare, distance: distance);
-      return;
-    }
+    final method =
+        rideData?['paymentMethod'] ?? extraRideData?['paymentMethod'];
+
+    // Payment interactions are now handled at "Driver Arrived" stage (Step 7).
+    // So at completion, we just show the summary.
 
     final Map<String, dynamic> finalRideData = {
       'bookingId': widget.rideId,
@@ -1060,19 +1131,12 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
       if (rideData != null) ...rideData,
       if (extraRideData != null) ...extraRideData,
       if (earlyCompleted) 'earlyCompleted': true,
-      'paymentMethod': 'Paid via Card',
+      'paymentMethod': method,
+      // If cash, it's pending collection. If card, it's considered processed/authorized.
+      'paymentStatus': method == 'cash' ? 'pending' : 'completed',
     };
 
-    _pendingPaymentRideData = finalRideData;
-    _isAwaitingPaymentConfirmation = true;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Payment processing... waiting for confirmation.'),
-        backgroundColor: Colors.blue,
-        duration: Duration(seconds: 6),
-      ),
-    );
+    _showPaymentSuccessScreen(finalRideData);
   }
 
   void _showPaymentSuccessScreen(Map<String, dynamic> rideData) {
@@ -1240,8 +1304,45 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
               ),
             ),
 
-            // OTP Display - Show prominently when driver accepted or arrived
-            if ((_rideStatus == 'accepted' || _rideStatus == 'driver_arrived'))
+            // Payment Method Badge
+            if (_isPaymentMethodSelected && _selectedPaymentMethodDisplay.isNotEmpty)
+              Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.grey[300]!),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      _selectedPaymentMethodDisplay.toLowerCase().contains('link')
+                          ? Icons.link
+                          : _selectedPaymentMethodDisplay.toLowerCase().contains('card')
+                              ? Icons.credit_card
+                              : Icons.money,
+                      size: 14,
+                      color: Colors.grey[700],
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Payment: $_selectedPaymentMethodDisplay',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.grey[700],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+            // OTP Display - Show prominently when driver accepted or arrived AND payment is selected
+            if ((_rideStatus == 'accepted' ||
+                    _rideStatus == 'driver_arrived') &&
+                _isPaymentMethodSelected)
               Container(
                 margin: const EdgeInsets.only(bottom: 16),
                 padding: const EdgeInsets.symmetric(
@@ -1373,7 +1474,10 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
                     ),
                   ),
                   onPressed: () {
-                    // Call driver (mock)
+                    final phone = _driver['phone']?.toString();
+                    if (phone != null && phone.isNotEmpty) {
+                      _makePhoneCall(phone);
+                    }
                   },
                 ),
                 IconButton(
@@ -1392,7 +1496,10 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
                     ),
                   ),
                   onPressed: () {
-                    // Message driver (mock)
+                    final phone = _driver['phone']?.toString();
+                    if (phone != null && phone.isNotEmpty) {
+                      _launchWhatsApp(phone);
+                    }
                   },
                 ),
               ],
@@ -1498,5 +1605,249 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
         ),
       ],
     );
+  }
+
+  void _showPaymentSelectionModal() {
+    showModalBottomSheet(
+      context: context,
+      isDismissible: false,
+      enableDrag: false,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => WillPopScope(
+        onWillPop: () async => false,
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Select Payment Method',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                _buildPaymentOption(
+                  icon: Icons.money,
+                  title: 'Cash',
+                  subtitle: 'Pay directly to driver',
+                  onTap: () => _handlePaymentSelection('cash'),
+                ),
+                const SizedBox(height: 16),
+                _buildPaymentOption(
+                  icon: Icons.link,
+                  title: 'Payment Link',
+                  subtitle: 'Pay via online link',
+                  onTap: () => _handlePaymentSelection('payment_link'),
+                ),
+                const SizedBox(height: 16),
+                _buildPaymentOption(
+                  icon: Icons.credit_card,
+                  title: 'Card',
+                  subtitle: 'Pay via Stripe',
+                  onTap: () => _handlePaymentSelection('stripe'),
+                ),
+                const SizedBox(height: 24),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPaymentOption({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey[300]!),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, color: AppTheme.primaryColor),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Spacer(),
+            const Icon(Icons.chevron_right, color: Colors.grey),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _handlePaymentSelection(String method) async {
+    Navigator.pop(context); // Close selection modal
+
+    // Show loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    debugPrint('💸 [Payment] Selecting: $method');
+    try {
+      final response = await _apiService.selectPaymentMethod(
+        widget.rideId,
+        method,
+      );
+
+      // Close loading
+      Navigator.pop(context);
+
+      if (response['success'] == true) {
+        final data = response['data'];
+        
+        // Handle nested ride structure (data.ride) or flat structure (data)
+        final rideData = data['ride'] ?? data;
+        final paymentMethod = rideData['paymentMethod'];
+        
+        debugPrint('💸 [Payment] Method from response: $paymentMethod');
+
+        if (paymentMethod == 'stripe') {
+          final clientSecret = rideData['clientSecret'];
+          debugPrint('💳 [Stripe] Client secret present: ${clientSecret != null}');
+          
+          if (clientSecret != null) {
+            await StripeService.processPayment(clientSecret);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Payment Successful! Share OTP with driver.'),
+                backgroundColor: Colors.green,
+              ),
+            );
+            setState(() {
+              _isPaymentMethodSelected = true;
+              _selectedPaymentMethodDisplay = 'Card';
+            });
+          }
+        } else if (paymentMethod == 'payment_link') {
+          final paymentUrl = rideData['paymentUrl'];
+          debugPrint('🔗 [Payment Link] URL present: ${paymentUrl != null}');
+          if (paymentUrl != null) {
+            debugPrint('🔗 [Payment Link] URL: $paymentUrl');
+          }
+
+          if (paymentUrl != null) {
+            debugPrint('✅ [Payment Link] Opening in-app WebView');
+            
+            // Navigate to WebView screen
+            final result = await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => PaymentWebViewScreen(
+                  paymentUrl: paymentUrl,
+                  rideId: widget.rideId,
+                ),
+              ),
+            );
+
+            // Handle result from WebView
+            if (result != null && result['success'] == true) {
+              debugPrint('✅ [Payment Link] Payment completed successfully');
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Payment successful! Share OTP with driver.'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+              setState(() {
+                _isPaymentMethodSelected = true;
+                _selectedPaymentMethodDisplay = 'Payment Link';
+              });
+            } else {
+              debugPrint('❌ [Payment Link] Payment cancelled or failed');
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Payment was not completed. Please try again.'),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+              // Re-show payment selection modal
+              _showPaymentSelectionModal();
+            }
+          } else {
+            debugPrint('❌ [Payment Link] URL missing in response');
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('No payment link provided by server.'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        } else {
+          debugPrint('💵 [Cash] Payment method selected');
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Cash payment selected. Share OTP with driver.'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          setState(() {
+            _isPaymentMethodSelected = true;
+            _selectedPaymentMethodDisplay = 'Cash';
+          });
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              response['message'] ?? 'Failed to select payment method',
+            ),
+          ),
+        );
+        _showPaymentSelectionModal(); // Re-show on API fail
+      }
+    } catch (e) {
+      if (Navigator.canPop(context))
+        Navigator.pop(context); // Ensure loading is closed
+      debugPrint('❌ [Payment] Error: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
+      _showPaymentSelectionModal(); // Re-show on error
+    }
   }
 }

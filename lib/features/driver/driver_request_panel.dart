@@ -180,15 +180,10 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                           color: AppTheme.textPrimary,
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      // Display vehicle type from backend
-                      Text(
-                        _getVehicleDisplayName(widget.rideData?['vehicleType']),
-                        style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+// Removed hardcoded vehicle type description
+                        ],
                       ),
-                    ],
-                  ),
-                ),
+                    ),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
@@ -326,13 +321,18 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                       borderRadius: BorderRadius.circular(16),
                     ),
                   ),
-                  child: const Text(
-                    'Accept Ride',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.5,
+                  child: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      'Accept Ride',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.5,
+                      ),
                     ),
                   ),
                 ),

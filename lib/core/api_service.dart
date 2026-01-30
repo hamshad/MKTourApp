@@ -775,6 +775,17 @@ class ApiService {
     });
   }
 
+  Future<Map<String, dynamic>> selectPaymentMethod(
+      String rideId, String paymentMethod) async {
+    return await _postRequest(ApiConstants.selectPaymentMethod(rideId), {
+      'paymentMethod': paymentMethod,
+    });
+  }
+
+  Future<Map<String, dynamic>> confirmCashCollection(String rideId) async {
+    return await _postRequest(ApiConstants.confirmCash(rideId), {});
+  }
+
   Future<Map<String, dynamic>> _postRequest(
     String url,
     Map<String, dynamic> body,

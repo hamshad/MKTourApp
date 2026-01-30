@@ -375,13 +375,18 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
                           color: Colors.white,
                         ),
                       )
-                    : Text(
-                        widget.isNewUser
-                            ? 'Submit Application'
-                            : 'Verify & Login',
-                        style: GoogleFonts.outfit(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
+                    : FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          widget.isNewUser
+                              ? 'Submit Application'
+                              : 'Verify & Login',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.outfit(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
               ),

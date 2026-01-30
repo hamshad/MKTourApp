@@ -316,11 +316,16 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
                             color: Colors.white,
                           ),
                         )
-                      : Text(
-                          'Continue',
-                          style: GoogleFonts.outfit(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
+                      : FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            'Continue',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.outfit(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                 ),

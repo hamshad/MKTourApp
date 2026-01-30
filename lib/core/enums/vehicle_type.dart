@@ -1,10 +1,10 @@
 /// Vehicle type enum matching backend API values
 /// Used for ride requests and vehicle selection
 enum VehicleType {
-  sedan('sedan', 'Economy Sedan'),
-  suv('suv', 'MK Luxury SUV'),
-  hatchback('hatchback', 'Compact Hatchback'),
-  van('van', 'Premium Van');
+  sedan('sedan', 'Sedan'),
+  suv('suv', 'SUV'),
+  hatchback('hatchback', 'Hatchback'),
+  van('van', 'Van');
 
   final String apiValue;
   final String displayName;

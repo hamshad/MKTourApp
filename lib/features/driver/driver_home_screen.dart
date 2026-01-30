@@ -17,6 +17,7 @@ import '../../core/services/navigation_service.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 
 class DriverHomeScreen extends StatefulWidget {
   const DriverHomeScreen({super.key});
@@ -146,6 +147,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     _socketService.off('driver:status');
     _socketService.off('driver:locationUpdated');
     _socketService.off('payment:succeeded');
+    _socketService.off('ride:paymentSelected'); // Listener for payment choice
+
+    // Stop and clean up ringtone if still playing
+    FlutterRingtonePlayer().stop();
 
     // Clean up streams
     _positionStreamSubscription?.cancel();
@@ -406,6 +411,24 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       }
     });
 
+    // Listen for payment selected by user
+    _socketService.on('ride:paymentSelected', (data) {
+      debugPrint('💳 [DriverHomeScreen] User selected payment: $data');
+      if (mounted && _currentRideId == (data['bookingId'] ?? data['rideId'])) {
+        setState(() {
+          // Update local ride data with selected method
+          if (_rideData != null) {
+            _rideData!['paymentMethod'] = data['paymentMethod'];
+          }
+        });
+        CustomSnackbar.show(
+          context,
+          message: 'User is paying...',
+          type: SnackbarType.info,
+        );
+      }
+    });
+
     // Listen for payment success to finalize ride completion
     _socketService.on('payment:succeeded', (data) {
       debugPrint('💳 [DriverHomeScreen] Payment succeeded: $data');
@@ -428,6 +451,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         });
         _fetchRideHistory();
       }
+      // Stop ringtone if payment succeeded (though it should be stopped by now)
+      FlutterRingtonePlayer().stop();
     });
 
     // Listen for location update confirmation
@@ -435,11 +460,13 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       // Location update confirmed by server
     });
 
-    // Listen for new ride requests
     _socketService.on('ride:newRequest', (data) {
       debugPrint('🔔 [DriverHomeScreen] New Ride Request Received: $data');
       if (mounted) {
+        debugPrint('🔔 [DriverHomeScreen] Triggering _handleNewRideRequest');
         _handleNewRideRequest(data);
+      } else {
+        debugPrint('🔔 [DriverHomeScreen] Received request but widget not mounted');
       }
     });
 
@@ -496,6 +523,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     _socketService.on('ride:cancelledByUser', (data) {
       debugPrint('❌ [DriverHomeScreen] Ride Cancelled By User: $data');
       if (mounted) {
+        FlutterRingtonePlayer().stop();
         final cancellationFee = data['cancellationFee'] ?? 0.0;
         setState(() {
           _status = 'online';
@@ -512,10 +540,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       }
     });
 
-    // Ride expired (no driver accepted in time)
     _socketService.on('ride:expired', (data) {
       debugPrint('⏰ [DriverHomeScreen] Ride Expired: $data');
       if (mounted) {
+        FlutterRingtonePlayer().stop();
         setState(() {
           _status = 'online';
           _currentRideId = null;
@@ -532,10 +560,17 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   }
 
   void _handleNewRideRequest(dynamic data) {
+    debugPrint('🔔 [DriverHomeScreen] Handling request. Current status: $_status');
     // Only show request if driver is online and available
     if (_status == 'online') {
+      debugPrint('🔔 [DriverHomeScreen] Starting ringtone sound...');
+      // Use playRingtone for better visibility as it's meant for alerts
+      FlutterRingtonePlayer().playRingtone(
+        looping: true,
+        asAlarm: true, // Priority channel on Android
+      );
+
       setState(() {
-        _status = 'request';
         _status = 'request';
         _currentRideId = data['rideId'] ?? data['_id']; // Store ride ID
         _rideData = data;
@@ -579,6 +614,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             _currentRideId = null;
             _rideData = null;
             _clearNavigationUi();
+            FlutterRingtonePlayer().stop();
           }
         });
 
@@ -655,9 +691,27 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         double totalHours = 0;
         double totalEarnings = 0;
         for (var ride in todayRides) {
-          if (ride['status'] == 'completed') {
-            totalHours += (ride['duration'] ?? 0) / 60.0;
-            totalEarnings += (ride['fare'] ?? 0.0);
+          final status = ride['status']?.toString().toLowerCase();
+          if (status == 'completed' || status == 'early_completed') {
+            // Get duration in minutes
+            double durationMin = (ride['duration'] as num?)?.toDouble() ?? 0;
+            
+            // If duration is 0/null, calculate from timestamps
+            if (durationMin == 0 && ride['acceptedAt'] != null) {
+              try {
+                final start = DateTime.parse(ride['acceptedAt']);
+                final endInput = ride['completedAt'] ?? ride['updatedAt'] ?? ride['createdAt'];
+                if (endInput != null) {
+                  final end = DateTime.parse(endInput);
+                  durationMin = end.difference(start).inMinutes.toDouble();
+                }
+              } catch (e) {
+                debugPrint('⚠️ [DriverStats] Error calculating duration: $e');
+              }
+            }
+
+            totalHours += durationMin / 60.0;
+            totalEarnings += (ride['fare'] as num?)?.toDouble() ?? 0.0;
           }
         }
 
@@ -696,7 +750,18 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         // Accept Ride
         final response = await _apiService.acceptRide(_currentRideId!);
         if (response['success'] == true) {
-          setState(() => _status = 'pickup');
+          FlutterRingtonePlayer().stop();
+          setState(() {
+            _status = 'pickup';
+            if (response['data'] != null) {
+              final newData = response['data'] as Map<String, dynamic>;
+              _rideData = {
+                ...?_rideData,
+                ...newData,
+              };
+              _currentRideId = newData['_id']?.toString() ?? _currentRideId;
+            }
+          });
           CustomSnackbar.show(
             context,
             message: 'Ride Accepted!',
@@ -723,7 +788,16 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         );
 
         if (response['success'] == true) {
-          setState(() => _status = 'arrived');
+          setState(() {
+            _status = 'arrived';
+            if (response['data'] != null) {
+              final newData = response['data'] as Map<String, dynamic>;
+              _rideData = {
+                ...?_rideData,
+                ...newData,
+              };
+            }
+          });
           CustomSnackbar.show(
             context,
             message: 'You have arrived!',
@@ -753,15 +827,31 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           pos.longitude,
         );
         if (response['success'] == true) {
-          setState(() {
-            _status = 'awaiting_payment';
-          });
-          CustomSnackbar.show(
-            context,
-            message: 'Ride completed. Waiting for passenger payment...',
-            type: SnackbarType.info,
-          );
-          // payment:succeeded socket will finalize
+          final paymentMethod = _rideData?['paymentMethod'];
+          
+          if (paymentMethod == 'cash') {
+             setState(() {
+              _status = 'awaiting_cash_confirmation';
+            });
+            CustomSnackbar.show(
+              context,
+              message: 'Ride completed. Collect cash from passenger.',
+              type: SnackbarType.warning,
+            );
+          } else {
+             setState(() {
+              _status = 'online';
+              _currentRideId = null;
+              _rideData = null;
+              _clearNavigationUi();
+            });
+            _fetchRideHistory();
+            CustomSnackbar.show(
+              context,
+              message: 'Ride completed successfully.',
+              type: SnackbarType.success,
+            );
+          }
         } else {
           CustomSnackbar.show(
             context,
@@ -769,6 +859,30 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             type: SnackbarType.error,
           );
         }
+      } else if (_status == 'awaiting_cash_confirmation') {
+         // Confirm Cash Collection
+         final response = await _apiService.confirmCashCollection(_currentRideId!);
+         if (response['success'] == true) {
+            CustomSnackbar.show(
+              context,
+              message: 'Cash collected. Ride finalized.',
+              type: SnackbarType.success,
+            );
+            // Reset to online
+            setState(() {
+              _status = 'online';
+              _currentRideId = null;
+              _rideData = null;
+              _clearNavigationUi();
+            });
+            _fetchRideHistory();
+         } else {
+            CustomSnackbar.show(
+              context,
+              message: 'Failed to confirm cash: ${response['message']}',
+              type: SnackbarType.error,
+            );
+         }
       }
     } catch (e) {
       CustomSnackbar.show(
@@ -784,6 +898,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   Future<void> _declineRide() async {
     if (_currentRideId == null) return;
 
+    FlutterRingtonePlayer().stop();
     setState(() => _isLoading = true);
     try {
       final response = await _apiService.cancelRide(_currentRideId!);
@@ -878,7 +993,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                 backgroundColor: Colors.red,
                 foregroundColor: Colors.white,
               ),
-              child: const Text('Cancel Ride'),
+              child: const FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  'Cancel Ride',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ),
           ],
         ),
@@ -1012,7 +1134,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                 backgroundColor: Colors.orange,
                 foregroundColor: Colors.white,
               ),
-              child: const Text('End Ride'),
+              child: const FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  'End Ride',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ),
           ],
         ),
@@ -1036,16 +1165,32 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       if (response['success'] == true) {
         final adjustedFare = response['data']?['adjustedFare'] ?? 0.0;
 
-        setState(() {
-          _status = 'awaiting_payment';
-        });
-
-        CustomSnackbar.show(
-          context,
-          message: 'Ride ended early (£${adjustedFare.toStringAsFixed(2)}). Waiting for passenger payment...',
-          type: SnackbarType.info,
-        );
-        // payment:succeeded socket will finalize
+        final paymentMethod = _rideData?['paymentMethod'];
+        
+        if (paymentMethod == 'cash') {
+          setState(() {
+            _status = 'awaiting_cash_confirmation';
+          });
+          CustomSnackbar.show(
+            context,
+            message: 'Ride ended early (£${adjustedFare.toStringAsFixed(2)}). Collect cash from passenger.',
+            type: SnackbarType.warning,
+          );
+        } else {
+          setState(() {
+             _status = 'online';
+             _currentRideId = null;
+             _rideData = null;
+             _clearNavigationUi();
+          });
+          _fetchRideHistory();
+          CustomSnackbar.show(
+            context,
+            message: 'Ride completed successfully (£${adjustedFare.toStringAsFixed(2)}).',
+            type: SnackbarType.success,
+          );
+          // payment:succeeded socket will finalize
+        }
       } else {
         CustomSnackbar.show(
           context,
@@ -1112,7 +1257,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
               backgroundColor: AppTheme.primaryColor,
               foregroundColor: Colors.white,
             ),
-            child: const Text('Verify & Start'),
+            child: const FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                'Verify & Start',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ),
         ],
       ),
@@ -1129,7 +1281,16 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     try {
       final response = await _apiService.startRide(_currentRideId!, otp);
       if (response['success'] == true) {
-        setState(() => _status = 'in_progress');
+        setState(() {
+          _status = 'in_progress';
+          if (response['data'] != null) {
+            final newData = response['data'] as Map<String, dynamic>;
+            _rideData = {
+              ...?_rideData,
+              ...newData,
+            };
+          }
+        });
         CustomSnackbar.show(
           context,
           message: 'OTP Verified! Trip Started.',
@@ -1391,7 +1552,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     } else if (_status == 'pickup' ||
         _status == 'arrived' ||
         _status == 'in_progress' ||
-        _status == 'awaiting_payment') {
+        _status == 'awaiting_payment' || 
+        _status == 'awaiting_cash_confirmation') {
       return DriverNavigationPanel(
         status: _status,
         rideData: _rideData,

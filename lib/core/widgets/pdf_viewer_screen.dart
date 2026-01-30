@@ -87,7 +87,14 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                           });
                           _loadPdf();
                         },
-                        child: const Text('Retry'),
+                        child: const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            'Retry',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                       ),
                     ],
                   ),

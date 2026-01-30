@@ -246,7 +246,14 @@ class _SignupScreenState extends State<SignupScreen> {
                               color: Colors.white,
                             ),
                           )
-                        : const Text('Create account'),
+                        : const FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              'Create account',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
                   ),
                 ),
                 

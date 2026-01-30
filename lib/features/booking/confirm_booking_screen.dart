@@ -442,14 +442,19 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
                           strokeWidth: 2,
                         ),
                       )
-                    : Text(
-                        _paymentTiming == PaymentTiming.payNow
-                            ? 'Pay £${vehicle['basePrice']} & Confirm'
-                            : 'Confirm Booking',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
+                    : FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          _paymentTiming == PaymentTiming.payNow
+                              ? 'Pay £${vehicle['basePrice']} & Confirm'
+                              : 'Confirm Booking',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
               ),

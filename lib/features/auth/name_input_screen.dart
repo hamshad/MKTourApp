@@ -57,11 +57,13 @@ class _NameInputScreenState extends State<NameInputScreen> {
         final otp = response['data']['otp'];
         debugPrint('🎉 [NameInputScreen] OTP Sent. OTP: $otp');
         
-        CustomSnackbar.show(
-          context,
-          message: 'OTP Sent: $otp',
-          type: SnackbarType.success,
-        );
+        if (otp != null) {
+          CustomSnackbar.show(
+            context,
+            message: 'OTP Sent: $otp',
+            type: SnackbarType.success,
+          );
+        }
 
         // Navigate based on role
         if (widget.role == 'driver') {
@@ -198,11 +200,16 @@ class _NameInputScreenState extends State<NameInputScreen> {
                           width: 24,
                           child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
                         )
-                      : Text(
-                          'Continue',
-                          style: GoogleFonts.outfit(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
+                      : FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            'Continue',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.outfit(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                 ),

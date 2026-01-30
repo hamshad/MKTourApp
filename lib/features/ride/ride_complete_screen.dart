@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/theme.dart';
 import '../../core/api_service.dart';
+import '../../core/services/socket_service.dart';
 import '../../core/widgets/custom_snackbar.dart';
 
 class RideCompleteScreen extends StatefulWidget {
@@ -30,8 +31,46 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
       widget.rideData['rideId'] ??
       '';
 
+  final SocketService _socketService = SocketService();
+  bool _isCashConfirmed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkInitialPaymentStatus();
+    _listenForPaymentUpdates();
+  }
+
+  void _checkInitialPaymentStatus() {
+     // If it's card, it's already paid. If cash, check if already confirmed (logic could vary)
+     if (widget.rideData['paymentMethod'] != 'cash') {
+       _isCashConfirmed = true;
+     } else if (widget.rideData['paymentStatus'] == 'completed') {
+       _isCashConfirmed = true;
+     }
+  }
+
+  void _listenForPaymentUpdates() {
+    if (_isCashConfirmed) return;
+
+    _socketService.on('payment:cashCollected', (data) {
+      if (mounted) {
+         // Verify rideId if needed
+         setState(() {
+           _isCashConfirmed = true;
+         });
+         CustomSnackbar.show(
+            context,
+            message: 'Cash payment confirmed!',
+            type: SnackbarType.success,
+         );
+      }
+    });
+  }
+
   @override
   void dispose() {
+    _socketService.off('payment:cashCollected');
     _feedbackController.dispose();
     super.dispose();
   }
@@ -277,16 +316,16 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                                   Row(
                                     children: [
                                       Icon(
-                                        Icons.check_circle,
+                                        _isCashConfirmed ? Icons.check_circle : Icons.pending,
                                         size: 14,
-                                        color: Colors.green[600],
+                                        color: _isCashConfirmed ? Colors.green[600] : Colors.orange[600],
                                       ),
                                       const SizedBox(width: 4),
                                       Text(
-                                        'Paid',
+                                        _isCashConfirmed ? 'Paid' : 'Pay Cash to Driver',
                                         style: TextStyle(
                                           fontSize: 12,
-                                          color: Colors.green[600],
+                                          color: _isCashConfirmed ? Colors.green[600] : Colors.orange[600],
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),
@@ -429,17 +468,22 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                           ? _submitRating
                           : null,
                       child: _isSubmitting
-                          ? const SizedBox(
-                              height: 24,
-                              width: 24,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.5,
-                                color: Colors.white,
+                            ? const SizedBox(
+                                height: 24,
+                                width: 24,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  _rating > 0 ? 'Submit Rating' : 'Select a Rating',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
-                            )
-                          : Text(
-                              _rating > 0 ? 'Submit Rating' : 'Select a Rating',
-                            ),
                     ),
                   ),
                   const SizedBox(height: 12),

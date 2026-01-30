@@ -371,11 +371,16 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                         strokeWidth: 2,
                       ),
                     )
-                  : Text(
-                      'Select ${_vehicles.firstWhere((v) => v.type.apiValue == _selectedVehicle, orElse: () => _vehicles.first).name}',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
+                  : FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        'Select ${_vehicles.firstWhere((v) => v.type.apiValue == _selectedVehicle, orElse: () => _vehicles.first).name}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
             ),

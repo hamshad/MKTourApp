@@ -86,7 +86,14 @@ class PaymentMethodScreen extends StatelessWidget {
                                 Navigator.pop(context);
                                 _navigateToHome(context);
                               },
-                              child: const Text('Add Card'),
+                              child: const FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  'Add Card',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
                             ),
                           ),
                           const SizedBox(height: 24),

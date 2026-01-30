@@ -17,8 +17,12 @@ class DriverRideDetailScreen extends StatelessWidget {
     final total = fare + tip + surge;
     final status = (rideData['status'] ?? 'completed').toString();
     final passenger = rideData['user'] is Map
-      ? rideData['user'] as Map<String, dynamic>
-      : rideData['passenger'] as Map<String, dynamic>?;
+        ? rideData['user'] as Map<String, dynamic>
+        : rideData['passenger'] is Map
+            ? rideData['passenger'] as Map<String, dynamic>
+            : rideData['userData'] is Map
+                ? rideData['userData'] as Map<String, dynamic>
+                : null;
 
     return Scaffold(
       body: CustomScrollView(

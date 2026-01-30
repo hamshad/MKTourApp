@@ -216,6 +216,8 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
       final results = await _placesService.searchPlaces(
         query,
         sessionToken: _sessionToken,
+        lat: _center.latitude,
+        lng: _center.longitude,
       );
 
       debugPrint(

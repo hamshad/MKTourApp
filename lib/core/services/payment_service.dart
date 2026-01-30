@@ -171,11 +171,11 @@ class PaymentService {
       final responseData = jsonDecode(response.body);
       final rideData = responseData['data'];
 
-      final String clientSecret = rideData['clientSecret'];
+      final String? clientSecret = rideData['clientSecret'];
       rideId = rideData['_id'] ?? rideData['id'];
 
       debugPrint('💳 PaymentService: Ride created: $rideId');
-      if (shouldPresentPaymentSheet) {
+      if (shouldPresentPaymentSheet && clientSecret != null) {
         debugPrint(
           '💳 PaymentService: Got client secret, presenting payment sheet...',
         );
@@ -184,6 +184,8 @@ class PaymentService {
           clientSecret: clientSecret,
         );
         debugPrint('✅ PaymentService: Payment sheet completed (pay_now)');
+      } else if (shouldPresentPaymentSheet) {
+          throw Exception('Payment intent missing from server response');
       } else {
         debugPrint(
           '💳 PaymentService: pay_later selected; skipping payment sheet at booking time',

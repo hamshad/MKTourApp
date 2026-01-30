@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -59,5 +60,23 @@ class StripeService {
       }
     }
     return error?.toString() ?? 'An unexpected error occurred';
+  }
+  /// Process payment with provided client secret
+  static Future<void> processPayment(String clientSecret) async {
+    try {
+      await Stripe.instance.initPaymentSheet(
+        paymentSheetParameters: SetupPaymentSheetParameters(
+          paymentIntentClientSecret: clientSecret,
+          merchantDisplayName: 'MK Tours',
+          style: ThemeMode.light, // or system
+        ),
+      );
+
+      await Stripe.instance.presentPaymentSheet();
+      debugPrint('✅ Payment successful');
+    } catch (e) {
+      debugPrint('❌ Payment failed: $e');
+      throw e;
+    }
   }
 }

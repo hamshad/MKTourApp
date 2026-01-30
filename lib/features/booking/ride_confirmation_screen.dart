@@ -992,11 +992,16 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                               ),
                             )
                           : const Icon(Icons.refresh),
-                      label: Text(
-                        _isFetchingFare ? 'Retrying...' : 'Retry',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                      label: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          _isFetchingFare ? 'Retrying...' : 'Retry',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                       style: ElevatedButton.styleFrom(
@@ -1029,11 +1034,16 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                                 strokeWidth: 2,
                               ),
                             )
-                          : const Text(
-                              'Confirm Ride',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
+                          : FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: const Text(
+                                'Confirm Ride',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
                     ),

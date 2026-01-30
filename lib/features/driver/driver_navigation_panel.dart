@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme.dart';
 import '../../core/services/navigation_service.dart';
 
@@ -28,8 +29,11 @@ class DriverNavigationPanel extends StatelessWidget {
         return 'Start Trip';
       case 'in_progress':
         return 'Complete Trip';
+      case 'awaiting_cash_confirmation':
+        return 'Confirm Cash Collected';
+      case 'awaiting_payment':
       default:
-        return 'Action';
+        return 'Waiting for Payment...';
     }
   }
 
@@ -37,6 +41,10 @@ class DriverNavigationPanel extends StatelessWidget {
     switch (status) {
       case 'in_progress':
         return Colors.red;
+      case 'awaiting_cash_confirmation':
+        return Colors.green;
+      case 'awaiting_payment':
+        return Colors.grey;
       default:
         return AppTheme.primaryColor;
     }
@@ -164,67 +172,116 @@ class DriverNavigationPanel extends StatelessWidget {
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: Colors.grey[200]!),
             ),
-            child: Row(
+            child: Column(
               children: [
-                CircleAvatar(
-                  radius: 24,
-                  backgroundColor: Colors.white,
-                  backgroundImage: rideData?['user']?['profilePicture'] != null
-                      ? NetworkImage(rideData!['user']['profilePicture'])
-                      : null,
-                  child: rideData?['user']?['profilePicture'] == null
-                      ? const Icon(Icons.person, color: AppTheme.textSecondary)
-                      : null,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        rideData?['user']?['name'] ?? 'Passenger',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.textPrimary,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Icon(
-                            status == 'pickup' || status == 'arrived'
-                                ? Icons.location_on
-                                : Icons.flag,
-                            size: 14,
-                            color: status == 'pickup' || status == 'arrived'
-                                ? AppTheme.primaryColor
-                                : Colors.red,
-                          ),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              status == 'pickup' || status == 'arrived'
-                                  ? 'Pickup: ${rideData?['pickupLocation']?['address'] ?? 'Unknown'}'
-                                  : 'Drop-off: ${rideData?['dropoffLocation']?['address'] ?? 'Unknown'}',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: Colors.grey[700],
-                                fontWeight: FontWeight.w500,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
                 Row(
                   children: [
-                    _buildActionButton(Icons.phone, () {}),
+                    CircleAvatar(
+                      radius: 20,
+                      backgroundColor: Colors.white,
+                      backgroundImage: rideData?['user']?['profilePicture'] != null
+                          ? NetworkImage(rideData!['user']['profilePicture'])
+                          : null,
+                      child: rideData?['user']?['profilePicture'] == null
+                          ? const Icon(Icons.person, color: AppTheme.textSecondary, size: 20)
+                          : null,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            rideData?['user']?['name'] ?? 'Passenger',
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.textPrimary,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (rideData?['paymentMethod'] != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(
+                                (rideData?['paymentMethod'] ?? '').toUpperCase(),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: rideData?['paymentMethod'] == 'cash'
+                                      ? Colors.green[700]
+                                      : Colors.blue[700],
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        _buildActionButton(Icons.phone, () async {
+                          final phone = rideData?['user']?['phone']?.toString();
+                          if (phone != null && phone.isNotEmpty) {
+                            final Uri launchUri = Uri(
+                              scheme: 'tel',
+                              path: phone,
+                            );
+                            if (await canLaunchUrl(launchUri)) {
+                              await launchUrl(launchUri);
+                            }
+                          }
+                        }),
+                        const SizedBox(width: 8),
+                        _buildActionButton(Icons.message, () async {
+                          final phone = rideData?['user']?['phone']?.toString();
+                          if (phone != null && phone.isNotEmpty) {
+                            final cleanNumber = phone.replaceAll(RegExp(r'\D'), '');
+                            final whatsappUrl = Uri.parse("https://wa.me/$cleanNumber");
+                            if (await canLaunchUrl(whatsappUrl)) {
+                              await launchUrl(whatsappUrl, mode: LaunchMode.externalApplication);
+                            }
+                          }
+                        }),
+                      ],
+                    ),
+                  ],
+                ),
+                const Divider(height: 24),
+                // Pickup Location
+                Row(
+                  children: [
+                    Icon(Icons.location_on, size: 14, color: AppTheme.primaryColor),
                     const SizedBox(width: 8),
-                    _buildActionButton(Icons.message, () {}),
+                    Expanded(
+                      child: Text(
+                        'Pickup: ${rideData?['pickupLocation']?['address'] ?? 'Loading...'}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[700],
+                          fontWeight: FontWeight.w500,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                // Dropoff Location
+                Row(
+                  children: [
+                    const Icon(Icons.flag, size: 14, color: Colors.red),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Drop-off: ${rideData?['dropoffLocation']?['address'] ?? 'Loading...'}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[700],
+                          fontWeight: FontWeight.w500,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -283,7 +340,7 @@ class DriverNavigationPanel extends StatelessWidget {
             width: double.infinity,
             height: 56,
             child: ElevatedButton(
-              onPressed: onAction,
+              onPressed: status == 'awaiting_payment' ? null : onAction, // Disable if just waiting
               style: ElevatedButton.styleFrom(
                 backgroundColor: _actionColor,
                 elevation: 8,
@@ -292,13 +349,18 @@ class DriverNavigationPanel extends StatelessWidget {
                   borderRadius: BorderRadius.circular(16),
                 ),
               ),
-              child: Text(
-                _actionText.toUpperCase(),
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                  letterSpacing: 1.2,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  _actionText.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                    letterSpacing: 1.2,
+                  ),
                 ),
               ),
             ),

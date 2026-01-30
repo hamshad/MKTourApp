@@ -70,7 +70,14 @@ class _MarketingConsentScreenState extends State<MarketingConsentScreen> {
                           Navigator.pushNamed(context, '/payment-method');
                         }
                       : null,
-                  child: const Text('Continue'),
+                  child: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      'Continue',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(height: 20),

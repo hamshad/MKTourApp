@@ -12,6 +12,8 @@ class PlacesService {
   Future<List<Map<String, dynamic>>> searchPlaces(
     String query, {
     String? sessionToken,
+    double? lat,
+    double? lng,
   }) async {
     if (query.isEmpty) return [];
 
@@ -19,9 +21,13 @@ class PlacesService {
       final token = sessionToken ?? ApiConfig.sessionToken;
       final headers = await ApiConfig.getAuthHeaders();
 
-      final url = Uri.parse(
-        '${ApiConstants.getSuggestions}?input=${Uri.encodeComponent(query)}&sessionToken=$token',
-      );
+      String urlString =
+          '${ApiConstants.getSuggestions}?input=${Uri.encodeComponent(query)}&sessionToken=$token';
+      if (lat != null && lng != null) {
+        urlString += '&lat=$lat&lng=$lng';
+      }
+
+      final url = Uri.parse(urlString);
 
       debugPrint('🔍 ─────────────────────────────────────────────');
       debugPrint('🔍 PlacesService.searchPlaces()');

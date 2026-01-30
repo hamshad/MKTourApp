@@ -42,7 +42,14 @@ class IntroScreen extends StatelessWidget {
                   onPressed: () {
                     Navigator.pushNamed(context, '/marketing-consent');
                   },
-                  child: const Text('Next'),
+                  child: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      'Next',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(height: 20),
