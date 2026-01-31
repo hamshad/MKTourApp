@@ -268,6 +268,7 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
                     Expanded(
                       child: TextField(
                         controller: _phoneController,
+                        autofocus: true,
                         keyboardType: TextInputType.phone,
                         style: GoogleFonts.outfit(
                           fontSize: 16,

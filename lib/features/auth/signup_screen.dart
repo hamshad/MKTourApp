@@ -99,6 +99,7 @@ class _SignupScreenState extends State<SignupScreen> {
                     Expanded(
                       child: TextFormField(
                         controller: _firstNameController,
+                        autofocus: true,
                         textCapitalization: TextCapitalization.words,
                         decoration: const InputDecoration(
                           labelText: 'First name',

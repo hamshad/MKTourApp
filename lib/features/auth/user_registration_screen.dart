@@ -146,6 +146,7 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
                 child: TextField(
                   controller: _otpController,
                   keyboardType: TextInputType.number,
+                  autofillHints: const [AutofillHints.oneTimeCode],
                   maxLength: 6,
                   style: GoogleFonts.outfit(
                     fontSize: 24,
@@ -158,6 +159,11 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
                     counterText: '',
                     hintStyle: TextStyle(color: Colors.grey, letterSpacing: 8),
                   ),
+                  onChanged: (value) {
+                    if (value.length == 6) {
+                      _completeRegistration();
+                    }
+                  },
                   textAlign: TextAlign.center,
                 ),
               ),

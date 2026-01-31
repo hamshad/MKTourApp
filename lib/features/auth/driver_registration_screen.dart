@@ -231,6 +231,7 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
               child: TextField(
                 controller: _otpController,
                 keyboardType: TextInputType.number,
+                autofillHints: const [AutofillHints.oneTimeCode],
                 maxLength: 6,
                 style: GoogleFonts.outfit(
                   fontSize: 20,
@@ -243,6 +244,11 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
                   counterText: '',
                   hintStyle: TextStyle(color: Colors.grey, letterSpacing: 8),
                 ),
+                onChanged: (value) {
+                  if (value.length == 6) {
+                    _completeRegistration();
+                  }
+                },
                 textAlign: TextAlign.center,
               ),
             ),

@@ -83,6 +83,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 // Email Field
                 TextFormField(
                   controller: _emailController,
+                  autofocus: true,
                   keyboardType: TextInputType.emailAddress,
                   style: GoogleFonts.outfit(color: AppTheme.textPrimary),
                   decoration: InputDecoration(
