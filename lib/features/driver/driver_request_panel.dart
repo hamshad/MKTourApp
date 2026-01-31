@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/theme.dart';
 import '../../core/services/places_service.dart';
-import '../../core/enums/vehicle_type.dart';
+import '../../core/models/vehicle.dart';
 
 class DriverRequestPanel extends StatefulWidget {
   final VoidCallback onAccept;
@@ -84,17 +84,8 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
 
   /// Get display name for vehicle type from backend
   /// Handles the exact backend keys: sedan, suv, hatchback, van
-  String _getVehicleDisplayName(String? vehicleType) {
-    if (vehicleType == null) return 'Standard';
-
-    try {
-      final type = VehicleType.fromString(vehicleType);
-      return type.displayName;
-    } catch (e) {
-      // Fallback for unknown types
-      return vehicleType.substring(0, 1).toUpperCase() +
-          vehicleType.substring(1);
-    }
+  String _getVehicleDisplayName(String? vehicleCategorySlug) {
+    return VehicleCategory.formatSlug(vehicleCategorySlug);
   }
 
   @override
@@ -180,7 +171,13 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                           color: AppTheme.textPrimary,
                         ),
                       ),
-// Removed hardcoded vehicle type description
+                      Text(
+                        _getVehicleDisplayName(widget.rideData?['vehicleCategorySlug']),
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
                         ],
                       ),
                     ),

@@ -381,8 +381,8 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (context) => RideConfirmationScreen(
           pickupLocation: _lastRideConfirmationData!['pickupLocation'],
           dropoffLocation: _lastRideConfirmationData!['dropoffLocation'],
-          vehicleType: _lastRideConfirmationData!['vehicleType'],
-          vehicleName: _lastRideConfirmationData!['vehicleName'],
+          categorySlug: _lastRideConfirmationData!['categorySlug'],
+          categoryName: _lastRideConfirmationData!['categoryName'],
           fareData: _lastRideConfirmationData!['fareData'],
           polyline: _lastRideConfirmationData!['polyline'],
         ),

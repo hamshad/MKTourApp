@@ -375,14 +375,19 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
                           ),
                           child: const FittedBox(
                             fit: BoxFit.scaleDown,
-                            child: Text(
-                              'Cancel Ride',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: Colors.red,
-                                fontWeight: FontWeight.bold,
-                              ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.close, color: Colors.red),
+                                SizedBox(width: 8),
+                                Text(
+                                  'Cancel Ride',
+                                  style: TextStyle(
+                                    color: Colors.red,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),

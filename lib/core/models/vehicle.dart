@@ -1,9 +1,100 @@
-import '../enums/vehicle_type.dart';
+
+/// Luggage capacity model
+class Luggage {
+  final int suitcases;
+  final int smallCases;
+
+  const Luggage({
+    required this.suitcases,
+    required this.smallCases,
+  });
+
+  factory Luggage.fromJson(Map<String, dynamic> json) {
+    return Luggage(
+      suitcases: json['suitcases'] ?? 0,
+      smallCases: json['smallCases'] ?? 0,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'suitcases': suitcases,
+      'smallCases': smallCases,
+    };
+  }
+}
+
+/// Dynamic Vehicle Category model from the backend
+class VehicleCategory {
+  final String id;
+  final String name;
+  final String slug;
+  final int seatingCapacity;
+  final Luggage luggage;
+  final String? icon;
+  final String? description;
+  final bool active;
+
+  const VehicleCategory({
+    required this.id,
+    required this.name,
+    required this.slug,
+    required this.seatingCapacity,
+    required this.luggage,
+    this.icon,
+    this.description,
+    this.active = true,
+  });
+
+  factory VehicleCategory.fromJson(Map<String, dynamic> json) {
+    return VehicleCategory(
+      id: json['_id'] ?? json['id'] ?? '',
+      name: json['name'] ?? 'Unknown',
+      slug: json['slug'] ?? '',
+      seatingCapacity: json['seatingCapacity'] ?? 4,
+      luggage: Luggage.fromJson(json['luggage'] ?? {}),
+      icon: json['icon'],
+      description: json['description'],
+      active: json['active'] ?? true,
+    );
+  }
+
+  /// Format slug like 'car_4_seater' into 'Car - 4 Seater'
+  static String formatSlug(String? slug) {
+    if (slug == null || slug.isEmpty) return 'Standard';
+
+    final words = slug
+        .split('_')
+        .map((word) => word.isNotEmpty
+            ? word[0].toUpperCase() + word.substring(1).toLowerCase()
+            : '')
+        .toList();
+
+    if (words.length >= 2) {
+      return "${words[0]} - ${words.sublist(1).join(' ')}";
+    }
+
+    return words.join(' ');
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      '_id': id,
+      'name': name,
+      'slug': slug,
+      'seatingCapacity': seatingCapacity,
+      'luggage': luggage.toJson(),
+      'icon': icon,
+      'description': description,
+      'active': active,
+    };
+  }
+}
 
 /// Vehicle model representing a vehicle type from the backend API
 /// Matches the response from GET /api/v1/vehicles
 class Vehicle {
-  final VehicleType type;
+  final String categorySlug; // Changed from VehicleType type
   final String name;
   final int capacity;
   final String icon;
@@ -11,7 +102,7 @@ class Vehicle {
   final double perMileRate;
 
   const Vehicle({
-    required this.type,
+    required this.categorySlug,
     required this.name,
     required this.capacity,
     required this.icon,
@@ -22,7 +113,7 @@ class Vehicle {
   /// Create Vehicle from JSON map (API response)
   factory Vehicle.fromJson(Map<String, dynamic> json) {
     return Vehicle(
-      type: VehicleType.fromString(json['type'] ?? 'sedan'),
+      categorySlug: json['categorySlug'] ?? 'sedan',
       name: json['name'] ?? 'Unknown',
       capacity: json['capacity'] ?? 4,
       icon: json['icon'] ?? 'car_sedan_icon',
@@ -38,7 +129,7 @@ class Vehicle {
   /// Convert Vehicle to JSON map
   Map<String, dynamic> toJson() {
     return {
-      'type': type.apiValue,
+      'categorySlug': categorySlug,
       'name': name,
       'capacity': capacity,
       'icon': icon,
@@ -55,7 +146,7 @@ class Vehicle {
 
   /// Create a copy with optional overrides
   Vehicle copyWith({
-    VehicleType? type,
+    String? categorySlug,
     String? name,
     int? capacity,
     String? icon,
@@ -63,7 +154,7 @@ class Vehicle {
     double? perMileRate,
   }) {
     return Vehicle(
-      type: type ?? this.type,
+      categorySlug: categorySlug ?? this.categorySlug,
       name: name ?? this.name,
       capacity: capacity ?? this.capacity,
       icon: icon ?? this.icon,
@@ -74,17 +165,17 @@ class Vehicle {
 
   @override
   String toString() {
-    return 'Vehicle(type: ${type.apiValue}, name: $name, capacity: $capacity, baseFare: $baseFare, perMileRate: $perMileRate)';
+    return 'Vehicle(categorySlug: $categorySlug, name: $name, capacity: $capacity, baseFare: $baseFare, perMileRate: $perMileRate)';
   }
 
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
-    return other is Vehicle && other.type == type;
+    return other is Vehicle && other.categorySlug == categorySlug;
   }
 
   @override
-  int get hashCode => type.hashCode;
+  int get hashCode => categorySlug.hashCode;
 }
 
 /// Fare estimate model from the backend API
@@ -96,7 +187,7 @@ class FareEstimate {
   final int distanceMeters;
   final int durationSeconds;
   final String currency;
-  final VehicleType vehicleType;
+  final String categorySlug; // Changed from VehicleType vehicleType
 
   const FareEstimate({
     required this.distanceText,
@@ -105,7 +196,7 @@ class FareEstimate {
     this.distanceMeters = 0,
     this.durationSeconds = 0,
     this.currency = 'GBP',
-    this.vehicleType = VehicleType.sedan,
+    this.categorySlug = 'car_4_seater',
   });
 
   /// Create FareEstimate from JSON map (API response)
@@ -119,7 +210,7 @@ class FareEstimate {
       distanceMeters: json['distance_meters'] ?? 0,
       durationSeconds: json['duration_seconds'] ?? 0,
       currency: json['currency'] ?? 'GBP',
-      vehicleType: VehicleType.fromString(json['vehicle_type'] ?? 'sedan'),
+      categorySlug: json['vehicleCategorySlug'] ?? json['categorySlug'] ?? 'car_4_seater',
     );
   }
 
@@ -132,7 +223,7 @@ class FareEstimate {
       'distance_meters': distanceMeters,
       'duration_seconds': durationSeconds,
       'currency': currency,
-      'vehicle_type': vehicleType.apiValue,
+      'categorySlug': categorySlug,
     };
   }
 
@@ -153,14 +244,14 @@ class FareEstimate {
 class RideRequest {
   final Map<String, dynamic> pickupLocation;
   final Map<String, dynamic> dropoffLocation;
-  final VehicleType vehicleType;
+  final String vehicleCategorySlug; // Changed from VehicleType vehicleType
   final double distance;
   final String paymentTiming;
 
   const RideRequest({
     required this.pickupLocation,
     required this.dropoffLocation,
-    required this.vehicleType,
+    required this.vehicleCategorySlug,
     required this.distance,
     this.paymentTiming = 'pay_later',
   });
@@ -173,7 +264,7 @@ class RideRequest {
     required double dropoffLat,
     required double dropoffLng,
     required String dropoffAddress,
-    required VehicleType vehicleType,
+    required String categorySlug, // Changed from VehicleType vehicleType
     required double distanceMiles,
     String paymentTiming = 'pay_later',
   }) {
@@ -186,7 +277,7 @@ class RideRequest {
         'coordinates': [dropoffLng, dropoffLat], // [longitude, latitude]
         'address': dropoffAddress,
       },
-      vehicleType: vehicleType,
+      vehicleCategorySlug: categorySlug,
       distance: distanceMiles,
       paymentTiming: paymentTiming,
     );
@@ -197,7 +288,7 @@ class RideRequest {
     return {
       'pickupLocation': pickupLocation,
       'dropoffLocation': dropoffLocation,
-      'vehicleType': vehicleType.apiValue,
+      'vehicleCategorySlug': vehicleCategorySlug, // Updated field name
       'distance': distance,
       'paymentTiming': paymentTiming,
     };

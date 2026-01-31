@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../core/auth_provider.dart';
+import '../../core/models/vehicle.dart';
+import '../../core/services/vehicle_service.dart';
 
 class EditDriverProfileScreen extends StatefulWidget {
   final Map<String, dynamic> driverData;
@@ -21,8 +23,10 @@ class _EditDriverProfileScreenState extends State<EditDriverProfileScreen> {
   late TextEditingController _vehicleColorController;
   bool _isLoading = false;
   
-  String? _selectedVehicleType;
-  final List<String> _vehicleTypes = ['sedan', 'suv', 'hatchback', 'van'];
+  String? _selectedCategorySlug;
+  List<VehicleCategory> _categories = [];
+  bool _isLoadingCategories = true;
+  final VehicleService _vehicleService = VehicleService();
 
   @override
   void initState() {
@@ -31,14 +35,38 @@ class _EditDriverProfileScreenState extends State<EditDriverProfileScreen> {
     _emailController = TextEditingController(text: widget.driverData['email']);
     
     final vehicle = widget.driverData['vehicle'] ?? {};
-    _selectedVehicleType = vehicle['type'];
-    if (_selectedVehicleType != null && !_vehicleTypes.contains(_selectedVehicleType)) {
-      _selectedVehicleType = null; // Handle case where existing type is not in list
-    }
+    _selectedCategorySlug = vehicle['categorySlug'];
     
     _vehicleModelController = TextEditingController(text: vehicle['model']);
     _vehicleNumberController = TextEditingController(text: vehicle['number']);
     _vehicleColorController = TextEditingController(text: vehicle['color']);
+
+    _loadCategories();
+  }
+
+  Future<void> _loadCategories() async {
+    try {
+      final categories = await _vehicleService.getVehicleCategories();
+      if (mounted) {
+        setState(() {
+          _categories = categories;
+          _isLoadingCategories = false;
+          // Ensure selected category is still valid
+          if (_selectedCategorySlug != null && 
+              !categories.any((c) => c.slug == _selectedCategorySlug)) {
+             // If not found in dynamic list, keep it but it might need re-selection
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading categories: $e');
+      if (mounted) {
+        setState(() {
+          _categories = _vehicleService.defaultCategories;
+          _isLoadingCategories = false;
+        });
+      }
+    }
   }
 
   @override
@@ -53,7 +81,14 @@ class _EditDriverProfileScreenState extends State<EditDriverProfileScreen> {
   }
 
   Future<void> _saveProfile() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate() || _selectedCategorySlug == null) {
+      if (_selectedCategorySlug == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please select a vehicle category'), backgroundColor: Colors.red),
+        );
+      }
+      return;
+    }
 
     setState(() => _isLoading = true);
 
@@ -61,7 +96,7 @@ class _EditDriverProfileScreenState extends State<EditDriverProfileScreen> {
       'name': _nameController.text.trim(),
       'email': _emailController.text.trim(),
       'vehicle': {
-        'type': _selectedVehicleType,
+        'categorySlug': _selectedCategorySlug,
         'model': _vehicleModelController.text.trim(),
         'number': _vehicleNumberController.text.trim(),
         'color': _vehicleColorController.text.trim(),
@@ -103,7 +138,9 @@ class _EditDriverProfileScreenState extends State<EditDriverProfileScreen> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
+      body: _isLoadingCategories 
+        ? const Center(child: CircularProgressIndicator())
+        : SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Form(
           key: _formKey,
@@ -121,7 +158,7 @@ class _EditDriverProfileScreenState extends State<EditDriverProfileScreen> {
               const Text('Vehicle Information', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
               
-              // Vehicle Type Dropdown
+              // Vehicle Category Dropdown
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 decoration: BoxDecoration(
@@ -131,34 +168,36 @@ class _EditDriverProfileScreenState extends State<EditDriverProfileScreen> {
                 ),
                 child: DropdownButtonHideUnderline(
                   child: DropdownButton<String>(
-                    value: _selectedVehicleType,
+                    value: _selectedCategorySlug,
                     isExpanded: true,
-                    hint: Row(
+                    hint: const Row(
                       children: [
-                        const Icon(Icons.directions_car, color: AppTheme.textSecondary),
-                        const SizedBox(width: 12),
-                        const Text(
-                          'Select Vehicle Type',
+                        Icon(Icons.directions_car, color: AppTheme.textSecondary),
+                        SizedBox(width: 12),
+                        Text(
+                          'Select Vehicle Category',
                           style: TextStyle(color: AppTheme.textSecondary, fontSize: 16),
                         ),
                       ],
                     ),
-                    items: _vehicleTypes.map((type) {
+                    items: _categories.map((category) {
                       return DropdownMenuItem(
-                        value: type,
+                        value: category.slug,
                         child: Row(
                           children: [
                             const Icon(Icons.directions_car, color: AppTheme.textPrimary),
                             const SizedBox(width: 12),
                             Text(
-                              type[0].toUpperCase() + type.substring(1),
+                              category.name == category.slug || category.name == 'Unknown'
+                                ? VehicleCategory.formatSlug(category.slug)
+                                : category.name,
                               style: const TextStyle(color: AppTheme.textPrimary),
                             ),
                           ],
                         ),
                       );
                     }).toList(),
-                    onChanged: (value) => setState(() => _selectedVehicleType = value),
+                    onChanged: (value) => setState(() => _selectedCategorySlug = value),
                   ),
                 ),
               ),

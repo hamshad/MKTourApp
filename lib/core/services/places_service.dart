@@ -420,7 +420,7 @@ class PlacesService {
     required double originLng,
     required double destLat,
     required double destLng,
-    required String vehicleType,
+    required String categorySlug, // Changed from vehicleType
   }) async {
     debugPrint('📍 PlacesService.getDistanceAndFare - Starting request');
     debugPrint(
@@ -430,14 +430,14 @@ class PlacesService {
       '📍 PlacesService.getDistanceAndFare - Destination: ($destLat, $destLng)',
     );
     debugPrint(
-      '📍 PlacesService.getDistanceAndFare - Vehicle Type: $vehicleType',
+      '📍 PlacesService.getDistanceAndFare - Category Slug: $categorySlug',
     );
 
     try {
       final headers = await ApiConfig.getAuthHeaders();
 
       final url = Uri.parse(
-        '${ApiConstants.getDistanceTime}?origin=$originLat,$originLng&destination=$destLat,$destLng&vehicleType=$vehicleType',
+        '${ApiConstants.getDistanceTime}?origin=$originLat,$originLng&destination=$destLat,$destLng&categorySlug=$categorySlug',
       );
 
       debugPrint('📍 PlacesService.getDistanceAndFare - URL: $url');
@@ -476,7 +476,7 @@ class PlacesService {
                 ? (data['total_fare'] as int).toDouble()
                 : (data['total_fare'] ?? 0.0),
             'currency': data['currency'] ?? 'GBP',
-            'vehicle_type': vehicleType,
+            'category_slug': categorySlug,
           };
         } else {
           debugPrint(
@@ -505,22 +505,6 @@ class PlacesService {
     }
   }
 
-  /// Legacy method for backwards compatibility
-  /// @deprecated Use getDistanceAndFare instead for fare calculation
-  Future<Map<String, dynamic>?> getDistanceMatrix(
-    double originLat,
-    double originLng,
-    double destLat,
-    double destLng,
-  ) async {
-    return getDistanceAndFare(
-      originLat: originLat,
-      originLng: originLng,
-      destLat: destLat,
-      destLng: destLng,
-      vehicleType: 'sedan',
-    );
-  }
 
   /// Decode polyline string into list of LatLng coordinates
   List<Map<String, double>> _decodePolyline(String encoded) {

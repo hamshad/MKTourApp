@@ -4,6 +4,8 @@ import '../../core/api_service.dart';
 import '../../core/services/location_service.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/custom_snackbar.dart';
+import '../../core/models/vehicle.dart';
+import '../../core/services/vehicle_service.dart';
 import '../driver/driver_home_screen.dart';
 import '../driver/driver_profile_screen.dart';
 
@@ -35,8 +37,10 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
   final LocationService _locationService = LocationService();
   bool _isLoading = false;
 
-  String? _selectedVehicleType;
-  final List<String> _vehicleTypes = ['sedan', 'suv', 'hatchback', 'van'];
+  String? _selectedCategorySlug;
+  List<VehicleCategory> _categories = [];
+  bool _isLoadingCategories = true;
+  final VehicleService _vehicleService = VehicleService();
 
   @override
   void initState() {
@@ -44,9 +48,30 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
     if (widget.name != null) {
       _nameController.text = widget.name!;
     }
+    _loadCategories();
   }
 
-  String _capitalize(String s) => s[0].toUpperCase() + s.substring(1);
+  Future<void> _loadCategories() async {
+    try {
+      final categories = await _vehicleService.getVehicleCategories();
+      if (mounted) {
+        setState(() {
+          _categories = categories;
+          _isLoadingCategories = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading categories: $e');
+      if (mounted) {
+        setState(() {
+          _categories = _vehicleService.defaultCategories;
+          _isLoadingCategories = false;
+        });
+      }
+    }
+  }
+
+  String _capitalize(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
 
   Future<void> _completeRegistration() async {
     if (_otpController.text.length != 6) {
@@ -61,7 +86,7 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
     // Only validate registration fields if it's a new user
     if (widget.isNewUser) {
       if (_nameController.text.isEmpty ||
-          _selectedVehicleType == null ||
+          _selectedCategorySlug == null ||
           _vehicleModelController.text.isEmpty ||
           _vehicleNumberController.text.isEmpty ||
           _vehicleColorController.text.isEmpty) {
@@ -83,7 +108,7 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
 
       if (widget.isNewUser) {
         vehicleDetails = {
-          "type": _selectedVehicleType,
+          "categorySlug": _selectedCategorySlug,
           "model": _vehicleModelController.text,
           "number": _vehicleNumberController.text,
           "color": _vehicleColorController.text,
@@ -271,8 +296,13 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
               _buildSectionHeader('Vehicle Information'),
               const SizedBox(height: 16),
 
-              // Vehicle Type Dropdown
-              Container(
+              // Vehicle Category Dropdown
+              _isLoadingCategories 
+                ? const Center(child: Padding(
+                    padding: EdgeInsets.all(8.0),
+                    child: CircularProgressIndicator(),
+                  ))
+                : Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 12,
                   vertical: 4,
@@ -283,7 +313,7 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
                 ),
                 child: DropdownButtonHideUnderline(
                   child: DropdownButton<String>(
-                    value: _selectedVehicleType,
+                    value: _selectedCategorySlug,
                     isExpanded: true,
                     hint: Row(
                       children: [
@@ -293,7 +323,7 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
                         ),
                         const SizedBox(width: 12),
                         Text(
-                          'Select Vehicle Type',
+                          'Select Vehicle Category',
                           style: GoogleFonts.outfit(
                             color: AppTheme.textSecondary,
                             fontSize: 16,
@@ -301,9 +331,9 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
                         ),
                       ],
                     ),
-                    items: _vehicleTypes.map((type) {
+                    items: _categories.map((category) {
                       return DropdownMenuItem(
-                        value: type,
+                        value: category.slug,
                         child: Row(
                           children: [
                             const Icon(
@@ -312,7 +342,9 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
                             ),
                             const SizedBox(width: 12),
                             Text(
-                              _capitalize(type),
+                              category.name != 'Unknown' && category.name != category.slug
+                                ? category.name
+                                : VehicleCategory.formatSlug(category.slug),
                               style: GoogleFonts.outfit(
                                 color: AppTheme.textPrimary,
                               ),
@@ -322,7 +354,7 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
                       );
                     }).toList(),
                     onChanged: (value) =>
-                        setState(() => _selectedVehicleType = value),
+                        setState(() => _selectedCategorySlug = value),
                   ),
                 ),
               ),

@@ -1529,21 +1529,23 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
               const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
-                child: OutlinedButton.icon(
+                child: OutlinedButton(
                   onPressed: () => _showCancellationConfirmation(),
-                  icon: const Icon(Icons.close, color: Colors.red),
-                  label: const FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      'Cancel Ride',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.red,
                     side: const BorderSide(color: Colors.red),
                     padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  child: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.close, color: Colors.red),
+                        SizedBox(width: 8),
+                        Text('Cancel Ride'),
+                      ],
+                    ),
                   ),
                 ),
               ),

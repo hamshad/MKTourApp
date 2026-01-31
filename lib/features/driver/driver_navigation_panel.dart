@@ -296,25 +296,27 @@ class DriverNavigationPanel extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               height: 48,
-              child: OutlinedButton.icon(
-                onPressed: onCancel,
-                icon: const Icon(Icons.close, color: Colors.red, size: 20),
-                label: const FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    'Cancel Ride',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                child: OutlinedButton(
+                  onPressed: onCancel,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red,
+                    side: const BorderSide(color: Colors.red),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.close, color: Colors.red, size: 20),
+                        SizedBox(width: 8),
+                        Text('Cancel Ride'),
+                      ],
+                    ),
                   ),
                 ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.red,
-                  side: const BorderSide(color: Colors.red),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
             ),
             const SizedBox(height: 12),
           ] else if (status == 'in_progress') ...[
@@ -322,29 +324,31 @@ class DriverNavigationPanel extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               height: 48,
-              child: OutlinedButton.icon(
-                onPressed: onEndEarly,
-                icon: const Icon(
-                  Icons.stop_circle_outlined,
-                  color: Colors.orange,
-                  size: 20,
-                ),
-                label: const FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    'End Ride Early',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                child: OutlinedButton(
+                  onPressed: onEndEarly,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.orange,
+                    side: const BorderSide(color: Colors.orange),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.stop_circle_outlined,
+                          color: Colors.orange,
+                          size: 20,
+                        ),
+                        SizedBox(width: 8),
+                        Text('End Ride Early'),
+                      ],
+                    ),
                   ),
                 ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.orange,
-                  side: const BorderSide(color: Colors.orange),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
             ),
             const SizedBox(height: 12),
           ],

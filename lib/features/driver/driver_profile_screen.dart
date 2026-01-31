@@ -11,6 +11,7 @@ import '../auth/phone_login_screen.dart';
 import 'edit_driver_profile_screen.dart';
 import '../../core/widgets/pdf_viewer_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../../core/models/vehicle.dart';
 
 class DriverProfileScreen extends StatefulWidget {
   const DriverProfileScreen({super.key});
@@ -942,7 +943,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
-                                        '${vehicle['color'] ?? ''} ${vehicle['type'] ?? ''}'
+                                        '${vehicle['color'] ?? ''} ${vehicle['categoryName'] ?? VehicleCategory.formatSlug(vehicle['categorySlug'])}'
                                             .trim(),
                                         style: const TextStyle(
                                           color: AppTheme.textSecondary,

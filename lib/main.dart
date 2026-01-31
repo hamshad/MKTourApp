@@ -12,7 +12,6 @@ import 'features/onboarding/marketing_consent_screen.dart';
 import 'features/onboarding/payment_method_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/booking/destination_search_screen.dart';
-import 'features/booking/vehicle_selection_panel.dart';
 import 'features/booking/confirm_booking_screen.dart';
 import 'features/ride/driver_assigned_screen.dart';
 import 'features/ride/ride_complete_screen.dart';
@@ -67,7 +66,6 @@ class RideEaseApp extends StatelessWidget {
         '/payment-method': (context) => const PaymentMethodScreen(),
         '/home': (context) => const HomeScreen(),
         '/destination-search': (context) => const DestinationSearchScreen(),
-        '/vehicle-selection': (context) => const VehicleSelectionScreen(),
         '/confirm-booking': (context) => const ConfirmBookingScreen(),
         '/driver-home': (context) => const DriverHomeScreen(),
         '/ride-progress': (context) => const RideProgressScreen(),

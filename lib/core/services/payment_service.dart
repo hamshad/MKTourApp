@@ -121,7 +121,7 @@ class PaymentService {
     required BuildContext context,
     required Map<String, dynamic> pickupLocation,
     required Map<String, dynamic> dropoffLocation,
-    required String vehicleType,
+    required String vehicleCategorySlug,
     required double distance,
     required double fare,
     PaymentTiming paymentTiming = PaymentTiming.payLater,
@@ -133,7 +133,7 @@ class PaymentService {
       final primaryColor = Theme.of(context).primaryColor;
       debugPrint('💳 PaymentService: Starting payment flow');
       debugPrint(
-        '💳 PaymentService: Vehicle: $vehicleType, Distance: $distance, Fare: $fare',
+        '💳 PaymentService: Category: $vehicleCategorySlug, Distance: $distance, Fare: $fare',
       );
       debugPrint('💳 PaymentService: Payment timing: ${paymentTiming.name}');
 
@@ -143,7 +143,7 @@ class PaymentService {
       final requestBody = {
         'pickupLocation': pickupLocation,
         'dropoffLocation': dropoffLocation,
-        'vehicleType': vehicleType,
+        'vehicleCategorySlug': vehicleCategorySlug,
         'distance': distance,
         'paymentTiming': paymentTiming == PaymentTiming.payNow
             ? 'pay_now'

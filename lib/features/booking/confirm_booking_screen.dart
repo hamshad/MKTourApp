@@ -53,7 +53,7 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
         context: context,
         pickupLocation: pickupLocation,
         dropoffLocation: dropoffLocation,
-        vehicleType: vehicle['id'] ?? 'car',
+        vehicleCategorySlug: vehicle['categorySlug'] ?? 'sedan',
         distance: (vehicle['distance'] as num?)?.toDouble() ?? 5.0,
         fare: (vehicle['basePrice'] as num?)?.toDouble() ?? 15.0,
         paymentTiming: _paymentTiming,

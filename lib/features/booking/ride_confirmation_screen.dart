@@ -8,14 +8,15 @@ import '../ride/ride_assigned_screen.dart';
 import '../../core/widgets/platform_map.dart';
 import 'package:latlong2/latlong.dart' as lat_lng;
 import 'package:flutter_map/flutter_map.dart' as fmap;
+import '../../core/models/vehicle.dart';
 
 /// Ride Confirmation Screen - Shows ride details before final booking
 /// Displays pickup, dropoff, vehicle type, distance, duration, and fare
 class RideConfirmationScreen extends StatefulWidget {
   final Map<String, dynamic> pickupLocation;
   final Map<String, dynamic> dropoffLocation;
-  final String vehicleType;
-  final String vehicleName;
+  final String categorySlug;
+  final String categoryName;
   final Map<String, dynamic> fareData;
   final List<dynamic>? polyline; // Added polyline
 
@@ -23,8 +24,8 @@ class RideConfirmationScreen extends StatefulWidget {
     super.key,
     required this.pickupLocation,
     required this.dropoffLocation,
-    required this.vehicleType,
-    required this.vehicleName,
+    required this.categorySlug,
+    required this.categoryName,
     required this.fareData,
     this.polyline,
   });
@@ -148,7 +149,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
         originLng: pickupLng,
         destLat: dropoffLat,
         destLng: dropoffLng,
-        vehicleType: widget.vehicleType,
+        categorySlug: widget.categorySlug,
       );
 
       if (mounted && result != null) {
@@ -372,7 +373,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
         context: context,
         pickupLocation: widget.pickupLocation,
         dropoffLocation: widget.dropoffLocation,
-        vehicleType: widget.vehicleType,
+        vehicleCategorySlug: widget.categorySlug,
         distance: (distanceMiles as num).toDouble(),
         fare: _fare,
         paymentTiming: timing,
@@ -394,8 +395,8 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
             'confirmationData': {
               'pickupLocation': widget.pickupLocation,
               'dropoffLocation': widget.dropoffLocation,
-              'vehicleType': widget.vehicleType,
-              'vehicleName': widget.vehicleName,
+              'categorySlug': widget.categorySlug,
+              'categoryName': widget.categoryName,
               'fareData': widget.fareData,
               'polyline': widget.polyline,
             },
@@ -676,18 +677,15 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
 
   Widget _buildVehicleCard() {
     IconData vehicleIcon;
-    switch (widget.vehicleType) {
-      case 'suv':
-        vehicleIcon = Icons.directions_car_filled;
-        break;
-      case 'hatchback':
-        vehicleIcon = Icons.car_rental;
-        break;
-      case 'van':
-        vehicleIcon = Icons.airport_shuttle;
-        break;
-      default:
-        vehicleIcon = Icons.directions_car;
+    final slug = widget.categorySlug.toLowerCase();
+    if (slug.contains('suv')) {
+      vehicleIcon = Icons.directions_car_filled;
+    } else if (slug.contains('hatchback')) {
+      vehicleIcon = Icons.car_rental;
+    } else if (slug.contains('van') || slug.contains('bus')) {
+      vehicleIcon = Icons.airport_shuttle;
+    } else {
+      vehicleIcon = Icons.directions_car;
     }
 
     return Container(
@@ -720,7 +718,9 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  widget.vehicleName,
+                  widget.categoryName == widget.categorySlug || widget.categoryName == 'Unknown'
+                    ? VehicleCategory.formatSlug(widget.categorySlug)
+                    : widget.categoryName,
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,

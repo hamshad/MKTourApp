@@ -439,13 +439,13 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
 
   /// Navigate to confirmation screen with selected vehicle and fare data
   Future<void> _handleSelectVehicle(
-    String vehicleType,
-    String vehicleName,
+    String categorySlug,
+    String categoryName,
     Map<String, dynamic> fareData,
   ) async {
     debugPrint('🚗 DestinationSearchScreen: Vehicle selected');
-    debugPrint('   → Type: $vehicleType');
-    debugPrint('   → Name: $vehicleName');
+    debugPrint('   → Category: $categorySlug');
+    debugPrint('   → Name: $categoryName');
     debugPrint('   → Fare: £${fareData['total_fare']}');
 
     // Get the actual pickup coordinates
@@ -560,8 +560,8 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
         builder: (context) => RideConfirmationScreen(
           pickupLocation: pickupLocation,
           dropoffLocation: dropoffLocation,
-          vehicleType: vehicleType,
-          vehicleName: vehicleName,
+          categorySlug: categorySlug,
+          categoryName: categoryName,
           fareData: fareData,
           polyline: _polylines, // Pass the drawn polyline
         ),

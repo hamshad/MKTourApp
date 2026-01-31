@@ -1,6 +1,6 @@
 class ApiConstants {
   static const String socketUrl =
-      'http://192.168.1.18:5000'; // TODO: Replace with actual base URL
+      'http://192.168.1.9:5000'; // TODO: Replace with actual base URL
   // static const String socketUrl = 'https://api.mktours.co.uk';
   static const String baseUrl = '$socketUrl/api/v1';
 
@@ -11,6 +11,8 @@ class ApiConstants {
   // Vehicle Endpoints
   static const String vehicles = '$baseUrl/vehicles';
   static String getActiveVehicles() => '$vehicles?active=true';
+  static const String vehicleCategories = '$baseUrl/vehicle-categories';
+  static String getActiveCategories() => '$vehicleCategories?active=true';
 
   // User Endpoints
   static const String userRegister = '$baseUrl/user/register';
