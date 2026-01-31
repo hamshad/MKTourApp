@@ -805,7 +805,25 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            '${driver['rating'] ?? 5.0} Rating',
+                            '${driver['rating'] ?? 5.0}',
+                            style: const TextStyle(
+                              color: AppTheme.textPrimary,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            width: 4,
+                            height: 4,
+                            decoration: const BoxDecoration(
+                              color: AppTheme.textSecondary,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${driver['totalRides'] ?? 0} Rides',
                             style: const TextStyle(
                               color: AppTheme.textPrimary,
                               fontWeight: FontWeight.w600,
@@ -817,51 +835,6 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                     ),
                   ],
                 ),
-
-                const SizedBox(height: 32),
-
-                // Stats Grid
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 20,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _buildStatItem(
-                        '${driver['totalRides'] ?? 0}',
-                        'Rides',
-                        Icons.local_taxi,
-                      ),
-                      Container(
-                        width: 1,
-                        height: 40,
-                        color: AppTheme.borderColor,
-                      ),
-                      _buildStatItem(
-                        '98%',
-                        'Acceptance',
-                        Icons.check_circle_outline,
-                      ),
-                      Container(
-                        width: 1,
-                        height: 40,
-                        color: AppTheme.borderColor,
-                      ),
-                      _buildStatItem('4.9', 'Rating', Icons.thumb_up_outlined),
-                    ],
-                  ),
-                ),
-
                 const SizedBox(height: 32),
 
                 // Vehicle Info
@@ -1151,37 +1124,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     );
   }
 
-  Widget _buildStatItem(String value, String label, IconData icon) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: AppTheme.surfaceColor,
-            shape: BoxShape.circle,
-          ),
-          child: Icon(icon, size: 24, color: AppTheme.primaryColor),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: AppTheme.textPrimary,
-          ),
-        ),
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 13,
-            color: AppTheme.textSecondary,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
-    );
-  }
+
 
   Widget _buildMenuItem(
     IconData icon,
