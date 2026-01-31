@@ -1,6 +1,6 @@
 class ApiConstants {
   static const String socketUrl =
-      'http://192.168.1.14:5000'; // TODO: Replace with actual base URL
+      'http://192.168.1.18:5000'; // TODO: Replace with actual base URL
   // static const String socketUrl = 'https://api.mktours.co.uk';
   static const String baseUrl = '$socketUrl/api/v1';
 

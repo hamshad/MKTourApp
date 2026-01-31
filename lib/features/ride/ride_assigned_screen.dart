@@ -1522,24 +1522,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
                 ),
               ],
             ),
-            if (_rideStatus == 'in_progress') ...[
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    // Emergency logic
-                  },
-                  icon: const Icon(Icons.warning_amber_rounded),
-                  label: const Text('Emergency / Help'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red.shade50,
-                    foregroundColor: Colors.red,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                  ),
-                ),
-              ),
-            ],
+
             // Cancel button - only show before ride starts (accepted or driver_arrived)
             if (_rideStatus == 'accepted' ||
                 _rideStatus == 'driver_arrived') ...[
