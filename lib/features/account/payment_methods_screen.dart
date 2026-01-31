@@ -20,18 +20,14 @@ class PaymentMethodsScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          _buildPaymentMethod(
-            icon: Icons.credit_card,
-            title: 'Visa •••• 4242',
-            subtitle: 'Expires 12/25',
-            isDefault: true,
-          ),
-          const SizedBox(height: 16),
-          _buildPaymentMethod(
-            icon: Icons.credit_card,
-            title: 'Mastercard •••• 8888',
-            subtitle: 'Expires 09/24',
-            isDefault: false,
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 40),
+              child: Text(
+                'No card payment methods available.',
+                style: TextStyle(color: AppTheme.textSecondary),
+              ),
+            ),
           ),
           const SizedBox(height: 32),
           OutlinedButton.icon(

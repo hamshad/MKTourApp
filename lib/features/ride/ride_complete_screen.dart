@@ -16,15 +16,18 @@ class RideCompleteScreen extends StatefulWidget {
 class _RideCompleteScreenState extends State<RideCompleteScreen> {
   final ApiService _apiService = ApiService();
   int _rating = 0;
-  double _selectedTip = 0;
   final TextEditingController _feedbackController = TextEditingController();
   bool _isSubmitting = false;
 
-  final List<double> _tipOptions = [2, 3, 5];
 
   // Get actual fare from ride data
   double get _fare => (widget.rideData['fare'] ?? 0.0).toDouble();
-  double get _distance => (widget.rideData['distance'] ?? 0.0).toDouble();
+  double get _distance => (widget.rideData['distance'] ?? widget.rideData['actualDistance'] ?? 0.0).toDouble();
+  double get _originalFare => (widget.rideData['originalFare'] ?? 0.0).toDouble();
+  bool get _isEarlyCompletion => 
+      widget.rideData['status'] == 'early_completed' || 
+      widget.rideData['earlyCompleted'] == true;
+  String get _reason => widget.rideData['reason'] ?? '';
   String get _rideId =>
       widget.rideData['bookingId'] ??
       widget.rideData['_id'] ??
@@ -235,7 +238,7 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  widget.rideData['paymentMethod'] ?? 'Paid via Card',
+                                  widget.rideData['paymentMethod'] ?? 'Cash',
                                   style: const TextStyle(
                                     fontWeight: FontWeight.w600,
                                     fontSize: 16,
@@ -243,12 +246,6 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                                 ),
                               ],
                             ),
-                          ),
-                          TextButton(
-                            onPressed: () {
-                              // Mock change payment
-                            },
-                            child: const Text('Change'),
                           ),
                         ],
                       ),
@@ -270,23 +267,25 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                             style: Theme.of(context).textTheme.titleLarge,
                           ),
                           const SizedBox(height: 20),
-
-                           _buildFareRow('Base fare', '£${(widget.rideData['vehicle']?['basePrice'] ?? 15.0).toStringAsFixed(2)}'),
-                          const SizedBox(height: 12),
-                          _buildFareRow(
-                            'Distance (${_distance.toStringAsFixed(1)} mi)',
-                            '£${(_fare - (widget.rideData['vehicle']?['basePrice'] ?? 15.0)).toStringAsFixed(2)}',
-                          ),
-
-                          if (_selectedTip > 0) ...[
-                            const SizedBox(height: 12),
+                           if (_isEarlyCompletion && _reason.isNotEmpty) ...[
                             _buildFareRow(
-                              'Tip',
-                              '£${_selectedTip.toStringAsFixed(2)}',
+                              'Reason',
+                              _reason.replaceAll('_', ' ').toUpperCase(),
+                            ),
+                          ],
+                          if (_distance > 0) ...[
+                            _buildFareRow(
+                              _isEarlyCompletion ? 'Actual Distance' : 'Total Distance',
+                              '${_distance.toStringAsFixed(2)} mi',
+                            ),
+                          ],
+                          if (_isEarlyCompletion && _originalFare > 0) ...[
+                            _buildFareRow(
+                              'Original Fare',
+                              '£${_originalFare.toStringAsFixed(2)}',
                             ),
                           ],
 
-                          const SizedBox(height: 16),
                           Divider(color: AppTheme.borderColor),
                           const SizedBox(height: 16),
 
@@ -305,7 +304,7 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
                                   Text(
-                                    '£${(_fare + _selectedTip).toStringAsFixed(2)}',
+                                    '£${_fare.toStringAsFixed(2)}',
                                     style: const TextStyle(
                                       fontSize: 24,
                                       fontWeight: FontWeight.bold,
@@ -339,48 +338,6 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                       ),
                     ),
 
-                    const SizedBox(height: 32),
-
-                    // Tip Selection
-                    Text(
-                      'Add a tip',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 12),
-
-                    Row(
-                      children: [
-                        ..._tipOptions.map(
-                          (tip) => Padding(
-                            padding: const EdgeInsets.only(right: 12),
-                            child: _buildTipButton(tip),
-                          ),
-                        ),
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () {
-                              // Show custom tip dialog
-                              _showCustomTipDialog();
-                            },
-                            style: OutlinedButton.styleFrom(
-                              side: BorderSide(
-                                color:
-                                    _selectedTip > 0 &&
-                                        !_tipOptions.contains(_selectedTip)
-                                    ? AppTheme.accentColor
-                                    : AppTheme.borderColor,
-                                width:
-                                    _selectedTip > 0 &&
-                                        !_tipOptions.contains(_selectedTip)
-                                    ? 2
-                                    : 1,
-                              ),
-                            ),
-                            child: const Text('Custom'),
-                          ),
-                        ),
-                      ],
-                    ),
 
                     const SizedBox(height: 32),
 
@@ -505,85 +462,34 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
       ),
     );
   }
-
-  Widget _buildFareRow(String label, String amount) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: TextStyle(fontSize: 15, color: AppTheme.textSecondary),
-        ),
-        Text(
-          amount,
-          style: const TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textPrimary,
+ 
+  Widget _buildFareRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 14,
+              color: AppTheme.textSecondary,
+            ),
           ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTipButton(double amount) {
-    final isSelected = _selectedTip == amount;
-
-    return OutlinedButton(
-      onPressed: () => setState(() => _selectedTip = amount),
-      style: OutlinedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        side: BorderSide(
-          color: isSelected ? AppTheme.accentColor : AppTheme.borderColor,
-          width: isSelected ? 2 : 1,
-        ),
-        backgroundColor: isSelected
-            ? AppTheme.accentColor.withValues(alpha: 0.05)
-            : null,
-      ),
-      child: Text(
-        '£${amount.toStringAsFixed(0)}',
-        style: TextStyle(
-          color: isSelected ? AppTheme.accentColor : AppTheme.textPrimary,
-          fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-        ),
-      ),
-    );
-  }
-
-  void _showCustomTipDialog() {
-    final controller = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Custom tip'),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(
-            prefixText: '£',
-            hintText: 'Enter amount',
-          ),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              final amount = double.tryParse(controller.text);
-              if (amount != null && amount > 0) {
-                setState(() => _selectedTip = amount);
-                Navigator.pop(context);
-              }
-            },
-            child: const Text('Add'),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textPrimary,
+            ),
           ),
         ],
       ),
     );
   }
+
+
+
+
 }

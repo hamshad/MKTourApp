@@ -350,34 +350,6 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
                   const Divider(),
                   const SizedBox(height: 16),
 
-                  // Payment Timing Selection
-                  const Text(
-                    'Payment Option',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Pay After Ride Option
-                  _buildPaymentOption(
-                    title: 'Pay After Ride',
-                    subtitle: 'You\'ll be charged when the ride completes',
-                    icon: Icons.schedule,
-                    value: PaymentTiming.payLater,
-                    isSelected: _paymentTiming == PaymentTiming.payLater,
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Pay Now Option
-                  _buildPaymentOption(
-                    title: 'Pay Now',
-                    subtitle: 'Pay immediately when booking',
-                    icon: Icons.flash_on,
-                    value: PaymentTiming.payNow,
-                    isSelected: _paymentTiming == PaymentTiming.payNow,
-                  ),
-
-                  const SizedBox(height: 16),
-
                   // Payment Info Box
                   Container(
                     padding: const EdgeInsets.all(12),
@@ -396,9 +368,7 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
-                            _paymentTiming == PaymentTiming.payLater
-                                ? 'Your card will be authorized but not charged until the ride completes.'
-                                : 'Your card will be charged immediately upon confirmation.',
+                            'You will pay the driver via cash or payment link when the ride is completed.',
                             style: TextStyle(
                               fontSize: 13,
                               color: Colors.grey[700],
@@ -442,15 +412,13 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
                           strokeWidth: 2,
                         ),
                       )
-                    : FittedBox(
+                    : const FittedBox(
                         fit: BoxFit.scaleDown,
                         child: Text(
-                          _paymentTiming == PaymentTiming.payNow
-                              ? 'Pay £${vehicle['basePrice']} & Confirm'
-                              : 'Confirm Booking',
+                          'Confirm Booking',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
                             color: Colors.white,
@@ -465,75 +433,5 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
     );
   }
 
-  Widget _buildPaymentOption({
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required PaymentTiming value,
-    required bool isSelected,
-  }) {
-    return GestureDetector(
-      onTap: () => setState(() => _paymentTiming = value),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? AppTheme.primaryColor.withOpacity(0.05)
-              : Colors.grey[50],
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected ? AppTheme.primaryColor : Colors.grey[300]!,
-            width: isSelected ? 2 : 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? AppTheme.primaryColor.withOpacity(0.1)
-                    : Colors.grey[200],
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(
-                icon,
-                color: isSelected ? AppTheme.primaryColor : Colors.grey[600],
-                size: 24,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: isSelected
-                          ? AppTheme.primaryColor
-                          : Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-                  ),
-                ],
-              ),
-            ),
-            Radio<PaymentTiming>(
-              value: value,
-              groupValue: _paymentTiming,
-              onChanged: (val) => setState(() => _paymentTiming = val!),
-              activeColor: AppTheme.primaryColor,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+
 }

@@ -1149,7 +1149,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
       'driver': _driver,
       'fare': widget.fare,
       ...rideData,
-      'paymentMethod': rideData['paymentMethod'] ?? 'Paid via Card',
+      'paymentMethod': rideData['paymentMethod'] ?? 'Cash',
     };
 
     Navigator.pushReplacement(
@@ -1644,13 +1644,6 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
                   title: 'Payment Link',
                   subtitle: 'Pay via online link',
                   onTap: () => _handlePaymentSelection('payment_link'),
-                ),
-                const SizedBox(height: 16),
-                _buildPaymentOption(
-                  icon: Icons.credit_card,
-                  title: 'Card',
-                  subtitle: 'Pay via Stripe',
-                  onTap: () => _handlePaymentSelection('stripe'),
                 ),
                 const SizedBox(height: 24),
               ],

@@ -244,12 +244,12 @@ class _VehicleSelectionScreenState extends State<VehicleSelectionScreen> {
                       Row(
                         children: [
                           const Icon(
-                            Icons.payment,
+                            Icons.money,
                             color: AppTheme.textPrimary,
                           ),
                           const SizedBox(width: 12),
                           const Text(
-                            'Personal • Visa **** 4242',
+                            'Cash',
                             style: TextStyle(fontWeight: FontWeight.w500),
                           ),
                           const Spacer(),

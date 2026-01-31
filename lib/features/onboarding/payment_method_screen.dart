@@ -35,79 +35,15 @@ class PaymentMethodScreen extends StatelessWidget {
               const SizedBox(height: 32),
               _buildPaymentOption(
                 context,
-                icon: Icons.apple,
-                title: 'Apple Pay',
+                icon: Icons.money,
+                title: 'Cash',
                 onTap: () => _navigateToHome(context),
               ),
               const SizedBox(height: 16),
               _buildPaymentOption(
                 context,
-                icon: Icons.credit_card,
-                title: 'Debit / Credit Card',
-                onTap: () {
-                  // Show dummy card form (dialog or bottom sheet)
-                  showModalBottomSheet(
-                    context: context,
-                    isScrollControlled: true,
-                    shape: const RoundedRectangleBorder(
-                      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                    ),
-                    builder: (context) => Padding(
-                      padding: EdgeInsets.only(
-                        bottom: MediaQuery.of(context).viewInsets.bottom,
-                        left: 24,
-                        right: 24,
-                        top: 24,
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'Add Card',
-                            style: Theme.of(context).textTheme.displaySmall,
-                          ),
-                          const SizedBox(height: 20),
-                          TextField(
-                            decoration: InputDecoration(hintText: 'Card Number'),
-                          ),
-                          const SizedBox(height: 16),
-                          Row(
-                            children: [
-                              Expanded(child: TextField(decoration: InputDecoration(hintText: 'MM/YY'))),
-                              const SizedBox(width: 16),
-                              Expanded(child: TextField(decoration: InputDecoration(hintText: 'CVC'))),
-                            ],
-                          ),
-                          const SizedBox(height: 24),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton(
-                              onPressed: () {
-                                Navigator.pop(context);
-                                _navigateToHome(context);
-                              },
-                              child: const FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  'Add Card',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: 16),
-              _buildPaymentOption(
-                context,
-                icon: Icons.money,
-                title: 'Cash',
+                icon: Icons.link,
+                title: 'Payment Link',
                 onTap: () => _navigateToHome(context),
               ),
             ],

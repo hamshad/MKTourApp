@@ -459,14 +459,9 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                   _buildVehicleCard(),
 
                   const SizedBox(height: 16),
-
+ 
                   // Trip Details Card
                   _buildTripDetailsCard(),
-
-                  const SizedBox(height: 16),
-
-                  // Payment Card
-                  _buildPaymentCard(),
                 ],
               ),
             ),
@@ -822,75 +817,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     );
   }
 
-  Widget _buildPaymentCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Payment Method',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: AppTheme.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.grey[100],
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.credit_card,
-                  color: AppTheme.primaryColor,
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Stripe Secure Payment',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
-                        color: AppTheme.textPrimary,
-                      ),
-                    ),
-                    Text(
-                      _paymentTiming == PaymentTiming.payNow
-                          ? 'Pay Now'
-                          : 'Pay After Ride',
-                      style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(Icons.lock_outline, color: Colors.grey[400], size: 18),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+
 
   Widget _buildBottomBar() {
     // Check if there's a fare error
