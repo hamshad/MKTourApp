@@ -1532,7 +1532,14 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
                 child: OutlinedButton.icon(
                   onPressed: () => _showCancellationConfirmation(),
                   icon: const Icon(Icons.close, color: Colors.red),
-                  label: const Text('Cancel Ride'),
+                  label: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      'Cancel Ride',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.red,
                     side: const BorderSide(color: Colors.red),

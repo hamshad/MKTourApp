@@ -252,11 +252,16 @@ class _RideSearchingOverlayState extends State<RideSearchingOverlay>
                                           strokeWidth: 2,
                                         ),
                                       )
-                                    : Text(
-                                        'Cancel Request',
-                                        style: GoogleFonts.outfit(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w600,
+                                    : const FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        child: Text(
+                                          'Cancel Request',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w600,
+                                          ),
                                         ),
                                       ),
                               ),

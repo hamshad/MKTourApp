@@ -519,7 +519,14 @@ class _DriverAssignedScreenState extends State<DriverAssignedScreen> {
                         ),
                       );
                     },
-                    child: const Text('Cancel ride'),
+                    child: const FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        'Cancel ride',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ),
                   
                   const SizedBox(height: 20),
