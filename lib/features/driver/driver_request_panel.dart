@@ -193,9 +193,18 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                         color: AppTheme.primaryColor,
                       ),
                     ),
-                    Text(
-                      'Est. Fare',
-                      style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (widget.rideData?['isAirportTransfer'] == true) ...[
+                          const Icon(Icons.flight, size: 14, color: Colors.blue),
+                          const SizedBox(width: 4),
+                        ],
+                        Text(
+                          'Est. Fare',
+                          style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                        ),
+                      ],
                     ),
                   ],
                 ),

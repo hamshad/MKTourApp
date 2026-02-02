@@ -144,6 +144,7 @@ class PlacesService {
             'lng': data['lng'] is double
                 ? data['lng']
                 : double.tryParse(data['lng']?.toString() ?? '0') ?? 0.0,
+            'place_id': data['place_id'] ?? data['placeId'] ?? placeId, // Include placeId for airport detection
           };
         } else {
           debugPrint(

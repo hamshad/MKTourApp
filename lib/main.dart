@@ -13,6 +13,7 @@ import 'features/onboarding/payment_method_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/booking/destination_search_screen.dart';
 import 'features/booking/confirm_booking_screen.dart';
+import 'features/booking/ride_confirmation_screen.dart';
 import 'features/ride/driver_assigned_screen.dart';
 import 'features/ride/ride_complete_screen.dart';
 import 'features/driver/driver_home_screen.dart';
@@ -92,6 +93,19 @@ class RideEaseApp extends StatelessWidget {
           final args = settings.arguments as Map<String, dynamic>?;
           return MaterialPageRoute(
             builder: (context) => DriverRideDetailScreen(rideData: args ?? {}),
+          );
+        }
+        if (settings.name == '/ride-confirmation') {
+          final args = settings.arguments as Map<String, dynamic>?;
+          return MaterialPageRoute(
+            builder: (context) => RideConfirmationScreen(
+              pickupLocation: args?['pickupLocation'] ?? {},
+              dropoffLocation: args?['dropoffLocation'] ?? {},
+              categorySlug: args?['categorySlug'] ?? '',
+              categoryName: args?['categoryName'] ?? '',
+              fareData: args?['fareData'] ?? {},
+              polyline: args?['polyline'],
+            ),
           );
         }
         return null;

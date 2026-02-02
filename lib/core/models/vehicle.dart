@@ -247,6 +247,8 @@ class RideRequest {
   final String vehicleCategorySlug; // Changed from VehicleType vehicleType
   final double distance;
   final String paymentTiming;
+  final String? pickupPlaceId; // Google Places ID for airport detection
+  final String? dropoffPlaceId; // Google Places ID for airport detection
 
   const RideRequest({
     required this.pickupLocation,
@@ -254,6 +256,8 @@ class RideRequest {
     required this.vehicleCategorySlug,
     required this.distance,
     this.paymentTiming = 'pay_later',
+    this.pickupPlaceId,
+    this.dropoffPlaceId,
   });
 
   /// Create RideRequest from components
@@ -291,6 +295,8 @@ class RideRequest {
       'vehicleCategorySlug': vehicleCategorySlug, // Updated field name
       'distance': distance,
       'paymentTiming': paymentTiming,
+      if (pickupPlaceId != null) 'pickupPlaceId': pickupPlaceId,
+      if (dropoffPlaceId != null) 'dropoffPlaceId': dropoffPlaceId,
     };
   }
 }

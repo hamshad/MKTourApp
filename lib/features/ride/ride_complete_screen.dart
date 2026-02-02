@@ -28,6 +28,7 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
       widget.rideData['status'] == 'early_completed' || 
       widget.rideData['earlyCompleted'] == true;
   String get _reason => widget.rideData['reason'] ?? '';
+  bool get _isAirportTransfer => widget.rideData['isAirportTransfer'] == true; // Check if it's an airport transfer
   String get _rideId =>
       widget.rideData['bookingId'] ??
       widget.rideData['_id'] ??
@@ -262,9 +263,39 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'Trip fare',
-                            style: Theme.of(context).textTheme.titleLarge,
+                          Row(
+                            children: [
+                              Text(
+                                'Trip fare',
+                                style: Theme.of(context).textTheme.titleLarge,
+                              ),
+                              if (_isAirportTransfer) ...[
+                                const SizedBox(width: 12),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.blue.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: const [
+                                      Icon(Icons.flight, color: Colors.blue, size: 16),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'Airport Transfer',
+                                        style: TextStyle(
+                                          color: Colors.blue,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                           const SizedBox(height: 20),
                            if (_isEarlyCompletion && _reason.isNotEmpty) ...[

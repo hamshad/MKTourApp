@@ -149,6 +149,9 @@ class PaymentService {
             ? 'pay_now'
             : 'pay_later',
         if (notes != null && notes.isNotEmpty) 'notes': notes,
+        // Include Google Places IDs for airport detection if available
+        if (pickupLocation['placeId'] != null) 'pickupPlaceId': pickupLocation['placeId'],
+        if (dropoffLocation['placeId'] != null) 'dropoffPlaceId': dropoffLocation['placeId'],
       };
 
       debugPrint('💳 PaymentService: Creating ride with payment intent...');

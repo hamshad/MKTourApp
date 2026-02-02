@@ -43,6 +43,7 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
   LatLng _center = const LatLng(51.5074, -0.1278); // Default London
   LatLng? _pickupLocation;
   String _pickupAddress = "Current Location";
+  String? _pickupPlaceId; // Store Google Places ID for airport detection
 
   // Route Info
   String? _routeDistance;
@@ -53,6 +54,7 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
   List<MapMarker> _markers = [];
   LatLng? _dropoffLocation;
   String _dropoffAddress = ""; // Store full dropoff address for API
+  String? _dropoffPlaceId; // Store Google Places ID for airport detection
   List<LatLng> _polylines = [];
   fmap.LatLngBounds? _mapBounds;
   bool _isRouteView = false;
@@ -269,9 +271,11 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
     final lat = placeDetails['lat'];
     final lng = placeDetails['lng'];
     final address = placeDetails['formatted_address'];
+    final placeIdFromDetails = placeDetails['place_id']; // Get placeId from response
     debugPrint('📍 Selected place: $name');
     debugPrint('📍 Address: $address');
     debugPrint('📍 Coordinates: ($lat, $lng)');
+    debugPrint('📍 Place ID: $placeIdFromDetails');
 
     setState(() {
       if (_isPickupFocused) {
@@ -279,6 +283,7 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
         _pickupLocation = LatLng(lat, lng);
         // Store the full formatted address for the API
         _pickupAddress = address ?? name;
+        _pickupPlaceId = placeIdFromDetails ?? placeId; // Store placeId for airport detection
         _center = _pickupLocation!; // Center map on new pickup
         _isPickupFocused = false;
         _dropoffFocus.requestFocus(); // Move to dropoff
@@ -287,6 +292,7 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
         _dropoffLocation = LatLng(lat, lng);
         // Store the full formatted address for the API
         _dropoffAddress = address ?? name;
+        _dropoffPlaceId = placeIdFromDetails ?? placeId; // Store placeId for airport detection
         _dropoffFocus.unfocus();
         _isRouteView = true;
       }
@@ -524,6 +530,7 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
     final pickupLocation = {
       'coordinates': [pickupLng, pickupLat],
       'address': actualPickupAddress,
+      if (_pickupPlaceId != null) 'placeId': _pickupPlaceId, // Include placeId for airport detection
     };
 
     // Get the actual dropoff coordinates and address
@@ -549,6 +556,7 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
     final dropoffLocation = {
       'coordinates': [dropoffLng, dropoffLat],
       'address': actualDropoffAddress,
+      if (_dropoffPlaceId != null) 'placeId': _dropoffPlaceId, // Include placeId for airport detection
     };
 
     debugPrint('📍 DestinationSearchScreen: Pickup: $actualPickupAddress');

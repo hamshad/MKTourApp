@@ -55,6 +55,10 @@ class ApiConstants {
   // End ride early endpoint (driver only, during ride)
   static String endRideEarly(String id) => '$baseUrl/rides/$id/end-early';
 
+  // Airport Endpoints
+  static const String airports = '$baseUrl/airports';
+  static String getAirportPrice(String placeId) => '$baseUrl/airports/$placeId/price';
+
   // Payment Endpoints
   static const String createRideWithPayment = '$baseUrl/rides/create';
   static const String paymentHistory = '$baseUrl/payments/history';
