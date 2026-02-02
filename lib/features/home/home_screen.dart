@@ -93,7 +93,14 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_socketListenersInitialized) return;
     _socketListenersInitialized = true;
 
-    await _socketService.initSocket();
+    debugPrint('🔌 [HomeScreen] Initializing socket connection...');
+    // Force reconnect to ensure we have a fresh connection with current user's token
+    await _socketService.initSocket(forceReconnect: true);
+
+    // Add a small delay to ensure socket is fully connected
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    debugPrint('🔌 [HomeScreen] Socket initialized, emitting user online...');
     _emitUserOnline();
 
     // Clear any stale listeners from previous HomeScreen instances
@@ -120,10 +127,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final incomingRideId =
           data['rideId']?.toString() ?? data['_id']?.toString();
-      final activeRideId = _activeRide?['_id']?.toString() ??
-          _activeRide?['rideId']?.toString();
+      final activeRideId =
+          _activeRide?['_id']?.toString() ?? _activeRide?['rideId']?.toString();
 
-      final shouldHandle = _isSearching ||
+      final shouldHandle =
+          _isSearching ||
           (incomingRideId != null && activeRideId == incomingRideId) ||
           _activeRide == null;
 
@@ -743,7 +751,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                     ),
                                   ),
                                 ),
-
                               ],
                             ),
                           ),

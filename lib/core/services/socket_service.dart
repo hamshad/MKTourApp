@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' as io;
 import 'package:flutter/foundation.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -13,6 +14,7 @@ class SocketService {
   int _reconnectionAttempts = 0;
   static const int _maxReconnectionAttempts = 10;
   static const int _reconnectionDelayMs = 3000;
+  String? _currentToken; // Track current token to detect changes
 
   /// Stream controller for connection status changes
   final StreamController<bool> _connectionStatusController =
@@ -32,16 +34,78 @@ class SocketService {
   /// Stream of connection status changes
   Stream<bool> get connectionStatus => _connectionStatusController.stream;
 
-  Future<void> initSocket() async {
-    if (_socket != null && _socket!.connected) return;
-
+  Future<void> initSocket({bool forceReconnect = false}) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('auth_token');
 
-    if (token == null) {
-      debugPrint('⚠️ [SocketService] No token found, skipping connection');
+    // Check if token has changed (user switched accounts/roles)
+    final tokenChanged = _currentToken != null && _currentToken != token;
+
+    if (tokenChanged) {
+      debugPrint(
+        '🔄 [SocketService] Token changed! Old: ${_currentToken?.substring(0, 10)}, New: ${token?.substring(0, 10)}',
+      );
+      debugPrint(
+        '🔄 [SocketService] Forcing reconnect with new credentials...',
+      );
+      forceReconnect = true;
+    }
+
+    // If already connected with same token and not forcing reconnect, skip
+    if (_socket != null &&
+        _socket!.connected &&
+        !forceReconnect &&
+        !tokenChanged) {
+      debugPrint('✅ [SocketService] Socket already connected, skipping init');
       return;
     }
+
+    // Disconnect existing socket if forcing reconnect or token changed
+    if ((_socket != null && forceReconnect) || tokenChanged) {
+      debugPrint(
+        '⚠️ [SocketService] Disposing existing socket (forceReconnect=$forceReconnect, tokenChanged=$tokenChanged)',
+      );
+      try {
+        _socket!.dispose();
+      } catch (e) {
+        // Ignore error if already disposed
+      }
+      _socket = null;
+      _joinedRooms
+          .clear(); // Clear rooms when reconnecting with new credentials
+    }
+
+    // Ensure we don't have a stale disconnected socket
+    if (_socket != null) {
+      debugPrint('⚠️ [SocketService] Disposing stale socket before re-init');
+      try {
+        _socket!.dispose();
+      } catch (e) {
+        // Ignore error if already disposed
+      }
+      _socket = null;
+    }
+
+    if (token == null) {
+      debugPrint('⚠️ [SocketService] No token found, skipping connection');
+      debugPrint(
+        '⚠️ [SocketService] Platform: Android=${io.Platform.isAndroid}, iOS=${io.Platform.isIOS}',
+      );
+      return;
+    }
+
+    // Log platform-specific info
+    debugPrint(
+      '📱 [SocketService] Platform: Android=${io.Platform.isAndroid}, iOS=${io.Platform.isIOS}',
+    );
+    if (io.Platform.isAndroid) {
+      debugPrint(
+        '🤖 [SocketService] Android detected - ensuring network permissions...',
+      );
+    }
+
+    // Store current token for change detection
+    _currentToken = token;
 
     debugPrint(
       '🔵 [SocketService] Connecting to ${ApiConstants.baseUrl} with token: ${token.substring(0, 10)}...',
@@ -62,7 +126,16 @@ class SocketService {
           .build(),
     );
 
+    debugPrint(
+      '🔌 [SocketService] Socket instance created, initiating connection...',
+    );
+    debugPrint(
+      '🔌 [SocketService] Platform: ${defaultTargetPlatform.toString()}',
+    );
     _socket!.connect();
+    debugPrint(
+      '🔌 [SocketService] Connect() called, waiting for onConnect callback...',
+    );
 
     _socket!.onConnect((_) {
       _isConnected = true;
@@ -113,6 +186,11 @@ class SocketService {
     // Listen for driver status confirmation
     _socket!.on('driver:status', (data) {
       debugPrint('📩 [SocketService] Received driver:status: $data');
+    });
+
+    // Listen for location update - matching the event name 'driver:locationChanged' seen in logs
+    _socket!.on('driver:locationChanged', (data) {
+      debugPrint('📩 [SocketService] Received driver:locationChanged: $data');
     });
 
     // Listen for location update confirmation
@@ -259,6 +337,7 @@ class SocketService {
   void disconnect() {
     _reconnectionTimer?.cancel();
     _joinedRooms.clear();
+    _currentToken = null; // Clear token to force fresh connection next time
 
     if (_socket != null) {
       _socket!.disconnect();

@@ -253,7 +253,17 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
 
     debugPrint('🔌 [RideAssignedScreen] Initializing socket listeners...');
 
-    await _socketService.initSocket();
+    await _socketService.initSocket(
+      forceReconnect: false,
+    ); // Don't force here, already connected from HomeScreen
+
+    // Ensure we are joined to the driver room after socket init
+    if (_currentDriverId != null) {
+      debugPrint(
+        '🔄 [RideAssignedScreen] Re-confirming join driver room: driver:$_currentDriverId',
+      );
+      _socketService.joinDriverRoom(_currentDriverId!);
+    }
 
     if (user != null) {
       debugPrint(
@@ -1055,10 +1065,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
   }
 
   void _makePhoneCall(String phoneNumber) async {
-    final Uri launchUri = Uri(
-      scheme: 'tel',
-      path: phoneNumber,
-    );
+    final Uri launchUri = Uri(scheme: 'tel', path: phoneNumber);
     if (await canLaunchUrl(launchUri)) {
       await launchUrl(launchUri);
     } else {
@@ -1070,7 +1077,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
     // Clean phone number: remove non-digits
     final cleanNumber = phoneNumber.replaceAll(RegExp(r'\D'), '');
     final whatsappUrl = Uri.parse("https://wa.me/$cleanNumber");
-    
+
     if (await canLaunchUrl(whatsappUrl)) {
       await launchUrl(whatsappUrl, mode: LaunchMode.externalApplication);
     } else {
@@ -1305,10 +1312,14 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
             ),
 
             // Payment Method Badge
-            if (_isPaymentMethodSelected && _selectedPaymentMethodDisplay.isNotEmpty)
+            if (_isPaymentMethodSelected &&
+                _selectedPaymentMethodDisplay.isNotEmpty)
               Container(
                 margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.grey[100],
                   borderRadius: BorderRadius.circular(20),
@@ -1318,11 +1329,15 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      _selectedPaymentMethodDisplay.toLowerCase().contains('link')
+                      _selectedPaymentMethodDisplay.toLowerCase().contains(
+                            'link',
+                          )
                           ? Icons.link
-                          : _selectedPaymentMethodDisplay.toLowerCase().contains('card')
-                              ? Icons.credit_card
-                              : Icons.money,
+                          : _selectedPaymentMethodDisplay
+                                .toLowerCase()
+                                .contains('card')
+                          ? Icons.credit_card
+                          : Icons.money,
                       size: 14,
                       color: Colors.grey[700],
                     ),
@@ -1724,17 +1739,19 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
 
       if (response['success'] == true) {
         final data = response['data'];
-        
+
         // Handle nested ride structure (data.ride) or flat structure (data)
         final rideData = data['ride'] ?? data;
         final paymentMethod = rideData['paymentMethod'];
-        
+
         debugPrint('💸 [Payment] Method from response: $paymentMethod');
 
         if (paymentMethod == 'stripe') {
           final clientSecret = rideData['clientSecret'];
-          debugPrint('💳 [Stripe] Client secret present: ${clientSecret != null}');
-          
+          debugPrint(
+            '💳 [Stripe] Client secret present: ${clientSecret != null}',
+          );
+
           if (clientSecret != null) {
             await StripeService.processPayment(clientSecret);
             ScaffoldMessenger.of(context).showSnackBar(
@@ -1757,7 +1774,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
 
           if (paymentUrl != null) {
             debugPrint('✅ [Payment Link] Opening in-app WebView');
-            
+
             // Navigate to WebView screen
             final result = await Navigator.push(
               context,
@@ -1829,9 +1846,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
       if (Navigator.canPop(context))
         Navigator.pop(context); // Ensure loading is closed
       debugPrint('❌ [Payment] Error: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error: $e')));
       _showPaymentSelectionModal(); // Re-show on error
     }
   }
