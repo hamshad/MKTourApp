@@ -17,6 +17,7 @@ class VehicleSelectionWidget extends StatefulWidget {
   final double? pickupLng;
   final double? dropoffLat;
   final double? dropoffLng;
+  final Map<String, double>? fixedFareByCategory;
 
   const VehicleSelectionWidget({
     super.key,
@@ -27,6 +28,7 @@ class VehicleSelectionWidget extends StatefulWidget {
     this.pickupLng,
     this.dropoffLat,
     this.dropoffLng,
+    this.fixedFareByCategory,
   });
 
   @override
@@ -86,6 +88,24 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
 
   /// Fetch fare estimates for all vehicle categories from backend
   Future<void> _fetchFareEstimates() async {
+    if (widget.fixedFareByCategory != null) {
+      setState(() => _isFetchingFares = true);
+      for (final category in _categories) {
+        final fixedPrice = widget.fixedFareByCategory?[category.slug] ?? 0.0;
+        _fareEstimates[category.slug] = {
+          'total_fare': fixedPrice,
+          'distance_text': 'Fixed fare',
+          'duration_text': 'Airport transfer',
+          'duration_seconds': 0,
+          'is_fixed_fare': true,
+        };
+      }
+      if (mounted) {
+        setState(() => _isFetchingFares = false);
+      }
+      return;
+    }
+
     if (widget.pickupLat == null ||
         widget.pickupLng == null ||
         widget.dropoffLat == null ||

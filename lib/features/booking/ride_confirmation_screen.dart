@@ -42,6 +42,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   String? _fareError; // Error message if fare fetch fails
   Map<String, dynamic>? _dynamicFareData;
   PaymentTiming _paymentTiming = PaymentTiming.payLater;
+  bool get _isFixedFare => widget.fareData['is_fixed_fare'] == true;
 
   // Route polyline points - initialized synchronously from passed data
   late List<lat_lng.LatLng> _routePoints;
@@ -52,8 +53,12 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     super.initState();
     // Initialize route synchronously from passed polyline
     _initializeRouteSync();
-    // Only fetch fare asynchronously
-    _fetchDirectionsAndFare();
+    // Only fetch fare asynchronously when not using fixed airport pricing
+    if (_isFixedFare) {
+      _isFetchingFare = false;
+    } else {
+      _fetchDirectionsAndFare();
+    }
   }
 
   /// Initialize route polyline synchronously from passed data

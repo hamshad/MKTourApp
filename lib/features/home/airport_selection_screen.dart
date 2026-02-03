@@ -321,6 +321,7 @@ class _AirportVehicleSelectionScreen extends StatelessWidget {
               pickupLng: pickupLocation.longitude,
               dropoffLat: airport.coordinates.lat,
               dropoffLng: airport.coordinates.lng,
+              fixedFareByCategory: airport.pricing,
             ),
           ),
         ],

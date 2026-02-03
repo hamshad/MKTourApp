@@ -766,7 +766,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           final result = await Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => const AirportSelectionScreen(),
+                              builder: (context) =>
+                                  const AirportSelectionScreen(),
                             ),
                           );
                           if (result != null &&
@@ -786,18 +787,11 @@ class _HomeScreenState extends State<HomeScreen> {
                             vertical: 16,
                           ),
                           decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                Colors.blue.shade400,
-                                Colors.blue.shade600,
-                              ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
                             borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.grey[200]!),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.blue.withOpacity(0.3),
+                                color: Colors.white.withOpacity(0.3),
                                 blurRadius: 8,
                                 offset: const Offset(0, 4),
                               ),
@@ -814,7 +808,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 child: const Icon(
                                   Icons.flight,
                                   size: 24,
-                                  color: Colors.white,
+                                  color: Colors.black,
                                 ),
                               ),
                               const SizedBox(width: 16),
@@ -827,14 +821,14 @@ class _HomeScreenState extends State<HomeScreen> {
                                       style: GoogleFonts.outfit(
                                         fontSize: 18,
                                         fontWeight: FontWeight.bold,
-                                        color: Colors.white,
+                                        color: Colors.black,
                                       ),
                                     ),
                                     Text(
-                                      'Fixed prices to/from airports',
+                                      'Transfers to and from the airport',
                                       style: GoogleFonts.outfit(
                                         fontSize: 13,
-                                        color: Colors.white.withOpacity(0.9),
+                                        color: Colors.black.withOpacity(0.9),
                                       ),
                                     ),
                                   ],
@@ -842,7 +836,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                               const Icon(
                                 Icons.arrow_forward_ios,
-                                color: Colors.white,
+                                color: Colors.black,
                                 size: 18,
                               ),
                             ],
@@ -1006,7 +1000,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           }
 
                           // Show only the 2 most recent rides
-                          final displays = auth.rideHistory.take(2).toList();
+                          final displays = auth.rideHistory.take(5).toList();
 
                           return Column(
                             children: displays
