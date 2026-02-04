@@ -330,7 +330,12 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
 
         // Select Vehicle button
         Padding(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            top: 16,
+            bottom: 16 + MediaQuery.of(context).padding.bottom,
+          ),
           child: SizedBox(
             width: double.infinity,
             height: 50,

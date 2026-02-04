@@ -2,14 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:sliding_up_panel/sliding_up_panel.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:flutter_map/flutter_map.dart' as fmap;
+import 'package:geolocator/geolocator.dart';
 import '../../core/theme.dart';
 import '../../core/services/places_service.dart';
 import '../../core/services/geocoding_service.dart';
 import '../../core/config/api_config.dart';
 import '../../core/widgets/platform_map.dart';
+import '../../core/services/location_cache_service.dart';
 import 'dart:async';
 import 'widgets/vehicle_selection_widget.dart';
-import '../../core/services/location_service.dart';
 import 'ride_confirmation_screen.dart';
 
 class DestinationSearchScreen extends StatefulWidget {
@@ -21,9 +22,7 @@ class DestinationSearchScreen extends StatefulWidget {
 }
 
 class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
-  final TextEditingController _pickupController = TextEditingController(
-    text: "Current Location",
-  );
+  final TextEditingController _pickupController = TextEditingController();
   final TextEditingController _dropoffController = TextEditingController();
   final FocusNode _pickupFocus = FocusNode();
   final FocusNode _dropoffFocus = FocusNode();
@@ -31,7 +30,7 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
 
   final PlacesService _placesService = PlacesService();
   final GeocodingService _geocodingService = GeocodingService();
-  final LocationService _locationService = LocationService();
+  final LocationCacheService _locationCache = LocationCacheService();
   Timer? _debounce;
   List<Map<String, dynamic>> _suggestions = [];
   bool _isLoading = false;
@@ -42,8 +41,9 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
   // Map State
   LatLng _center = const LatLng(51.5074, -0.1278); // Default London
   LatLng? _pickupLocation;
-  String _pickupAddress = "Current Location";
+  String _pickupAddress = "";
   String? _pickupPlaceId; // Store Google Places ID for airport detection
+  bool _isPickupLocationReady = false; // Track if pickup location is ready
 
   // Route Info
   String? _routeDistance;
@@ -96,9 +96,9 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
     super.initState();
     _getCurrentLocation();
 
-    // Auto-focus dropoff field if not in route view
+    // Auto-focus dropoff field if not in route view and pickup is ready
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_isRouteView) {
+      if (!_isRouteView && _isPickupLocationReady) {
         _dropoffFocus.requestFocus();
       }
     });
@@ -116,67 +116,115 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
   }
 
   Future<void> _getCurrentLocation() async {
-    final position = await _locationService.getCurrentLocation();
+    // Try to get cached location first (instant)
+    final cachedPosition = _locationCache.cachedPosition;
+    if (cachedPosition != null) {
+      debugPrint('📍 DestinationSearchScreen: Using cached location');
+      await _processLocation(cachedPosition);
+      return;
+    }
+
+    // Fetch fresh location
+    debugPrint('📍 DestinationSearchScreen: Fetching fresh location');
+    final position = await _locationCache.getLocation();
+
     if (position != null) {
-      setState(() {
-        _center = LatLng(position.latitude, position.longitude);
-        _pickupLocation = _center;
+      await _processLocation(position);
+    } else {
+      // Failed to get location
+      if (mounted) {
+        setState(() {
+          _pickupController.text = "Unable to get location";
+          _isPickupLocationReady = false;
+        });
 
-        // Update pickup marker if exists
-        if (_markers.isNotEmpty && _markers[0].id == 'pickup') {
-          _markers[0] = MapMarker(
-            id: 'pickup',
-            lat: _center.latitude,
-            lng: _center.longitude,
-            child: _markers[0].child,
-            title: 'Pickup',
-          );
-        }
-      });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              'Unable to get your location. Please check permissions and try again.',
+            ),
+            backgroundColor: Colors.red,
+            action: SnackBarAction(
+              label: 'Retry',
+              textColor: Colors.white,
+              onPressed: _getCurrentLocation,
+            ),
+          ),
+        );
+      }
+    }
+  }
 
-      // Reverse geocode to get address - this is critical for proper address display
-      try {
-        // Try backend API first
-        String? address = await _placesService.getAddressFromLatLng(
+  Future<void> _processLocation(Position position) async {
+    if (!mounted) return;
+
+    setState(() {
+      _center = LatLng(position.latitude, position.longitude);
+      _pickupLocation = _center;
+
+      // Update pickup marker if exists
+      if (_markers.isNotEmpty && _markers[0].id == 'pickup') {
+        _markers[0] = MapMarker(
+          id: 'pickup',
+          lat: _center.latitude,
+          lng: _center.longitude,
+          child: _markers[0].child,
+          title: 'Pickup',
+        );
+      }
+    });
+
+    // Reverse geocode to get address - this is critical for proper address display
+    try {
+      // Try backend API first
+      String? address = await _placesService.getAddressFromLatLng(
+        position.latitude,
+        position.longitude,
+      );
+
+      // If backend fails, try Nominatim (OpenStreetMap) as fallback
+      if (address == null || address.isEmpty) {
+        debugPrint(
+          '📍 DestinationSearchScreen: Backend geocoding failed, trying Nominatim...',
+        );
+        address = await _geocodingService.getAddressFromLatLng(
           position.latitude,
           position.longitude,
         );
+      }
 
-        // If backend fails, try Nominatim (OpenStreetMap) as fallback
-        if (address == null || address.isEmpty) {
-          debugPrint(
-            '📍 DestinationSearchScreen: Backend geocoding failed, trying Nominatim...',
-          );
-          address = await _geocodingService.getAddressFromLatLng(
-            position.latitude,
-            position.longitude,
-          );
-        }
+      if (address != null && address.isNotEmpty && mounted) {
+        setState(() {
+          // Store the full address for the API
+          _pickupAddress = address!;
 
-        if (address != null && address.isNotEmpty) {
-          setState(() {
-            // Store the full address for the API
-            _pickupAddress = address!;
-
-            // Update the text field to show a shorter version for UI
-            // Only update if it's still showing the default "Current Location"
-            if (_pickupController.text == "Current Location") {
-              // Show a shorter version in the text field (first part before comma)
-              final shortAddress = address.split(',')[0];
-              _pickupController.text = shortAddress;
-            }
-          });
-          debugPrint(
-            '📍 DestinationSearchScreen: Geocoded current location to: $address',
-          );
-        } else {
-          debugPrint(
-            '⚠️ DestinationSearchScreen: All geocoding methods failed',
-          );
-        }
-      } catch (e) {
-        debugPrint("❌ DestinationSearchScreen: Error reverse geocoding: $e");
-        // Keep _pickupAddress as "Current Location" - will be resolved when confirming ride
+          // Show a shorter version in the text field (first part before comma)
+          final shortAddress = address.split(',')[0];
+          _pickupController.text = shortAddress;
+          _isPickupLocationReady = true; // Mark as ready
+        });
+        debugPrint(
+          '📍 DestinationSearchScreen: Geocoded current location to: $address',
+        );
+      } else if (mounted) {
+        debugPrint('⚠️ DestinationSearchScreen: All geocoding methods failed');
+        // Use coordinates as fallback but mark as ready
+        setState(() {
+          _pickupAddress =
+              "Lat: ${position.latitude.toStringAsFixed(4)}, Lng: ${position.longitude.toStringAsFixed(4)}";
+          _pickupController.text = "Current location";
+          _isPickupLocationReady = true;
+        });
+      }
+    } catch (e) {
+      debugPrint("❌ DestinationSearchScreen: Error reverse geocoding: $e");
+      if (mounted) {
+        setState(() {
+          _pickupAddress =
+              "Lat: ${position.latitude.toStringAsFixed(4)}, Lng: ${position.longitude.toStringAsFixed(4)}";
+          _pickupController.text = "Current location";
+          _isPickupLocationReady = true;
+        });
       }
     }
   }
@@ -271,7 +319,8 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
     final lat = placeDetails['lat'];
     final lng = placeDetails['lng'];
     final address = placeDetails['formatted_address'];
-    final placeIdFromDetails = placeDetails['place_id']; // Get placeId from response
+    final placeIdFromDetails =
+        placeDetails['place_id']; // Get placeId from response
     debugPrint('📍 Selected place: $name');
     debugPrint('📍 Address: $address');
     debugPrint('📍 Coordinates: ($lat, $lng)');
@@ -283,7 +332,9 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
         _pickupLocation = LatLng(lat, lng);
         // Store the full formatted address for the API
         _pickupAddress = address ?? name;
-        _pickupPlaceId = placeIdFromDetails ?? placeId; // Store placeId for airport detection
+        _pickupPlaceId =
+            placeIdFromDetails ??
+            placeId; // Store placeId for airport detection
         _center = _pickupLocation!; // Center map on new pickup
         _isPickupFocused = false;
         _dropoffFocus.requestFocus(); // Move to dropoff
@@ -292,7 +343,9 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
         _dropoffLocation = LatLng(lat, lng);
         // Store the full formatted address for the API
         _dropoffAddress = address ?? name;
-        _dropoffPlaceId = placeIdFromDetails ?? placeId; // Store placeId for airport detection
+        _dropoffPlaceId =
+            placeIdFromDetails ??
+            placeId; // Store placeId for airport detection
         _dropoffFocus.unfocus();
         _isRouteView = true;
       }
@@ -449,6 +502,17 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
     String categoryName,
     Map<String, dynamic> fareData,
   ) async {
+    // Don't proceed if pickup location is not ready
+    if (!_isPickupLocationReady) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please wait while we fetch your location'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     debugPrint('🚗 DestinationSearchScreen: Vehicle selected');
     debugPrint('   → Category: $categorySlug');
     debugPrint('   → Name: $categoryName');
@@ -461,13 +525,9 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
     // Determine the actual pickup address - prefer the geocoded address
     String actualPickupAddress = _pickupAddress;
 
-    // If pickup address is still the default or the text field shows "Current Location",
+    // If pickup address is empty or starts with "Lat:",
     // try to fetch the actual address from coordinates
-    if (_pickupAddress == "Current Location" ||
-        _pickupController.text == "Current Location" ||
-        _pickupAddress.isEmpty ||
-        _pickupAddress.startsWith("Lat:") ||
-        _pickupAddress == "Pickup Location") {
+    if (_pickupAddress.isEmpty || _pickupAddress.startsWith("Lat:")) {
       debugPrint(
         '📍 DestinationSearchScreen: Fetching actual pickup address...',
       );
@@ -499,7 +559,6 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
       } else {
         // If all geocoding fails, use the text from the controller if it's a real address
         if (_pickupController.text.isNotEmpty &&
-            _pickupController.text != "Current Location" &&
             !_pickupController.text.startsWith("Lat:")) {
           actualPickupAddress = _pickupController.text;
         } else {
@@ -511,8 +570,7 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
           );
         }
       }
-    } else if (_pickupController.text != "Current Location" &&
-        _pickupController.text.isNotEmpty &&
+    } else if (_pickupController.text.isNotEmpty &&
         !_pickupController.text.startsWith("Lat:")) {
       // User manually entered/selected a pickup address - use the full stored address
       // but prefer _pickupAddress if it has the full formatted address
@@ -530,7 +588,8 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
     final pickupLocation = {
       'coordinates': [pickupLng, pickupLat],
       'address': actualPickupAddress,
-      if (_pickupPlaceId != null) 'placeId': _pickupPlaceId, // Include placeId for airport detection
+      if (_pickupPlaceId != null)
+        'placeId': _pickupPlaceId, // Include placeId for airport detection
     };
 
     // Get the actual dropoff coordinates and address
@@ -556,7 +615,8 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
     final dropoffLocation = {
       'coordinates': [dropoffLng, dropoffLat],
       'address': actualDropoffAddress,
-      if (_dropoffPlaceId != null) 'placeId': _dropoffPlaceId, // Include placeId for airport detection
+      if (_dropoffPlaceId != null)
+        'placeId': _dropoffPlaceId, // Include placeId for airport detection
     };
 
     debugPrint('📍 DestinationSearchScreen: Pickup: $actualPickupAddress');
@@ -711,9 +771,16 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
     bool isDropoff, {
     VoidCallback? onTap,
   }) {
+    // Show loading indicator for pickup if not ready and not dropoff
+    final showLoading =
+        !isDropoff && !_isPickupLocationReady && controller.text.isEmpty;
+
     return TextField(
       controller: controller,
       focusNode: isDropoff ? _dropoffFocus : _pickupFocus,
+      enabled: isDropoff
+          ? _isPickupLocationReady
+          : true, // Disable dropoff until pickup is ready
       onTap: onTap,
       decoration: InputDecoration(
         hintText: hint,
@@ -723,6 +790,16 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
         ),
         border: InputBorder.none,
         contentPadding: const EdgeInsets.symmetric(vertical: 12),
+        prefixIcon: showLoading
+            ? const Padding(
+                padding: EdgeInsets.all(12.0),
+                child: SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            : null,
       ),
       style: const TextStyle(fontWeight: FontWeight.w600),
     );

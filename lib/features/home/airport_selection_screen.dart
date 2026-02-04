@@ -3,10 +3,12 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme.dart';
 import '../../core/models/airport.dart';
 import '../../core/services/airport_service.dart';
-import '../../core/services/location_service.dart';
+import '../../core/services/location_cache_service.dart';
 import '../../core/services/places_service.dart';
+import '../../core/services/geocoding_service.dart';
 import '../booking/widgets/vehicle_selection_widget.dart';
 import 'package:latlong2/latlong.dart' as latlong;
+import 'package:geolocator/geolocator.dart';
 
 class AirportSelectionScreen extends StatefulWidget {
   const AirportSelectionScreen({super.key});
@@ -17,21 +19,15 @@ class AirportSelectionScreen extends StatefulWidget {
 
 class _AirportSelectionScreenState extends State<AirportSelectionScreen> {
   final AirportService _airportService = AirportService();
-  final LocationService _locationService = LocationService();
-  final PlacesService _placesService = PlacesService();
 
   List<Airport> _airports = [];
   bool _isLoading = true;
   String? _errorMessage;
 
-  latlong.LatLng? _currentLocation;
-  String _currentAddress = 'Current Location';
-
   @override
   void initState() {
     super.initState();
     _loadAirports();
-    _getCurrentLocation();
   }
 
   Future<void> _loadAirports() async {
@@ -58,46 +54,12 @@ class _AirportSelectionScreenState extends State<AirportSelectionScreen> {
     }
   }
 
-  Future<void> _getCurrentLocation() async {
-    final position = await _locationService.getCurrentLocation();
-    if (position != null && mounted) {
-      setState(() {
-        _currentLocation = latlong.LatLng(position.latitude, position.longitude);
-      });
-
-      // Fetch address
-      final address = await _placesService.getAddressFromLatLng(
-        position.latitude,
-        position.longitude,
-      );
-      if (address != null && mounted) {
-        setState(() {
-          _currentAddress = address;
-        });
-      }
-    }
-  }
-
   void _selectAirport(Airport airport) {
-    if (_currentLocation == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Getting your location...'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
-    // Navigate to vehicle selection with pickup as current location and dropoff as airport
+    // Navigate to vehicle selection screen
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => _AirportVehicleSelectionScreen(
-          airport: airport,
-          pickupLocation: _currentLocation!,
-          pickupAddress: _currentAddress,
-        ),
+        builder: (context) => _AirportVehicleSelectionScreen(airport: airport),
       ),
     );
   }
@@ -124,58 +86,54 @@ class _AirportSelectionScreenState extends State<AirportSelectionScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _errorMessage != null
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(
-                        Icons.error_outline,
-                        size: 64,
-                        color: Colors.grey,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        _errorMessage!,
-                        style: const TextStyle(fontSize: 16),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 24),
-                      ElevatedButton(
-                        onPressed: _loadAirports,
-                        child: const Text('Retry'),
-                      ),
-                    ],
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, size: 64, color: Colors.grey),
+                  const SizedBox(height: 16),
+                  Text(
+                    _errorMessage!,
+                    style: const TextStyle(fontSize: 16),
+                    textAlign: TextAlign.center,
                   ),
-                )
-              : _airports.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(
-                            Icons.flight_takeoff,
-                            size: 64,
-                            color: Colors.grey,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'No airports available',
-                            style: GoogleFonts.outfit(
-                              fontSize: 18,
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: _airports.length,
-                      itemBuilder: (context, index) {
-                        final airport = _airports[index];
-                        return _buildAirportCard(airport);
-                      },
+                  const SizedBox(height: 24),
+                  ElevatedButton(
+                    onPressed: _loadAirports,
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            )
+          : _airports.isEmpty
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.flight_takeoff,
+                    size: 64,
+                    color: Colors.grey,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No airports available',
+                    style: GoogleFonts.outfit(
+                      fontSize: 18,
+                      color: Colors.grey[600],
                     ),
+                  ),
+                ],
+              ),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: _airports.length,
+              itemBuilder: (context, index) {
+                final airport = _airports[index];
+                return _buildAirportCard(airport);
+              },
+            ),
     );
   }
 
@@ -183,9 +141,7 @@ class _AirportSelectionScreenState extends State<AirportSelectionScreen> {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: InkWell(
         onTap: () => _selectAirport(airport),
         borderRadius: BorderRadius.circular(16),
@@ -232,10 +188,7 @@ class _AirportSelectionScreenState extends State<AirportSelectionScreen> {
                   ],
                 ),
               ),
-              const Icon(
-                Icons.chevron_right,
-                color: AppTheme.textSecondary,
-              ),
+              const Icon(Icons.chevron_right, color: AppTheme.textSecondary),
             ],
           ),
         ),
@@ -245,16 +198,146 @@ class _AirportSelectionScreenState extends State<AirportSelectionScreen> {
 }
 
 /// Screen for vehicle selection with airport as destination
-class _AirportVehicleSelectionScreen extends StatelessWidget {
+class _AirportVehicleSelectionScreen extends StatefulWidget {
   final Airport airport;
-  final latlong.LatLng pickupLocation;
-  final String pickupAddress;
 
-  const _AirportVehicleSelectionScreen({
-    required this.airport,
-    required this.pickupLocation,
-    required this.pickupAddress,
-  });
+  const _AirportVehicleSelectionScreen({required this.airport});
+
+  @override
+  State<_AirportVehicleSelectionScreen> createState() =>
+      _AirportVehicleSelectionScreenState();
+}
+
+class _AirportVehicleSelectionScreenState
+    extends State<_AirportVehicleSelectionScreen> {
+  final LocationCacheService _locationCache = LocationCacheService();
+  final PlacesService _placesService = PlacesService();
+  final GeocodingService _geocodingService = GeocodingService();
+
+  latlong.LatLng? _pickupLocation;
+  String _pickupAddress = '';
+  bool _isLocationReady = false;
+  bool _isLocationLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _getCurrentLocation();
+  }
+
+  Future<void> _getCurrentLocation() async {
+    debugPrint('📍 AirportVehicleSelection: Fetching location');
+    if (!mounted) return;
+
+    setState(() {
+      _isLocationLoading = true;
+    });
+
+    // Try cached location first
+    final cachedPosition = _locationCache.cachedPosition;
+    if (cachedPosition != null) {
+      debugPrint('📍 AirportVehicleSelection: Using cached location');
+      await _processLocation(cachedPosition);
+      return;
+    }
+
+    // Fetch fresh location
+    try {
+      final position = await _locationCache.getLocation();
+      if (position != null) {
+        await _processLocation(position);
+      } else {
+        debugPrint('📍 AirportVehicleSelection: Failed to get location');
+        if (mounted) {
+          setState(() {
+            _isLocationLoading = false;
+            _isLocationReady = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Unable to get your location'),
+              backgroundColor: Colors.red,
+              action: SnackBarAction(
+                label: 'Retry',
+                textColor: Colors.white,
+                onPressed: _getCurrentLocation,
+              ),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('📍 AirportVehicleSelection: Error: $e');
+      if (mounted) {
+        setState(() {
+          _isLocationLoading = false;
+          _isLocationReady = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _processLocation(Position position) async {
+    debugPrint(
+      '📍 AirportVehicleSelection: Processing ${position.latitude}, ${position.longitude}',
+    );
+    if (!mounted) return;
+
+    setState(() {
+      _pickupLocation = latlong.LatLng(position.latitude, position.longitude);
+    });
+
+    // Reverse geocode to get address - same as destination_search_screen
+    try {
+      // Try backend API first
+      String? address = await _placesService.getAddressFromLatLng(
+        position.latitude,
+        position.longitude,
+      );
+
+      // If backend fails, try Nominatim (OpenStreetMap) as fallback
+      if (address == null || address.isEmpty) {
+        debugPrint(
+          '📍 AirportVehicleSelection: Backend geocoding failed, trying Nominatim...',
+        );
+        address = await _geocodingService.getAddressFromLatLng(
+          position.latitude,
+          position.longitude,
+        );
+      }
+
+      if (address != null && address.isNotEmpty && mounted) {
+        setState(() {
+          // Store the full address for the API
+          _pickupAddress = address!;
+          _isLocationReady = true;
+          _isLocationLoading = false;
+        });
+        debugPrint(
+          '📍 AirportVehicleSelection: Geocoded location to: $address',
+        );
+      } else if (mounted) {
+        debugPrint('⚠️ AirportVehicleSelection: All geocoding methods failed');
+        // Use coordinates as fallback but mark as ready
+        setState(() {
+          _pickupAddress =
+              "Lat: ${position.latitude.toStringAsFixed(4)}, Lng: ${position.longitude.toStringAsFixed(4)}";
+          _isLocationReady = true;
+          _isLocationLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("❌ AirportVehicleSelection: Error reverse geocoding: $e");
+      if (mounted) {
+        setState(() {
+          _pickupAddress =
+              "Lat: ${position.latitude.toStringAsFixed(4)}, Lng: ${position.longitude.toStringAsFixed(4)}";
+          _isLocationReady = true;
+          _isLocationLoading = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -277,14 +360,64 @@ class _AirportVehicleSelectionScreen extends StatelessWidget {
       ),
       body: Column(
         children: [
+          // Location loading banner
+          if (_isLocationLoading)
+            Container(
+              padding: const EdgeInsets.all(12),
+              color: Colors.blue[50],
+              child: Row(
+                children: [
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Getting your location...',
+                    style: GoogleFonts.outfit(
+                      fontSize: 14,
+                      color: Colors.blue[900],
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else if (!_isLocationReady)
+            Container(
+              padding: const EdgeInsets.all(12),
+              color: Colors.orange[50],
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.warning_amber,
+                    color: Colors.orange[900],
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Unable to get location',
+                      style: GoogleFonts.outfit(
+                        fontSize: 14,
+                        color: Colors.orange[900],
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _getCurrentLocation,
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            ),
+
           // Route info
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               color: Colors.grey[50],
-              border: Border(
-                bottom: BorderSide(color: Colors.grey[200]!),
-              ),
+              border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
             ),
             child: Column(
               children: [
@@ -292,14 +425,18 @@ class _AirportVehicleSelectionScreen extends StatelessWidget {
                   icon: Icons.my_location,
                   color: Colors.green,
                   label: 'Pickup',
-                  address: pickupAddress,
+                  address: _isLocationLoading
+                      ? 'Fetching location...'
+                      : _pickupAddress.isNotEmpty
+                      ? _pickupAddress
+                      : 'Location unavailable',
                 ),
                 const SizedBox(height: 12),
                 _buildLocationRow(
                   icon: Icons.flight,
                   color: Colors.blue,
                   label: 'Airport',
-                  address: airport.name,
+                  address: widget.airport.name,
                 ),
               ],
             ),
@@ -307,22 +444,55 @@ class _AirportVehicleSelectionScreen extends StatelessWidget {
 
           // Vehicle selection
           Expanded(
-            child: VehicleSelectionWidget(
-              onVehicleSelected: (categorySlug) {},
-              onSelectVehicle: (categorySlug, categoryName, fareData) {
-                _handleVehicleSelection(
-                  context,
-                  categorySlug,
-                  categoryName,
-                  fareData,
-                );
-              },
-              pickupLat: pickupLocation.latitude,
-              pickupLng: pickupLocation.longitude,
-              dropoffLat: airport.coordinates.lat,
-              dropoffLng: airport.coordinates.lng,
-              fixedFareByCategory: airport.pricing,
-            ),
+            child: _isLocationReady && _pickupLocation != null
+                ? VehicleSelectionWidget(
+                    onVehicleSelected: (categorySlug) {},
+                    onSelectVehicle: (categorySlug, categoryName, fareData) {
+                      _handleVehicleSelection(
+                        categorySlug,
+                        categoryName,
+                        fareData,
+                      );
+                    },
+                    pickupLat: _pickupLocation!.latitude,
+                    pickupLng: _pickupLocation!.longitude,
+                    dropoffLat: widget.airport.coordinates.lat,
+                    dropoffLng: widget.airport.coordinates.lng,
+                    fixedFareByCategory: widget.airport.pricing,
+                  )
+                : Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (_isLocationLoading)
+                          const CircularProgressIndicator()
+                        else
+                          const Icon(
+                            Icons.location_off,
+                            size: 64,
+                            color: Colors.grey,
+                          ),
+                        const SizedBox(height: 16),
+                        Text(
+                          _isLocationLoading
+                              ? 'Getting your location...'
+                              : 'Location required to show vehicles',
+                          style: GoogleFonts.outfit(
+                            fontSize: 16,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        if (!_isLocationLoading && !_isLocationReady)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 16),
+                            child: ElevatedButton(
+                              onPressed: _getCurrentLocation,
+                              child: const Text('Retry'),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
           ),
         ],
       ),
@@ -370,21 +540,34 @@ class _AirportVehicleSelectionScreen extends StatelessWidget {
   }
 
   void _handleVehicleSelection(
-    BuildContext context,
     String categorySlug,
     String categoryName,
     Map<String, dynamic> fareData,
   ) async {
+    if (_pickupLocation == null || !_isLocationReady) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please wait for location to be ready'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     // Create location maps with placeId for airport detection
     final pickupLocationMap = {
-      'coordinates': [pickupLocation.longitude, pickupLocation.latitude],
-      'address': pickupAddress,
+      'coordinates': [_pickupLocation!.longitude, _pickupLocation!.latitude],
+      'address': _pickupAddress,
     };
 
     final dropoffLocationMap = {
-      'coordinates': [airport.coordinates.lng, airport.coordinates.lat],
-      'address': airport.address,
-      'placeId': airport.placeId, // Include placeId for airport detection
+      'coordinates': [
+        widget.airport.coordinates.lng,
+        widget.airport.coordinates.lat,
+      ],
+      'address': widget.airport.address,
+      'placeId':
+          widget.airport.placeId, // Include placeId for airport detection
     };
 
     // Navigate to ride confirmation

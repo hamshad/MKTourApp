@@ -26,6 +26,7 @@ import 'features/driver/driver_ride_history_screen.dart';
 import 'features/auth/role_selection_screen.dart';
 
 import 'core/services/socket_service.dart';
+import 'core/services/location_cache_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -39,6 +40,11 @@ void main() async {
   // Initialize Socket Service
   final socketService = SocketService();
   await socketService.initSocket();
+
+  // Preload location in background (non-blocking)
+  LocationCacheService().preloadLocation().catchError((e) {
+    debugPrint('📍 Failed to preload location: $e');
+  });
 
   runApp(
     MultiProvider(

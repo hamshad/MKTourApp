@@ -573,6 +573,29 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
             _initMarkerInterpolation(newPosition);
           }
 
+          // CRITICAL: Extract ETA from socket event (server-calculated with traffic)
+          // This is more efficient than calling Distance Matrix API repeatedly
+          if (data['eta'] != null && _rideStatus == 'accepted') {
+            final eta = data['eta'];
+            final duration = eta['duration'] as String?; // e.g., "5 mins"
+            final isGoingToPickup = eta['isGoingToPickup'] as bool? ?? true;
+            
+            if (duration != null && isGoingToPickup) {
+              // Extract minutes from duration string (e.g., "5 mins" -> 5)
+              final minutesMatch = RegExp(r'(\d+)').firstMatch(duration);
+              final minutes = minutesMatch != null ? int.parse(minutesMatch.group(1)!) : 0;
+              
+              setState(() {
+                _etaText = duration;
+                _etaMinutes = minutes;
+              });
+              
+              debugPrint(
+                '🕐 [RideAssignedScreen] ETA from socket: $_etaText ($_etaMinutes mins)',
+              );
+            }
+          }
+
           // Update navigation route in real-time (don't need to update annotations here,
           // the interpolation stream handles that)
           // Skip route updates when driver has arrived (car is stationary)
@@ -1092,7 +1115,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   }
 
   /// Calculate ETA using Distance Matrix API with real traffic data
-  /// Called when driver location changes to show accurate "X mins away"
+  /// This is a FALLBACK method - normally ETA comes from driver:locationChanged event
+  /// Called periodically to ensure ETA is available even if socket misses updates
   Future<void> _calculateETA() async {
     if (_driverLocation == null) return;
 
@@ -1132,16 +1156,19 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     }
   }
 
-  /// Start periodic ETA updates
+  /// Start periodic ETA updates as a fallback
+  /// NOTE: ETA is primarily provided by driver:locationChanged socket event
+  /// This fallback ensures we have ETA even if socket updates are missed
   void _startETAUpdates() {
     // Cancel any existing timer
     _etaTimer?.cancel();
 
-    // Calculate immediately
+    // Calculate immediately as initial fallback
     _calculateETA();
 
-    // Update ETA every 20 seconds (balance between accuracy and API costs)
-    _etaTimer = Timer.periodic(const Duration(seconds: 20), (timer) {
+    // Fallback update every 30 seconds (socket provides real-time updates)
+    // Increased from 20s since socket now provides ETA with each location update
+    _etaTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
       if (_rideStatus == 'accepted' && _driverLocation != null) {
         _calculateETA();
       } else {
@@ -1150,7 +1177,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       }
     });
 
-    debugPrint('⏱️ [RideAssignedScreen] Started ETA updates (every 20s)');
+    debugPrint('⏱️ [RideAssignedScreen] Started fallback ETA updates (every 30s)');
   }
 
   /// Stop ETA updates
