@@ -201,9 +201,9 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   String get _dropoffAddress =>
       widget.dropoffLocation['address'] ?? 'Dropoff Location';
 
-  double get _fare => (_currentFareData['total_fare'] is int)
-      ? (_currentFareData['total_fare'] as int).toDouble()
-      : (_currentFareData['total_fare'] ?? 0.0);
+  double get _fare => (_currentFareData['total_fare'] != null && _currentFareData['total_fare'] is num)
+      ? (_currentFareData['total_fare'] as num).toDouble()
+      : 0.0;
 
   String get _distanceText => _currentFareData['distance_text'] ?? '';
   String get _durationText => _currentFareData['duration_text'] ?? '';

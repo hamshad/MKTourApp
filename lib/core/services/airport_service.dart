@@ -85,9 +85,9 @@ class AirportService {
 
         if (responseData['success'] == true) {
           final fixedPrice = responseData['data']['fixedPrice'];
-          final price = (fixedPrice is int)
-              ? fixedPrice.toDouble()
-              : (fixedPrice as num).toDouble();
+          final price = (fixedPrice != null && fixedPrice is num)
+              ? (fixedPrice as num).toDouble()
+              : 0.0;
 
           debugPrint(
             '🟢 AirportService.getAirportPrice() Success: £$price',

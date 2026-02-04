@@ -473,9 +473,9 @@ class PlacesService {
             'distance_text': data['distance_text'] ?? '',
             'duration_seconds': data['duration_seconds'] ?? 0,
             'duration_text': data['duration_text'] ?? '',
-            'total_fare': (data['total_fare'] is int)
-                ? (data['total_fare'] as int).toDouble()
-                : (data['total_fare'] ?? 0.0),
+            'total_fare': (data['total_fare'] != null) 
+                ? (data['total_fare'] is num ? (data['total_fare'] as num).toDouble() : 0.0)
+                : 0.0,
             'currency': data['currency'] ?? 'GBP',
             'category_slug': categorySlug,
           };
