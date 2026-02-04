@@ -1,11 +1,12 @@
 import 'dart:async';
 import 'dart:io' as io;
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/api_constants.dart';
 
-class SocketService {
+class SocketService with WidgetsBindingObserver {
   static final SocketService _instance = SocketService._internal();
   IO.Socket? _socket;
   bool _isConnected = false;
@@ -15,6 +16,7 @@ class SocketService {
   static const int _maxReconnectionAttempts = 10;
   static const int _reconnectionDelayMs = 3000;
   String? _currentToken; // Track current token to detect changes
+  bool _isAppInBackground = false;
 
   /// Stream controller for connection status changes
   final StreamController<bool> _connectionStatusController =
@@ -27,7 +29,51 @@ class SocketService {
     return _instance;
   }
 
-  SocketService._internal();
+  SocketService._internal() {
+    // Add lifecycle observer for iOS background/foreground handling
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    debugPrint('🔄 [SocketService] App lifecycle state: $state');
+
+    switch (state) {
+      case AppLifecycleState.resumed:
+        // App came to foreground
+        _isAppInBackground = false;
+        debugPrint(
+          '📱 [SocketService] App resumed - checking socket connection...',
+        );
+
+        // Reconnect socket if disconnected (especially important for iOS)
+        if (_socket == null || !_socket!.connected) {
+          debugPrint(
+            '🔄 [SocketService] Socket disconnected, attempting reconnection...',
+          );
+          _attemptReconnection();
+        }
+        break;
+
+      case AppLifecycleState.paused:
+        // App went to background
+        _isAppInBackground = true;
+        debugPrint('📱 [SocketService] App paused/backgrounded');
+        break;
+
+      case AppLifecycleState.inactive:
+        debugPrint('📱 [SocketService] App inactive');
+        break;
+
+      case AppLifecycleState.detached:
+        debugPrint('📱 [SocketService] App detached');
+        break;
+
+      case AppLifecycleState.hidden:
+        debugPrint('📱 [SocketService] App hidden');
+        break;
+    }
+  }
 
   bool get isConnected => _isConnected;
 
@@ -111,11 +157,16 @@ class SocketService {
       '🔵 [SocketService] Connecting to ${ApiConstants.baseUrl} with token: ${token.substring(0, 10)}...',
     );
 
+    // iOS-specific socket configuration
+    final bool isIOS = io.Platform.isIOS;
+
     _socket = IO.io(
       ApiConstants.socketUrl,
       IO.OptionBuilder()
-          .setTransports(['websocket', 'polling'])
-          .setTimeout(20000)
+          .setTransports([
+            'websocket',
+          ]) // Websocket-only for better iOS stability
+          .setTimeout(isIOS ? 30000 : 20000) // Longer timeout for iOS
           .enableForceNew()
           .enableReconnection()
           .setReconnectionAttempts(_maxReconnectionAttempts)
@@ -148,6 +199,12 @@ class SocketService {
       }
 
       debugPrint('🟢 [SocketService] Connected to ${ApiConstants.baseUrl}');
+      debugPrint(
+        '🟢 [SocketService] Platform: iOS=${io.Platform.isIOS}, Android=${io.Platform.isAndroid}',
+      );
+      debugPrint(
+        '🟢 [SocketService] Transport: ${_socket?.io.engine?.transport?.name ?? "unknown"}',
+      );
 
       // Rejoin all rooms after reconnection
       _rejoinRooms();
@@ -200,7 +257,7 @@ class SocketService {
 
     // Listen for room join confirmation
     _socket!.on('room:joined', (data) {
-      debugPrint('📩 [SocketService] Room joined: $data');
+      debugPrint('� [SocketService] Room joined: $data');
     });
 
     // Wildcard listener to debug ALL incoming events
@@ -371,6 +428,7 @@ class SocketService {
 
   /// Dispose of resources
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _reconnectionTimer?.cancel();
     _connectionStatusController.close();
     disconnect();
@@ -388,7 +446,11 @@ class SocketService {
   void on(String event, Function(dynamic) handler) {
     if (_socket != null) {
       _socket!.on(event, handler);
-      debugPrint('👂 [SocketService] Listening for: $event');
+      debugPrint(
+        '👂 [SocketService] Listening for: $event (iOS=${io.Platform.isIOS}, Connected=${_socket!.connected})',
+      );
+    } else {
+      debugPrint('⚠️ [SocketService] Cannot listen for $event, socket is null');
     }
   }
 

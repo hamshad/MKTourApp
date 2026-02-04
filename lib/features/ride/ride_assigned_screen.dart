@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'package:provider/provider.dart';
 import 'package:latlong2/latlong.dart' as latlong2;
 import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
@@ -579,17 +580,19 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
             final eta = data['eta'];
             final duration = eta['duration'] as String?; // e.g., "5 mins"
             final isGoingToPickup = eta['isGoingToPickup'] as bool? ?? true;
-            
+
             if (duration != null && isGoingToPickup) {
               // Extract minutes from duration string (e.g., "5 mins" -> 5)
               final minutesMatch = RegExp(r'(\d+)').firstMatch(duration);
-              final minutes = minutesMatch != null ? int.parse(minutesMatch.group(1)!) : 0;
-              
+              final minutes = minutesMatch != null
+                  ? int.parse(minutesMatch.group(1)!)
+                  : 0;
+
               setState(() {
                 _etaText = duration;
                 _etaMinutes = minutes;
               });
-              
+
               debugPrint(
                 '🕐 [RideAssignedScreen] ETA from socket: $_etaText ($_etaMinutes mins)',
               );
@@ -607,12 +610,29 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     });
 
     _socketService.on('ride:started', (data) {
-      debugPrint('🚀 [RideAssignedScreen] Ride Started: $data');
+      debugPrint('═══════════════════════════════════════════════════════');
+      debugPrint('🚀 [RideAssignedScreen] RIDE STARTED EVENT RECEIVED');
+      debugPrint('═══════════════════════════════════════════════════════');
+      debugPrint(
+        '📦 [RideAssignedScreen] Platform: iOS=${Platform.isIOS}, Android=${Platform.isAndroid}',
+      );
+      debugPrint('📦 [RideAssignedScreen] Full data: $data');
+      debugPrint('📦 [RideAssignedScreen] Data type: ${data.runtimeType}');
+      debugPrint('📦 [RideAssignedScreen] Mounted: $mounted');
+      debugPrint('📦 [RideAssignedScreen] Context mounted: ${context.mounted}');
 
-      if (!mounted || !context.mounted) return;
+      if (!mounted || !context.mounted) {
+        debugPrint(
+          '⚠️ [RideAssignedScreen] Widget not mounted, skipping handler',
+        );
+        return;
+      }
 
       // Stop tracking driver location updates (ride has started)
       if (_currentDriverId != null) {
+        debugPrint(
+          '🛑 [RideAssignedScreen] Stopping driver tracking for: $_currentDriverId',
+        );
         _socketService.stopTrackingDriver(_currentDriverId!);
       }
 
@@ -620,14 +640,19 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       _stopETAUpdates();
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !context.mounted) return;
+        if (!mounted || !context.mounted) {
+          debugPrint('⚠️ [RideAssignedScreen] Widget unmounted in callback');
+          return;
+        }
 
+        debugPrint('✅ [RideAssignedScreen] Updating UI to in_progress state');
         setState(() {
           _rideStatus = 'in_progress';
           _updateMarkers();
           // Switch to navigation from current to dropoff
           _fetchNavigationRoute();
         });
+        debugPrint('✅ [RideAssignedScreen] Ride started state update complete');
       });
     });
 
@@ -1177,7 +1202,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       }
     });
 
-    debugPrint('⏱️ [RideAssignedScreen] Started fallback ETA updates (every 30s)');
+    debugPrint(
+      '⏱️ [RideAssignedScreen] Started fallback ETA updates (every 30s)',
+    );
   }
 
   /// Stop ETA updates
