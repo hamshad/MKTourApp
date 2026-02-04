@@ -34,9 +34,9 @@
 	<key>NSCameraUsageDescription</key>
 	<string>We need access to your camera to take profile pictures and scan documents.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>This app needs location access to enable rides, navigation, and background location updates during trips.</string>
+	<string>MK-Tours uses your location to provide personalized tour experiences. For example, we'll show nearby tourist attractions, guide you with turn-by-turn navigation during tours, track your tour routes, and send you location-based notifications about points of interest. Background location access allows us to continue navigation and provide real-time updates during your tours.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>This app needs access to location to show your position on the map.</string>
+	<string>MK-Tours uses your location to show you nearby tourist attractions and destinations on the map. For example, we'll display your current position relative to tour sites, help you find attractions near you, and provide distance calculations to points of interest. This allows you to plan and navigate your tours effectively.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>We need access to your photo library to upload profile pictures and documents.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
