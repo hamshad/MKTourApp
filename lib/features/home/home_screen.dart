@@ -25,7 +25,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int _selectedIndex = 0;
   final PageController _pageController = PageController(viewportFraction: 0.92);
   int _currentBannerIndex = 0;
@@ -56,11 +56,203 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initLocation();
     _fetchRideHistory();
     _startBannerTimer();
     _setupSocketListeners();
     _setupConnectionListener();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // CRITICAL: Ensure listeners are active whenever this screen is shown
+    if (mounted) {
+      debugPrint(
+        '🔄 [HomeScreen] didChangeDependencies - verifying socket listeners...',
+      );
+      // Check if the critical listener is registered
+      if (!_socketService.hasListeners('ride:accepted')) {
+        debugPrint(
+          '⚠️ [HomeScreen] ride:accepted listener MISSING! Restoring...',
+        );
+        _restoreSocketListeners();
+      }
+      _emitUserOnline();
+    }
+  }
+
+  /// Restore socket listeners if they were lost
+  void _restoreSocketListeners() {
+    debugPrint('🔄 [HomeScreen] Restoring socket listeners...');
+
+    _socketService.off('ride:accepted');
+    _socketService.off('user:status');
+
+    _socketService.on('ride:accepted', (data) {
+      debugPrint('═══════════════════════════════════════════════════════');
+      debugPrint('✅ [HomeScreen] RIDE ACCEPTED EVENT RECEIVED (RESTORED)');
+      debugPrint('═══════════════════════════════════════════════════════');
+      debugPrint('📦 [HomeScreen] Full data: $data');
+
+      if (!mounted || !context.mounted) {
+        debugPrint(
+          '⚠️ [HomeScreen] Widget not mounted, ignoring ride:accepted',
+        );
+        return;
+      }
+
+      final incomingRideId =
+          data['rideId']?.toString() ?? data['_id']?.toString();
+      final activeRideId =
+          _activeRide?['_id']?.toString() ?? _activeRide?['rideId']?.toString();
+
+      final shouldHandle =
+          _isSearching ||
+          (incomingRideId != null && activeRideId == incomingRideId) ||
+          _activeRide == null;
+
+      if (shouldHandle) {
+        final String otp =
+            data['otp']?.toString() ??
+            data['verificationOTP']?.toString() ??
+            '';
+        final Map<String, dynamic> driverWithOtp = {
+          ...?(data['driver'] as Map<String, dynamic>?),
+          'otp': otp,
+        };
+        final enrichedData = {...data, 'driver': driverWithOtp};
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && context.mounted) {
+            _handleRideAccepted(enrichedData);
+          }
+        });
+      }
+    });
+
+    _socketService.on('user:status', (data) {
+      debugPrint('📩 [HomeScreen] User status: $data');
+    });
+
+    debugPrint('✅ [HomeScreen] Socket listeners restored');
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      debugPrint('🔄 [HomeScreen] App resumed, syncing state...');
+
+      // 1. Force check socket connection
+      if (!_socketService.isConnected) {
+        debugPrint('🔌 [HomeScreen] Socket disconnected, reconnecting...');
+        _socketService.initSocket(forceReconnect: true);
+      }
+
+      // 2. Re-emit online status
+      _emitUserOnline();
+
+      // 3. Sync ride status if we have an active ride
+      if (_activeRide != null && widget.runtimeType == HomeScreen) {
+        _syncRideStatus();
+      }
+    }
+  }
+
+  /// Sync ride status with backend when app resumes
+  Future<void> _syncRideStatus() async {
+    if (_activeRide == null) return;
+
+    final rideId = _activeRide!['_id'] ?? _activeRide!['id'];
+    if (rideId == null) return;
+
+    try {
+      debugPrint('🔄 [HomeScreen] Syncing ride status for ride: $rideId');
+      final response = await _apiService.getRideStatus(rideId);
+
+      if (response['success'] == true && response['data'] != null) {
+        final rideData = response['data'];
+        final status = rideData['status'];
+
+        debugPrint('🔄 [HomeScreen] Synced ride status: $status');
+
+        // If backend says ride is accepted but we're still in searching state
+        if (status == 'accepted' && _isSearching) {
+          debugPrint(
+            '✅ [HomeScreen] Detected accepted ride, navigating to ride screen',
+          );
+          _handleRideAccepted(rideData);
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ [HomeScreen] Error syncing ride status: $e');
+    }
+  }
+
+  /// Handle ride accepted event or synced data
+  void _handleRideAccepted(dynamic data) {
+    debugPrint('🚀 [HomeScreen] _handleRideAccepted called with data: $data');
+
+    if (!mounted) {
+      debugPrint('⚠️ [HomeScreen] _handleRideAccepted: not mounted, returning');
+      return;
+    }
+
+    // Preserve payment info from active ride before clearing
+    final previousActiveRide = _activeRide;
+
+    debugPrint(
+      '🚀 [HomeScreen] Setting _isSearching = false, _activeRide = null',
+    );
+    setState(() {
+      _isSearching = false;
+      _activeRide = null;
+    });
+
+    // Extract ride ID from multiple possible fields
+    final rideId =
+        data['rideId']?.toString() ??
+        data['_id']?.toString() ??
+        data['id']?.toString() ??
+        '';
+
+    // Handle both socket format (pickupLocation/dropoffLocation) and API format (pickup/dropoff)
+    final pickup = data['pickupLocation'] ?? data['pickup'];
+    final dropoff = data['dropoffLocation'] ?? data['dropoff'];
+    final driver = data['driver'];
+    final fare = (data['fare'] ?? 0.0).toDouble();
+
+    // Payment details come from the original ride request, not the socket event
+    final paymentTiming =
+        data['paymentTiming'] ?? previousActiveRide?['paymentTiming'];
+    final clientSecret =
+        data['clientSecret'] ?? previousActiveRide?['clientSecret'];
+
+    // Validate required fields
+    if (rideId.isEmpty) {
+      debugPrint('⚠️ [HomeScreen] Cannot navigate: missing ride ID');
+      return;
+    }
+
+    debugPrint(
+      '✅ [HomeScreen] Navigating to RideAssignedScreen with rideId: $rideId',
+    );
+
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (context) => RideAssignedScreen(
+          rideId: rideId,
+          driver: driver,
+          pickup: pickup,
+          dropoff: dropoff,
+          fare: fare,
+          paymentTiming: paymentTiming,
+          clientSecret: clientSecret,
+        ),
+      ),
+    );
   }
 
   Future<void> _fetchRideHistory() async {
@@ -124,33 +316,36 @@ class _HomeScreenState extends State<HomeScreen> {
       debugPrint('📍 [HomeScreen] dropoffLocation: ${data['dropoffLocation']}');
       debugPrint('💰 [HomeScreen] fare: ${data['fare']}');
 
-      if (!mounted) return;
+      // CRITICAL: Check mounted AND context validity before ANY setState or navigation
+      debugPrint(
+        '🔍 [HomeScreen] Checking mounted: $mounted, context.mounted: ${context.mounted}',
+      );
+      if (!mounted || !context.mounted) {
+        debugPrint(
+          '⚠️ [HomeScreen] Widget not mounted, ignoring ride:accepted',
+        );
+        return;
+      }
 
       final incomingRideId =
           data['rideId']?.toString() ?? data['_id']?.toString();
       final activeRideId =
           _activeRide?['_id']?.toString() ?? _activeRide?['rideId']?.toString();
 
+      debugPrint('🔍 [HomeScreen] _isSearching: $_isSearching');
+      debugPrint(
+        '🔍 [HomeScreen] incomingRideId: $incomingRideId, activeRideId: $activeRideId',
+      );
+      debugPrint('🔍 [HomeScreen] _activeRide: $_activeRide');
+
       final shouldHandle =
           _isSearching ||
           (incomingRideId != null && activeRideId == incomingRideId) ||
           _activeRide == null;
 
+      debugPrint('🔍 [HomeScreen] shouldHandle: $shouldHandle');
+
       if (shouldHandle) {
-        final activeRide = _activeRide;
-
-        String? clientSecret;
-        String? paymentTiming;
-        if (activeRide is Map<String, dynamic>) {
-          clientSecret = activeRide['clientSecret']?.toString();
-          paymentTiming = activeRide['paymentTiming']?.toString();
-        }
-
-        setState(() {
-          _isSearching = false;
-          _activeRide = data;
-        });
-
         // Extract OTP from data (it's a separate field, not in driver object)
         final String otp =
             data['otp']?.toString() ??
@@ -165,24 +360,15 @@ class _HomeScreenState extends State<HomeScreen> {
         };
         debugPrint('👤 [HomeScreen] Driver data with OTP: $driverWithOtp');
 
-        // Navigate to Ride Assigned Screen
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => RideAssignedScreen(
-              rideId:
-                  data['rideId']?.toString() ?? data['_id']?.toString() ?? '',
-              pickup: data['pickupLocation'],
-              dropoff: data['dropoffLocation'],
-              fare: (data['fare'] ?? 0.0).toDouble(),
-              driver: driverWithOtp, // Pass driver info with OTP included
-              paymentTiming: paymentTiming,
-              clientSecret: clientSecret,
-            ),
-          ),
-        );
+        // Update driver in data object
+        final enrichedData = {...data, 'driver': driverWithOtp};
 
-        debugPrint('✅ [HomeScreen] Navigation to RideAssignedScreen initiated');
+        // Use post-frame callback to ensure UI is ready for navigation
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && context.mounted) {
+            _handleRideAccepted(enrichedData);
+          }
+        });
       } else {
         debugPrint(
           '⚠️ [HomeScreen] Ignored ride:accepted (not searching, rideId mismatch): incoming=$incomingRideId active=$activeRideId',
@@ -193,8 +379,12 @@ class _HomeScreenState extends State<HomeScreen> {
     // Listen for ride expired event
     _socketService.on('ride:expired', (data) {
       debugPrint('⏰ [HomeScreen] Ride Expired: $data');
-      if (mounted && _isSearching) {
-        _handleRideExpiration();
+      if (mounted && context.mounted && _isSearching) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && context.mounted) {
+            _handleRideExpiration();
+          }
+        });
       }
     });
 
@@ -460,8 +650,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     // Clean up connection listener
     _connectionSubscription?.cancel();
+
+    // CRITICAL: Clean up socket listeners to prevent memory leaks
+    debugPrint('🧹 [HomeScreen] Cleaning up socket listeners...');
+    _socketService.off('ride:accepted');
+    _socketService.off('ride:expired');
+    _socketService.off('ride:cancelled');
+    _socketService.off('user:status');
 
     _pageController.dispose();
     _bannerTimer?.cancel();

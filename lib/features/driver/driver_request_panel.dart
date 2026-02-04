@@ -120,21 +120,21 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                   color: AppTheme.textPrimary,
                 ),
               ),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryColor,
-                  borderRadius: BorderRadius.all(Radius.circular(20)),
-                ),
-                child: Text(
-                  '2 mins away',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
-                ),
-              ),
+              // Container(
+              //   padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              //   decoration: BoxDecoration(
+              //     color: AppTheme.primaryColor,
+              //     borderRadius: BorderRadius.all(Radius.circular(20)),
+              //   ),
+              //   child: Text(
+              //     '2 mins away',
+              //     style: TextStyle(
+              //       color: Colors.white,
+              //       fontWeight: FontWeight.bold,
+              //       fontSize: 12,
+              //     ),
+              //   ),
+              // ),
             ],
           ),
           const SizedBox(height: 24),
@@ -172,15 +172,17 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                         ),
                       ),
                       Text(
-                        _getVehicleDisplayName(widget.rideData?['vehicleCategorySlug']),
+                        _getVehicleDisplayName(
+                          widget.rideData?['vehicleCategorySlug'],
+                        ),
                         style: const TextStyle(
                           fontSize: 14,
                           color: AppTheme.textSecondary,
                         ),
                       ),
-                        ],
-                      ),
-                    ),
+                    ],
+                  ),
+                ),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
@@ -197,12 +199,19 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         if (widget.rideData?['isAirportTransfer'] == true) ...[
-                          const Icon(Icons.flight, size: 14, color: Colors.blue),
+                          const Icon(
+                            Icons.flight,
+                            size: 14,
+                            color: Colors.blue,
+                          ),
                           const SizedBox(width: 4),
                         ],
                         Text(
                           'Est. Fare',
-                          style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[500],
+                          ),
                         ),
                       ],
                     ),

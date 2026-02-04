@@ -334,6 +334,28 @@ class SocketService {
     });
   }
 
+  /// Start tracking driver location in real-time
+  /// Call this when passenger receives ride:accepted event
+  void startTrackingDriver(String driverId) {
+    if (driverId.isEmpty) {
+      debugPrint('⚠️ [SocketService] Cannot start tracking: empty driverId');
+      return;
+    }
+    emit('ride:trackDriver', {'driverId': driverId});
+    debugPrint('🎯 [SocketService] Started tracking driver: $driverId');
+  }
+
+  /// Stop tracking driver location
+  /// Call this when ride starts (after OTP verification) or if ride is cancelled
+  void stopTrackingDriver(String driverId) {
+    if (driverId.isEmpty) {
+      debugPrint('⚠️ [SocketService] Cannot stop tracking: empty driverId');
+      return;
+    }
+    emit('ride:stopTracking', {'driverId': driverId});
+    debugPrint('🛑 [SocketService] Stopped tracking driver: $driverId');
+  }
+
   void disconnect() {
     _reconnectionTimer?.cancel();
     _joinedRooms.clear();

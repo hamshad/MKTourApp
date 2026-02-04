@@ -1,8 +1,8 @@
 class ApiConstants {
-    // Local development socket URL (commented when using live API)
-    // static const String socketUrl = 'http://192.168.1.5:5000';
-    // Live API socket URL
-    static const String socketUrl = 'https://api.mktours.co.uk';
+  // Local development socket URL (commented when using live API)
+  static const String socketUrl = 'http://192.168.1.17:5000';
+  // Live API socket URL
+  // static const String socketUrl = 'https://api.mktours.co.uk';
   static const String baseUrl = '$socketUrl/api/v1';
 
   // Auth Endpoints
@@ -58,7 +58,8 @@ class ApiConstants {
 
   // Airport Endpoints
   static const String airports = '$baseUrl/airports';
-  static String getAirportPrice(String placeId) => '$baseUrl/airports/$placeId/price';
+  static String getAirportPrice(String placeId) =>
+      '$baseUrl/airports/$placeId/price';
 
   // Payment Endpoints
   static const String createRideWithPayment = '$baseUrl/rides/create';

@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
 import 'package:provider/provider.dart';
 import 'package:latlong2/latlong.dart' as latlong2;
+import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 import '../../core/auth_provider.dart';
 import '../../core/theme.dart';
 import '../../core/services/socket_service.dart';
@@ -40,7 +41,8 @@ class RideAssignedScreen extends StatefulWidget {
   State<RideAssignedScreen> createState() => _RideAssignedScreenState();
 }
 
-class _RideAssignedScreenState extends State<RideAssignedScreen> {
+class _RideAssignedScreenState extends State<RideAssignedScreen>
+    with WidgetsBindingObserver {
   final SocketService _socketService = SocketService();
   final ApiService _apiService = ApiService();
   final NavigationService _navigationService = NavigationService();
@@ -76,6 +78,11 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
   // Connection status subscription
   StreamSubscription<bool>? _connectionSubscription;
 
+  // ETA tracking
+  Timer? _etaTimer;
+  String _etaText = 'Calculating...';
+  int _etaMinutes = 0;
+
   // Cancellation state
   bool _isCancelling = false;
   bool _isProcessingPayment = false;
@@ -84,15 +91,122 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
   bool _isPaymentMethodSelected = false;
   String _selectedPaymentMethodDisplay = '';
 
+  // CRITICAL: Prevent duplicate listener setup
+  bool _socketListenersInitialized = false;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initializeLocations();
     _setupInitialState();
     _setupSocketListeners();
     _setupConnectionListener();
     _fetchDetailedAddresses();
     _setupNavigationListener();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      debugPrint('🔄 [RideAssignedScreen] App resumed, syncing state...');
+
+      // 1. Force check socket connection
+      if (!_socketService.isConnected) {
+        debugPrint(
+          '🔌 [RideAssignedScreen] Socket disconnected, reconnecting...',
+        );
+        _socketService.initSocket(forceReconnect: true);
+      }
+
+      // 2. Re-emit online status and rejoin driver room
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final user = authProvider.user;
+      if (user != null) {
+        final userId = user['_id'] ?? user['id'] ?? user['userId'];
+        if (userId != null) {
+          _socketService.emitUserOnline(userId);
+        }
+      }
+
+      // Rejoin driver room if we have a driver
+      if (_currentDriverId != null) {
+        debugPrint(
+          '🔄 [RideAssignedScreen] Rejoining driver room: $_currentDriverId',
+        );
+        _socketService.joinDriverRoom(_currentDriverId!);
+      }
+
+      // 3. CRITICAL: Manual Sync Fallback
+      _syncRideStatus();
+    }
+  }
+
+  /// Sync ride status with backend when app resumes
+  Future<void> _syncRideStatus() async {
+    try {
+      debugPrint(
+        '🔄 [RideAssignedScreen] Syncing ride status for ride: ${widget.rideId}',
+      );
+      final response = await _apiService.getRideDetails(widget.rideId);
+
+      if (response['success'] == true && response['data'] != null) {
+        final rideData = response['data'];
+        final status = rideData['status'];
+
+        debugPrint(
+          '🔄 [RideAssignedScreen] Synced ride status: $status, current UI state: $_rideStatus',
+        );
+
+        // If backend says it's in a different state than our UI
+        if (status != _rideStatus) {
+          debugPrint(
+            '⚠️ [RideAssignedScreen] Status mismatch detected! Backend: $status, UI: $_rideStatus',
+          );
+
+          // Update UI to match backend state
+          if (mounted) {
+            setState(() {
+              _rideStatus = status;
+
+              // Update driver data if available
+              if (rideData['driver'] != null) {
+                _driver = rideData['driver'];
+
+                // Update OTP if available
+                _otp =
+                    rideData['otp']?.toString() ??
+                    rideData['verificationOTP']?.toString() ??
+                    rideData['verification_otp']?.toString() ??
+                    _otp;
+
+                // Update driver location
+                if (_driver['location'] != null) {
+                  final coords = _driver['location']['coordinates'];
+                  final newLocation = latlong2.LatLng(coords[1], coords[0]);
+
+                  if (_driverLocation == null) {
+                    _driverLocation = newLocation;
+                    _initMarkerInterpolation(newLocation);
+                  } else {
+                    _markerInterpolation?.updatePosition(newLocation);
+                  }
+                }
+              }
+
+              _updateMarkers();
+            });
+
+            debugPrint(
+              '✅ [RideAssignedScreen] UI updated to match backend status: $status',
+            );
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ [RideAssignedScreen] Error syncing ride status: $e');
+    }
   }
 
   void _setupInitialState() {
@@ -122,6 +236,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
         debugPrint(
           '🚗 [RideAssignedScreen] Joined driver room: driver:$_currentDriverId',
         );
+
+        // Start tracking driver location in real-time
+        _socketService.startTrackingDriver(_currentDriverId!);
       }
 
       if (_driver['location'] != null) {
@@ -131,6 +248,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
 
         // Initialize marker interpolation with driver's initial position
         _initMarkerInterpolation(latlong2.LatLng(coords[1], coords[0]));
+
+        // Start periodic ETA updates with real traffic data
+        _startETAUpdates();
       }
     } else {
       debugPrint(
@@ -248,6 +368,15 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
   }
 
   Future<void> _setupSocketListeners() async {
+    // CRITICAL: Prevent duplicate listener setup
+    if (_socketListenersInitialized) {
+      debugPrint(
+        '⚠️ [RideAssignedScreen] Socket listeners already initialized, skipping...',
+      );
+      return;
+    }
+    _socketListenersInitialized = true;
+
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final user = authProvider.user;
 
@@ -256,6 +385,26 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
     await _socketService.initSocket(
       forceReconnect: false,
     ); // Don't force here, already connected from HomeScreen
+
+    // CRITICAL: Remove any existing listeners to prevent duplicates
+    debugPrint(
+      '🧹 [RideAssignedScreen] Cleaning up existing socket listeners...',
+    );
+    _socketService.off('ride:accepted');
+    _socketService.off('driver:locationChanged');
+    _socketService.off('ride:started');
+    _socketService.off('ride:completed');
+    _socketService.off('ride:driverArrived');
+    _socketService.off('ride:otpExpired');
+    _socketService.off('ride:cancelled');
+    _socketService.off('ride:cancelledByDriver');
+    _socketService.off('ride:earlyCompleted');
+    _socketService.off('ride:expired');
+    _socketService.off('payment:succeeded');
+    _socketService.off('payment:authorized');
+    _socketService.off('payment:failed');
+    _socketService.off('ride:longRunning');
+    _socketService.off('user:status');
 
     // Ensure we are joined to the driver room after socket init
     if (_currentDriverId != null) {
@@ -281,47 +430,56 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
     });
 
     _socketService.on('ride:accepted', (data) {
-      if (mounted) {
-        debugPrint('═══════════════════════════════════════════════════════');
-        debugPrint('✅ [RideAssignedScreen] RIDE ACCEPTED EVENT RECEIVED');
-        debugPrint('═══════════════════════════════════════════════════════');
-        debugPrint('📦 [RideAssignedScreen] Full data: $data');
-        debugPrint('📦 [RideAssignedScreen] Data type: ${data.runtimeType}');
+      debugPrint('═══════════════════════════════════════════════════════');
+      debugPrint('✅ [RideAssignedScreen] RIDE ACCEPTED EVENT RECEIVED');
+      debugPrint('═══════════════════════════════════════════════════════');
+      debugPrint('📦 [RideAssignedScreen] Full data: $data');
+      debugPrint('📦 [RideAssignedScreen] Data type: ${data.runtimeType}');
 
-        // Log individual fields for debugging
-        debugPrint('🔑 [RideAssignedScreen] rideId: ${data['rideId']}');
-        debugPrint('🔑 [RideAssignedScreen] status: ${data['status']}');
-        debugPrint('🔑 [RideAssignedScreen] otp field: ${data['otp']}');
+      // Log individual fields for debugging
+      debugPrint('🔑 [RideAssignedScreen] rideId: ${data['rideId']}');
+      debugPrint('🔑 [RideAssignedScreen] status: ${data['status']}');
+      debugPrint('🔑 [RideAssignedScreen] otp field: ${data['otp']}');
+      debugPrint(
+        '🔑 [RideAssignedScreen] verificationOTP field: ${data['verificationOTP']}',
+      );
+      debugPrint('🔑 [RideAssignedScreen] message: ${data['message']}');
+      debugPrint('👤 [RideAssignedScreen] driver object: ${data['driver']}');
+
+      // Extract driver data
+      final driverData = data['driver'];
+      if (driverData != null) {
         debugPrint(
-          '🔑 [RideAssignedScreen] verificationOTP field: ${data['verificationOTP']}',
+          '👤 [RideAssignedScreen] Driver ID: ${driverData['id'] ?? driverData['_id']}',
         );
-        debugPrint('🔑 [RideAssignedScreen] message: ${data['message']}');
-        debugPrint('👤 [RideAssignedScreen] driver object: ${data['driver']}');
+        debugPrint(
+          '👤 [RideAssignedScreen] Driver name: ${driverData['name']}',
+        );
+        debugPrint(
+          '👤 [RideAssignedScreen] Driver phone: ${driverData['phone']}',
+        );
+        debugPrint(
+          '👤 [RideAssignedScreen] Driver rating: ${driverData['rating']}',
+        );
+        debugPrint('🚗 [RideAssignedScreen] Vehicle: ${driverData['vehicle']}');
+        debugPrint(
+          '📍 [RideAssignedScreen] Driver location: ${driverData['location']}',
+        );
+      } else {
+        debugPrint('⚠️ [RideAssignedScreen] Driver data is NULL!');
+      }
 
-        // Extract driver data
-        final driverData = data['driver'];
-        if (driverData != null) {
-          debugPrint(
-            '👤 [RideAssignedScreen] Driver ID: ${driverData['id'] ?? driverData['_id']}',
-          );
-          debugPrint(
-            '👤 [RideAssignedScreen] Driver name: ${driverData['name']}',
-          );
-          debugPrint(
-            '👤 [RideAssignedScreen] Driver phone: ${driverData['phone']}',
-          );
-          debugPrint(
-            '👤 [RideAssignedScreen] Driver rating: ${driverData['rating']}',
-          );
-          debugPrint(
-            '🚗 [RideAssignedScreen] Vehicle: ${driverData['vehicle']}',
-          );
-          debugPrint(
-            '📍 [RideAssignedScreen] Driver location: ${driverData['location']}',
-          );
-        } else {
-          debugPrint('⚠️ [RideAssignedScreen] Driver data is NULL!');
-        }
+      // CRITICAL: Check mounted AND context validity before setState
+      if (!mounted || !context.mounted) {
+        debugPrint(
+          '⚠️ [RideAssignedScreen] Widget not mounted, ignoring ride:accepted',
+        );
+        return;
+      }
+
+      // Use post-frame callback to ensure setState is called at safe time
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !context.mounted) return;
 
         setState(() {
           _rideStatus = 'accepted';
@@ -362,6 +520,13 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
 
             // Fetch navigation route from driver to pickup
             _fetchNavigationRoute();
+
+            // Start tracking driver location in real-time
+            if (_currentDriverId != null) {
+              _socketService.startTrackingDriver(_currentDriverId!);
+              // Start periodic ETA updates with real traffic data
+              _startETAUpdates();
+            }
           } else {
             debugPrint('⚠️ [RideAssignedScreen] Driver location is NULL');
           }
@@ -373,20 +538,27 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
           '✅ [RideAssignedScreen] State updated - Status: $_rideStatus, OTP: $_otp',
         );
         debugPrint('═══════════════════════════════════════════════════════');
-      }
+      });
     });
 
     _socketService.on('driver:locationChanged', (data) {
       debugPrint('📍 [RideAssignedScreen] Driver Location Updated: $data');
 
+      // CRITICAL: Check mounted AND context validity
+      if (!mounted || !context.mounted) {
+        debugPrint(
+          '⚠️ [RideAssignedScreen] Widget not mounted, ignoring location update',
+        );
+        return;
+      }
+
       // Handle location updates based on ride status:
       // - driver_assigned/accepted: Car moving toward pickup
       // - driver_arrived: Car stationary at pickup (still update position for accuracy)
       // - in_progress: Car moving toward destination
-      if (mounted &&
-          (_rideStatus == 'accepted' ||
-              _rideStatus == 'driver_arrived' ||
-              _rideStatus == 'in_progress')) {
+      if (_rideStatus == 'accepted' ||
+          _rideStatus == 'driver_arrived' ||
+          _rideStatus == 'in_progress') {
         // Use marker interpolation for smooth animation instead of direct update
         if (data['location']?['coordinates'] != null) {
           final coords = data['location']['coordinates'];
@@ -412,15 +584,28 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
     });
 
     _socketService.on('ride:started', (data) {
-      if (mounted) {
-        debugPrint('🚀 [RideAssignedScreen] Ride Started: $data');
+      debugPrint('🚀 [RideAssignedScreen] Ride Started: $data');
+
+      if (!mounted || !context.mounted) return;
+
+      // Stop tracking driver location updates (ride has started)
+      if (_currentDriverId != null) {
+        _socketService.stopTrackingDriver(_currentDriverId!);
+      }
+
+      // Stop ETA updates (no longer needed)
+      _stopETAUpdates();
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !context.mounted) return;
+
         setState(() {
           _rideStatus = 'in_progress';
           _updateMarkers();
           // Switch to navigation from current to dropoff
           _fetchNavigationRoute();
         });
-      }
+      });
     });
 
     _socketService.on('ride:completed', (data) {
@@ -504,7 +689,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
     });
 
     _socketService.on('payment:succeeded', (data) {
-      if (!mounted) return;
+      if (!mounted || !context.mounted) return;
 
       debugPrint('✅ [RideAssignedScreen] Payment Succeeded: $data');
 
@@ -540,8 +725,16 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
     });
 
     _socketService.on('ride:driverArrived', (data) {
-      if (mounted) {
-        debugPrint('🚖 [RideAssignedScreen] Driver Arrived: $data');
+      debugPrint('🚖 [RideAssignedScreen] Driver Arrived: $data');
+
+      if (!mounted || !context.mounted) return;
+
+      // Play notification sound
+      FlutterRingtonePlayer().playNotification();
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !context.mounted) return;
+
         setState(() {
           _rideStatus = 'driver_arrived';
           // Set driver position to pickup location (driver is at pickup)
@@ -550,20 +743,20 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
           _polylines = [];
           _updateMarkers();
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Driver has arrived! Please select payment method.'),
-            backgroundColor: Colors.blue,
-            duration: Duration(seconds: 4),
-          ),
-        );
-        _showPaymentSelectionModal();
-      }
+
+        // Show visual arrival message box
+        _showDriverArrivedDialog();
+      });
     });
 
     _socketService.on('ride:otpExpired', (data) {
-      if (mounted) {
-        debugPrint('🔄 [RideAssignedScreen] OTP Expired: $data');
+      debugPrint('🔄 [RideAssignedScreen] OTP Expired: $data');
+
+      if (!mounted || !context.mounted) return;
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !context.mounted) return;
+
         setState(() {
           _otp = data['newOTP'] ?? _otp;
         });
@@ -573,7 +766,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
             backgroundColor: Colors.blue,
           ),
         );
-      }
+      });
     });
 
     _socketService.on('ride:cancelled', (data) {
@@ -898,6 +1091,75 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
     });
   }
 
+  /// Calculate ETA using Distance Matrix API with real traffic data
+  /// Called when driver location changes to show accurate "X mins away"
+  Future<void> _calculateETA() async {
+    if (_driverLocation == null) return;
+
+    // Only calculate ETA when driver is heading to pickup
+    if (_rideStatus != 'accepted') return;
+
+    try {
+      debugPrint(
+        '🕐 [RideAssignedScreen] Calculating ETA with traffic data...',
+      );
+
+      // Use Distance Matrix API to get real-time travel time with traffic
+      final result = await _placesService.getDistanceAndFare(
+        originLat: _driverLocation!.latitude,
+        originLng: _driverLocation!.longitude,
+        destLat: _pickupLocation.latitude,
+        destLng: _pickupLocation.longitude,
+        categorySlug: 'car_4_seater', // Default category for ETA calculation
+      );
+
+      if (result != null && mounted) {
+        final durationSeconds = result['duration_seconds'] as int? ?? 0;
+        final durationText =
+            result['duration_text'] as String? ?? 'Calculating...';
+
+        setState(() {
+          _etaMinutes = (durationSeconds / 60).ceil();
+          _etaText = durationText;
+        });
+
+        debugPrint(
+          '🕐 [RideAssignedScreen] ETA updated: $_etaText ($_etaMinutes mins)',
+        );
+      }
+    } catch (e) {
+      debugPrint('⚠️ [RideAssignedScreen] Error calculating ETA: $e');
+    }
+  }
+
+  /// Start periodic ETA updates
+  void _startETAUpdates() {
+    // Cancel any existing timer
+    _etaTimer?.cancel();
+
+    // Calculate immediately
+    _calculateETA();
+
+    // Update ETA every 20 seconds (balance between accuracy and API costs)
+    _etaTimer = Timer.periodic(const Duration(seconds: 20), (timer) {
+      if (_rideStatus == 'accepted' && _driverLocation != null) {
+        _calculateETA();
+      } else {
+        // Stop timer if ride status changes
+        timer.cancel();
+      }
+    });
+
+    debugPrint('⏱️ [RideAssignedScreen] Started ETA updates (every 20s)');
+  }
+
+  /// Stop ETA updates
+  void _stopETAUpdates() {
+    _etaTimer?.cancel();
+    _etaTimer = null;
+    debugPrint('⏱️ [RideAssignedScreen] Stopped ETA updates');
+  }
+
   /// Show cancellation confirmation dialog
   void _showCancellationConfirmation() {
     // Determine if ride has been accepted (driver assigned)
@@ -1032,6 +1294,11 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+
+    // Clean up ETA timer
+    _stopETAUpdates();
+
     // Clean up marker interpolation
     _interpolationSubscription?.cancel();
     _markerInterpolation?.dispose();
@@ -1039,8 +1306,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
     // Clean up connection listener
     _connectionSubscription?.cancel();
 
-    // Leave driver room if we were tracking one
+    // Stop tracking and leave driver room if we were tracking one
     if (_currentDriverId != null) {
+      _socketService.stopTrackingDriver(_currentDriverId!);
       _socketService.leaveDriverRoom(_currentDriverId!);
     }
 
@@ -1083,6 +1351,237 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
     } else {
       debugPrint('Could not launch WhatsApp for $phoneNumber');
     }
+  }
+
+  /// Show visual message dialog when driver arrives
+  void _showDriverArrivedDialog() {
+    final driverName = _driver['name'] ?? 'Your driver';
+    final vehicleModel = _driver['vehicle']?['model'] ?? 'Vehicle';
+    final vehicleNumber =
+        _driver['vehicle']?['number'] ??
+        _driver['vehicle']?['vehicleNumber'] ??
+        '';
+    final vehicleColor = _driver['vehicle']?['color'] ?? '';
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Colors.green.shade50, Colors.white],
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Success Icon
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.green,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.check_circle,
+                  color: Colors.white,
+                  size: 48,
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Title
+              const Text(
+                'Driver Has Arrived!',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textPrimary,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+
+              // Subtitle
+              Text(
+                '$driverName is waiting at your pickup location',
+                style: TextStyle(fontSize: 15, color: AppTheme.textSecondary),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+
+              // Driver Info Card
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade200),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 24,
+                          backgroundColor: AppTheme.primaryColor,
+                          backgroundImage: _driver['profilePicture'] != null
+                              ? NetworkImage(_driver['profilePicture'])
+                              : null,
+                          child: _driver['profilePicture'] == null
+                              ? Text(
+                                  (_driver['name'] ?? 'D')[0],
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                )
+                              : null,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                driverName,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              Row(
+                                children: [
+                                  const Icon(
+                                    Icons.star,
+                                    color: Colors.amber,
+                                    size: 14,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '${_driver['rating'] ?? 5.0}',
+                                    style: const TextStyle(fontSize: 13),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    const Divider(),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _buildInfoItem(Icons.directions_car, vehicleModel),
+                        if (vehicleColor.isNotEmpty)
+                          _buildInfoItem(Icons.palette, vehicleColor),
+                        if (vehicleNumber.isNotEmpty)
+                          _buildInfoItem(Icons.tag, vehicleNumber),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Location indicator
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.green.shade200),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.location_on,
+                      color: Colors.green.shade700,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        'Check the map to see driver location',
+                        style: TextStyle(
+                          color: Colors.green.shade700,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Continue button
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _showPaymentSelectionModal();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 2,
+                  ),
+                  child: const Text(
+                    'Continue to Payment',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoItem(IconData icon, String text) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 16, color: AppTheme.textSecondary),
+        const SizedBox(width: 6),
+        Text(
+          text,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+        ),
+      ],
+    );
   }
 
   @override
@@ -1291,20 +1790,43 @@ class _RideAssignedScreenState extends State<RideAssignedScreen> {
                     size: 24,
                   ),
                   const SizedBox(width: 12),
-                  Text(
-                    _rideStatus == 'driver_arrived'
-                        ? 'Driver has arrived!'
-                        : _rideStatus == 'in_progress'
-                        ? 'Trip in progress'
-                        : 'Driver is on the way',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 16,
-                      color: _rideStatus == 'driver_arrived'
-                          ? Colors.green
-                          : _rideStatus == 'in_progress'
-                          ? Colors.blue
-                          : Colors.orange,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _rideStatus == 'driver_arrived'
+                              ? 'Driver has arrived!'
+                              : _rideStatus == 'in_progress'
+                              ? 'Trip in progress'
+                              : 'Driver is on the way',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 16,
+                            color: _rideStatus == 'driver_arrived'
+                                ? Colors.green
+                                : _rideStatus == 'in_progress'
+                                ? Colors.blue
+                                : Colors.orange,
+                          ),
+                        ),
+                        // Show ETA with real traffic data when driver is coming
+                        if (_rideStatus == 'accepted') ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            _etaMinutes > 0
+                                ? '$_etaMinutes mins away · $_etaText'
+                                : _navigationState != null
+                                ? '${_navigationState!.distanceText} away · ${_navigationState!.etaText}'
+                                : 'Calculating ETA...',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.orange[700],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                 ],

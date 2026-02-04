@@ -26,7 +26,7 @@ class DriverHomeScreen extends StatefulWidget {
   State<DriverHomeScreen> createState() => _DriverHomeScreenState();
 }
 
-class _DriverHomeScreenState extends State<DriverHomeScreen> {
+class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBindingObserver {
   // Status: offline, online, request, pickup, arrived, in_progress, complete
   String _status = 'offline';
   final PanelController _panelController = PanelController();
@@ -69,9 +69,38 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initDriver();
     _initLocation();
     _setupConnectionListener();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      debugPrint('🔄 [DriverHomeScreen] App resumed, syncing state...');
+      
+      // 1. Force check socket connection
+      if (!_socketService.isConnected) {
+        debugPrint('🔌 [DriverHomeScreen] Socket disconnected, reconnecting...');
+        _socketService.initSocket(forceReconnect: true);
+      }
+      
+      // 2. Re-emit online status if driver is not offline
+      if (_status != 'offline') {
+        _emitDriverOnline();
+      }
+      
+      // 3. Resume location updates if driver is online
+      if (_status == 'online' && _positionStreamSubscription == null) {
+        _startLocationUpdates();
+      }
+    } else if (state == AppLifecycleState.paused) {
+      debugPrint('🔴 [DriverHomeScreen] App paused');
+      // Optional: You could pause location updates here to save battery
+      // But for a ride app, you probably want to keep them running
+    }
   }
 
   /// Listen for socket reconnection and re-emit driver online status
@@ -138,6 +167,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    
     // Clean up socket listeners
     _socketService.off('ride:newRequest');
     _socketService.off('ride:reminder');

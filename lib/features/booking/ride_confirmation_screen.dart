@@ -201,7 +201,9 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   String get _dropoffAddress =>
       widget.dropoffLocation['address'] ?? 'Dropoff Location';
 
-  double get _fare => (_currentFareData['total_fare'] != null && _currentFareData['total_fare'] is num)
+  double get _fare =>
+      (_currentFareData['total_fare'] != null &&
+          _currentFareData['total_fare'] is num)
       ? (_currentFareData['total_fare'] as num).toDouble()
       : 0.0;
 
@@ -385,28 +387,36 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
       );
 
       if (mounted) {
-        setState(() => _isLoading = false);
+        if (result.success && result.data != null) {
+          final rideId =
+              result.data!['_id']?.toString() ??
+              result.data!['rideId']?.toString() ??
+              '';
 
-        if (result.success) {
+          debugPrint('✅ [RideConfirmationScreen] Ride created: $rideId');
           debugPrint(
-            '🏠 RideConfirmationScreen: Ride confirmed, returning to Home with searching state',
+            '🚀 [RideConfirmationScreen] Navigating directly to RideAssignedScreen',
           );
-          // Pop and pass the ride data back to Home Screen
-          Navigator.of(
-            context,
-          ).pop({
-            'status': 'searching',
-            'ride': result.data,
-            'confirmationData': {
-              'pickupLocation': widget.pickupLocation,
-              'dropoffLocation': widget.dropoffLocation,
-              'categorySlug': widget.categorySlug,
-              'categoryName': widget.categoryName,
-              'fareData': widget.fareData,
-              'polyline': widget.polyline,
-            },
-          });
+
+          // Navigate DIRECTLY to RideAssignedScreen
+          // The screen will show "searching for driver" state and handle socket events there
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => RideAssignedScreen(
+                rideId: rideId,
+                driver: null, // No driver yet - will come via socket
+                pickup: widget.pickupLocation,
+                dropoff: widget.dropoffLocation,
+                fare: _fare,
+                paymentTiming: timing == PaymentTiming.payNow
+                    ? 'pay_now'
+                    : 'pay_later',
+                clientSecret: result.data!['clientSecret']?.toString(),
+              ),
+            ),
+          );
         } else {
+          setState(() => _isLoading = false);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(result.error ?? 'Failed to book ride'),
@@ -465,7 +475,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                   _buildVehicleCard(),
 
                   const SizedBox(height: 16),
- 
+
                   // Trip Details Card
                   _buildTripDetailsCard(),
                 ],
@@ -723,9 +733,10 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  widget.categoryName == widget.categorySlug || widget.categoryName == 'Unknown'
-                    ? VehicleCategory.formatSlug(widget.categorySlug)
-                    : widget.categoryName,
+                  widget.categoryName == widget.categorySlug ||
+                          widget.categoryName == 'Unknown'
+                      ? VehicleCategory.formatSlug(widget.categorySlug)
+                      : widget.categoryName,
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -822,8 +833,6 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     );
   }
 
-
-
   Widget _buildBottomBar() {
     // Check if there's a fare error
     final hasError = _fareError != null;
@@ -908,11 +917,16 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
             if (!hasError) ...[
               const SizedBox(height: 8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: AppTheme.primaryColor.withOpacity(0.05),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppTheme.primaryColor.withOpacity(0.1)),
+                  border: Border.all(
+                    color: AppTheme.primaryColor.withOpacity(0.1),
+                  ),
                 ),
                 child: Row(
                   children: [
