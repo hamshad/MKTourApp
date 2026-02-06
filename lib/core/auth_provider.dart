@@ -13,6 +13,7 @@ class AuthProvider with ChangeNotifier {
   DateTime? _lastRideHistoryFetch;
   String? _role;
   Map<String, dynamic>? _driverProfileStatus;
+  String? _lastDeleteMessage;
 
   static const String _prefsAuthTokenKey = 'auth_token';
   static const String _prefsAuthRoleKey = 'auth_role';
@@ -24,6 +25,7 @@ class AuthProvider with ChangeNotifier {
   String? get role => _role;
   bool get isDriver => _role == 'driver';
   Map<String, dynamic>? get driverProfileStatus => _driverProfileStatus;
+  String? get lastDeleteMessage => _lastDeleteMessage;
 
   Future<bool> login(String email, String password) async {
     try {
@@ -360,6 +362,35 @@ class AuthProvider with ChangeNotifier {
       print('Error fetching ride details: $e');
     }
     return null;
+  }
+
+  Future<bool> deleteAccount() async {
+    try {
+      debugPrint('📦 [AuthProvider] deleteAccount called');
+      debugPrint('📦 [AuthProvider] Current role: ${isDriver ? 'driver' : 'user'}');
+
+      Map<String, dynamic> response;
+      if (isDriver) {
+        response = await _apiService.deleteDriverAccount();
+      } else {
+        response = await _apiService.deleteUserAccount();
+      }
+
+      debugPrint('📦 [AuthProvider] deleteAccount API response: ${response}');
+
+      _lastDeleteMessage = response['message']?.toString();
+      if (response['success'] == true ||
+          _lastDeleteMessage?.toLowerCase().contains('successfully') == true) {
+        debugPrint('📦 [AuthProvider] deleteAccount succeeded, logging out');
+        await logout();
+        return true;
+      } else {
+        debugPrint('📦 [AuthProvider] deleteAccount returned failure');
+      }
+    } catch (e) {
+      debugPrint('❌ [AuthProvider] Error deleting account: $e');
+    }
+    return false;
   }
 
   Future<void> logout() async {

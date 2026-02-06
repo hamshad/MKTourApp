@@ -76,6 +76,82 @@ class ApiService {
     }
   }
 
+  Future<Map<String, dynamic>> deleteUserAccount() async {
+    try {
+      debugPrint('🔵 ------------------------------------------------------------------');
+      debugPrint('🔵 [ApiService] deleteUserAccount called');
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString(_prefsAuthTokenKey);
+      if (token == null) throw Exception('No auth token found');
+
+      debugPrint('🔵 [ApiService] Request URL: ${ApiConstants.deleteUserAccount}');
+      debugPrint('🔵 [ApiService] Authorization: Bearer ${token.substring(0, token.length > 8 ? 8 : token.length)}***');
+
+      final response = await http.delete(
+        Uri.parse(ApiConstants.deleteUserAccount),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      debugPrint('🟣 [ApiService] Response Status: ${response.statusCode}');
+      debugPrint('🟣 [ApiService] Response Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        debugPrint('🟢 [ApiService] deleteUserAccount Success');
+        debugPrint('🔵 ------------------------------------------------------------------');
+        return jsonDecode(response.body);
+      } else {
+        debugPrint('🔴 [ApiService] deleteUserAccount Failed');
+        debugPrint('🔵 ------------------------------------------------------------------');
+        throw Exception('Failed to delete user account: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('🔴 API Error (deleteUserAccount): $e');
+      debugPrint('🔵 ------------------------------------------------------------------');
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> deleteDriverAccount() async {
+    try {
+      debugPrint('🔵 ------------------------------------------------------------------');
+      debugPrint('🔵 [ApiService] deleteDriverAccount called');
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString(_prefsAuthTokenKey);
+      if (token == null) throw Exception('No auth token found');
+
+      debugPrint('🔵 [ApiService] Request URL: ${ApiConstants.deleteDriverAccount}');
+      debugPrint('🔵 [ApiService] Authorization: Bearer ${token.substring(0, token.length > 8 ? 8 : token.length)}***');
+
+      final response = await http.delete(
+        Uri.parse(ApiConstants.deleteDriverAccount),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      debugPrint('🟣 [ApiService] Response Status: ${response.statusCode}');
+      debugPrint('🟣 [ApiService] Response Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        debugPrint('🟢 [ApiService] deleteDriverAccount Success');
+        debugPrint('🔵 ------------------------------------------------------------------');
+        return jsonDecode(response.body);
+      } else {
+        debugPrint('🔴 [ApiService] deleteDriverAccount Failed');
+        debugPrint('🔵 ------------------------------------------------------------------');
+        throw Exception('Failed to delete driver account: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('🔴 API Error (deleteDriverAccount): $e');
+      debugPrint('🔵 ------------------------------------------------------------------');
+      rethrow;
+    }
+  }
+
   Future<Map<String, dynamic>> bookRide(
     Map<String, dynamic> bookingDetails,
   ) async {

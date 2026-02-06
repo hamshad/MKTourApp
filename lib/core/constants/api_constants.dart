@@ -20,12 +20,14 @@ class ApiConstants {
   static const String userLogin = '$baseUrl/user/login';
   static const String userProfile = '$baseUrl/users/me';
   static const String updateUser = '$baseUrl/users/update';
+  static const String deleteUserAccount = '$baseUrl/users/account';
   static const String rideHistory = '$baseUrl/users/rides';
 
   // Driver Endpoints
   static const String driverRegister = '$baseUrl/driver/register';
   static const String driverLogin = '$baseUrl/driver/login';
   static const String driverProfile = '$baseUrl/drivers/me';
+  static const String deleteDriverAccount = '$baseUrl/drivers/account';
   static const String uploadVehicleImages =
       '$baseUrl/drivers/upload-vehicle-images';
   static const String deleteVehicleImage =
