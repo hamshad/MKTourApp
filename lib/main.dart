@@ -5,7 +5,6 @@ import 'core/auth_provider.dart';
 import 'core/config/api_config.dart';
 import 'core/services/stripe_service.dart';
 import 'features/auth/splash_screen.dart';
-import 'features/auth/login_screen.dart';
 import 'features/auth/signup_screen.dart';
 import 'features/onboarding/intro_screen.dart';
 import 'features/onboarding/marketing_consent_screen.dart';
@@ -66,7 +65,6 @@ class RideEaseApp extends StatelessWidget {
       home: const SplashScreen(),
       routes: {
         '/role-selection': (context) => const RoleSelectionScreen(),
-        '/login': (context) => const LoginScreen(),
         '/signup': (context) => const SignupScreen(),
         '/onboarding': (context) => const IntroScreen(),
         '/marketing-consent': (context) => const MarketingConsentScreen(),
