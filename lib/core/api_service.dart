@@ -6,6 +6,8 @@ import 'package:http_parser/http_parser.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'constants/api_constants.dart';
+// ignore: unused_import
+import 'models/api_error.dart';
 
 class ApiService {
   final String baseUrl = ApiConstants.baseUrl;
