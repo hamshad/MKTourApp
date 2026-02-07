@@ -83,8 +83,11 @@ class _SplashScreenState extends State<SplashScreen> {
             const SizedBox(height: 12),
 
             Text(
-              'Your journey, simplified',
-              style: Theme.of(context).textTheme.bodyMedium,
+              'Proud to Serve',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(fontWeight: FontWeight.w600),
             ),
           ],
         ),
