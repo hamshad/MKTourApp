@@ -1,5 +1,20 @@
 import 'dart:convert';
 
+/// Special error codes returned by backend
+class ErrorCode {
+  // Driver profile errors
+  static const String profileIncomplete = 'PROFILE_INCOMPLETE';
+  static const String notApproved = 'NOT_APPROVED';
+  
+  // Image upload errors
+  static const String noImagesUploaded = 'NO_IMAGES_UPLOADED';
+  static const String maxImagesExceeded = 'MAX_IMAGES_EXCEEDED';
+  
+  // Validation errors
+  static const String invalidCoordinates = 'INVALID_COORDINATES';
+  static const String invalidBoolean = 'INVALID_BOOLEAN';
+}
+
 /// Represents an API error response from the backend
 class ApiError implements Exception {
   final bool success;
@@ -184,6 +199,61 @@ class ServerException extends ApiError {
     message: message,
     statusCode: statusCode,
   );
+}
+
+class DriverException extends ApiError {
+  DriverException({
+    required String message,
+    dynamic errors,
+    int? statusCode,
+  }) : super(
+    success: false,
+    message: message,
+    errors: errors,
+    statusCode: statusCode,
+  );
+
+  /// Check if this is a profile incomplete error
+  bool isProfileIncomplete() {
+    if (errors is Map) {
+      final errorsMap = errors as Map<String, dynamic>;
+      return errorsMap['code'] == ErrorCode.profileIncomplete;
+    }
+    return false;
+  }
+
+  /// Check if this is a not approved error
+  bool isNotApproved() {
+    if (errors is Map) {
+      final errorsMap = errors as Map<String, dynamic>;
+      return errorsMap['code'] == ErrorCode.notApproved;
+    }
+    return false;
+  }
+
+  /// Get the error code if present
+  String? getErrorCode() {
+    if (errors is Map) {
+      final errorsMap = errors as Map<String, dynamic>;
+      return errorsMap['code'] as String?;
+    }
+    return null;
+  }
+
+  /// Check if driver is missing specific documents
+  bool isMissingVehicleImages() =>
+      message.toLowerCase().contains('vehicle image');
+
+  bool isMissingLicense() =>
+      message.toLowerCase().contains('license');
+
+  bool isMissingVehicleDetails() =>
+      message.toLowerCase().contains('vehicle detail');
+
+  /// Check if image count exceeds limit
+  bool isMaxImagesExceeded() =>
+      message.toLowerCase().contains('maximum') &&
+      message.toLowerCase().contains('image');
 }
 
 class NetworkException implements Exception {

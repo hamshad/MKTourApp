@@ -262,6 +262,95 @@ import 'models/api_error.dart';
 /// }
 /// ```
 
+/// EXAMPLE 7: Driver Profile Status Error
+/// 
+/// Special handling for profile incomplete and not approved status codes
+///
+/// ```dart
+/// Future<void> _goOnline() async {
+///   try {
+///     final response = await _apiService.updateDriverStatus(true);
+///     if (response['success']) {
+///       // Update UI to show online status
+///       setState(() => _isOnline = true);
+///     }
+///   } on DriverException catch (e) {
+///     // Special handling for profile status
+///     DriverErrorHandler.handleProfileStatusError(context, e);
+///   } catch (e) {
+///     ErrorDisplayHelper.showErrorSnackbar(context, 'Failed to go online');
+///   }
+/// }
+/// ```
+
+/// EXAMPLE 8: Driver Arrive at Location with Distance
+/// 
+/// Handle distance validation errors with current and required distance
+///
+/// ```dart
+/// Future<void> _arriveAtPickup() async {
+///   try {
+///     final response = await _apiService.arriveAtPickup(
+///       _rideId,
+///       _currentLat,
+///       _currentLng,
+///     );
+///     if (response['success']) {
+///       // Show arrived status
+///       _showArrivedNotification();
+///     }
+///   } on DriverException catch (e) {
+///     // Handles distance errors with specialized message
+///     DriverErrorHandler.handleArriveError(context, e);
+///   } catch (e) {
+///     ErrorDisplayHelper.showErrorSnackbar(context, 'Error arriving at pickup');
+///   }
+/// }
+/// ```
+
+/// EXAMPLE 9: Vehicle Image Upload with Limit Check
+/// 
+/// Handle image upload validation and max image limit
+///
+/// ```dart
+/// Future<void> _uploadVehicleImages() async {
+///   try {
+///     final response = await _apiService.uploadVehicleImages(_selectedImages);
+///     if (response['success']) {
+///       ErrorDisplayHelper.showSuccessSnackbar(context, 'Images uploaded');
+///       _selectedImages.clear();
+///       _refreshVehicleImages();
+///     }
+///   } on DriverException catch (e) {
+///     // Special handling for image validation
+///     DriverErrorHandler.handleImageUploadError(context, e);
+///   } catch (e) {
+///     ErrorDisplayHelper.showErrorSnackbar(context, 'Failed to upload images');
+///   }
+/// }
+/// ```
+
+/// EXAMPLE 10: Driver Start Ride with OTP
+/// 
+/// Handle OTP verification with attempts remaining
+///
+/// ```dart
+/// Future<void> _startRide() async {
+///   try {
+///     final response = await _apiService.startRide(_rideId, _otpCode);
+///     if (response['success']) {
+///       // Navigate to ride in progress screen
+///       Navigator.pushReplacementNamed(context, '/ride-progress');
+///     }
+///   } on DriverException catch (e) {
+///     // Special handling for OTP and ride start errors
+///     DriverErrorHandler.handleStartRideError(context, e);
+///   } catch (e) {
+///     ErrorDisplayHelper.showErrorSnackbar(context, 'Failed to start ride');
+///   }
+/// }
+/// ```
+
 // NOTE: The actual implementation of these examples should be done
 // in lib/core/api_service.dart and the screens that use these methods.
 // This file is just for reference and documentation.
