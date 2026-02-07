@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme.dart';
 import '../../core/auth_provider.dart';
 import '../auth/phone_login_screen.dart';
+import '../auth/role_selection_screen.dart';
 import 'edit_driver_profile_screen.dart';
 import '../../core/widgets/pdf_viewer_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -1093,6 +1094,79 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                       //   'Navigation, Sound',
                       //   showDivider: true,
                       // ),
+                      _buildMenuItem(
+                        Icons.delete_forever,
+                        'Delete Account',
+                        'Permanently delete your driver account',
+                        isDestructive: true,
+                        onTap: () async {
+                          final rootContext = context;
+                          final confirm = await showDialog<bool>(
+                            context: rootContext,
+                            builder: (dialogContext) => AlertDialog(
+                              title: const Text('Delete Account'),
+                              content: const Text(
+                                'Are you sure you want to delete your driver account? This action is irreversible.',
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(dialogContext, false),
+                                  child: const Text('Cancel'),
+                                ),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(dialogContext, true),
+                                  style: TextButton.styleFrom(foregroundColor: Colors.red),
+                                  child: const Text('Delete'),
+                                ),
+                              ],
+                            ),
+                          );
+
+                          if (confirm != true) return;
+
+                          final authProvider = Provider.of<AuthProvider>(rootContext, listen: false);
+
+                          showDialog(
+                            context: rootContext,
+                            barrierDismissible: false,
+                            builder: (progressContext) => const Center(child: CircularProgressIndicator()),
+                          );
+
+                          final success = await authProvider.deleteAccount();
+
+                          if (!mounted) return;
+                          Navigator.pop(rootContext); // close progress
+
+                          if (success) {
+                            final message = authProvider.lastDeleteMessage ?? 'Driver account deleted successfully.';
+                            showDialog(
+                              context: rootContext,
+                              barrierDismissible: false,
+                              builder: (resultContext) => AlertDialog(
+                                title: const Text('Account Deleted'),
+                                content: Text(message),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () {
+                                      Navigator.of(resultContext).pop();
+                                      Navigator.of(rootContext).pushAndRemoveUntil(
+                                        MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
+                                        (route) => false,
+                                      );
+                                    },
+                                    child: const Text('OK'),
+                                  ),
+                                ],
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(rootContext).showSnackBar(
+                              const SnackBar(content: Text('Failed to delete account. Please try again.')),
+                            );
+                          }
+                        },
+                        showDivider: true,
+                      ),
                       _buildMenuItem(
                         Icons.logout_rounded,
                         'Log Out',
