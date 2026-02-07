@@ -50,6 +50,32 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   final PlacesService _placesService = PlacesService();
   String _rideStatus = 'searching';
 
+  bool _isValidDriver(dynamic driver) {
+    if (driver is! Map) return false;
+    if (driver.isEmpty) return false;
+    final id = driver['_id'] ?? driver['id'];
+    final name = driver['name'];
+    final idOk = id != null && id.toString().trim().isNotEmpty;
+    final nameOk = name != null && name.toString().trim().isNotEmpty;
+    return idOk || nameOk;
+  }
+
+  String _normalizeRideStatus(dynamic status, bool hasValidDriver) {
+    final statusStr = status?.toString() ?? '';
+    if (statusStr.isEmpty || statusStr == 'requested') {
+      return 'searching';
+    }
+
+    if (!hasValidDriver &&
+        (statusStr == 'accepted' ||
+            statusStr == 'driver_arrived' ||
+            statusStr == 'in_progress')) {
+      return 'searching';
+    }
+
+    return statusStr;
+  }
+
   // Locations (using latlong2 for cross-platform compatibility)
   late latlong2.LatLng _userLocation;
   latlong2.LatLng? _driverLocation;
@@ -155,13 +181,16 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       if (response['success'] == true && response['data'] != null) {
         final rideData = response['data'];
         final status = rideData['status'];
+        final driverData = rideData['driver'];
+        final hasValidDriver = _isValidDriver(driverData);
+        final normalizedStatus = _normalizeRideStatus(status, hasValidDriver);
 
         debugPrint(
-          '🔄 [RideAssignedScreen] Synced ride status: $status, current UI state: $_rideStatus',
+          '🔄 [RideAssignedScreen] Synced ride status: $status (normalized: $normalizedStatus), current UI state: $_rideStatus',
         );
 
         // If backend says it's in a different state than our UI
-        if (status != _rideStatus) {
+        if (normalizedStatus != _rideStatus) {
           debugPrint(
             '⚠️ [RideAssignedScreen] Status mismatch detected! Backend: $status, UI: $_rideStatus',
           );
@@ -169,11 +198,11 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
           // Update UI to match backend state
           if (mounted) {
             setState(() {
-              _rideStatus = status;
+              _rideStatus = normalizedStatus;
 
-              // Update driver data if available
-              if (rideData['driver'] != null) {
-                _driver = rideData['driver'];
+              // Update driver data only when valid
+              if (hasValidDriver) {
+                _driver = driverData as Map<String, dynamic>;
 
                 // Update OTP if available
                 _otp =
@@ -214,10 +243,12 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     debugPrint('🚀 [RideAssignedScreen] Setting up initial state...');
     debugPrint('🚀 [RideAssignedScreen] widget.driver: ${widget.driver}');
 
-    if (widget.driver != null) {
+    final bool hasValidInitialDriver = _isValidDriver(widget.driver);
+
+    if (hasValidInitialDriver) {
       debugPrint('✅ [RideAssignedScreen] Initial driver data provided');
       _rideStatus = 'accepted';
-      _driver = widget.driver!;
+      _driver = widget.driver as Map<String, dynamic>;
 
       // Try multiple possible OTP field names from initial data
       _otp =
@@ -470,6 +501,13 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         debugPrint('⚠️ [RideAssignedScreen] Driver data is NULL!');
       }
 
+      if (!_isValidDriver(driverData)) {
+        debugPrint(
+          '⚠️ [RideAssignedScreen] Invalid driver data received, ignoring ride:accepted.',
+        );
+        return;
+      }
+
       // CRITICAL: Check mounted AND context validity before setState
       if (!mounted || !context.mounted) {
         debugPrint(
@@ -484,7 +522,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
         setState(() {
           _rideStatus = 'accepted';
-          _driver = data['driver'] ?? {};
+          _driver = driverData as Map<String, dynamic>;
 
           // Try multiple possible OTP field names
           _otp =
