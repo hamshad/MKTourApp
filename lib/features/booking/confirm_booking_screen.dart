@@ -431,9 +431,12 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
                           ),
                         ),
                       ),
+                ),
               ),
             ),
           ),
-          ),
-
+        ],
+      ),
+    );
+  }
 }

@@ -40,4 +40,16 @@ post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
   end
+  
+  # Fix for Stripe SDK: Replace deprecated TARGET_OS_MACCATALYST preprocessor macro
+  file_path = "#{File.expand_path(File.dirname(__FILE__))}/Pods/StripeFinancialConnections/StripeFinancialConnections/StripeFinancialConnections/Source/Native/Shared/UIViewController+KeyboardAvoiding.swift"
+  if File.exist?(file_path)
+    content = File.read(file_path)
+    if content.include?('TARGET_OS_MACCATALYST')
+      content.gsub!('#if !TARGET_OS_MACCATALYST', '#if !targetEnvironment(macCatalyst)')
+      content.gsub!('#if TARGET_OS_MACCATALYST', '#if targetEnvironment(macCatalyst)')
+      File.write(file_path, content)
+      puts "✅ Fixed StripeFinancialConnections UIViewController+KeyboardAvoiding.swift"
+    end
+  end
 end
