@@ -625,10 +625,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
     if (_status == 'online') {
       debugPrint('🔔 [DriverHomeScreen] Starting ringtone sound...');
       // Use playRingtone for better visibility as it's meant for alerts
-      FlutterRingtonePlayer().playRingtone(
-        looping: true,
-        asAlarm: true, // Priority channel on Android
-      );
+      // Play a short notification sound (non-looping)
+      FlutterRingtonePlayer().playNotification();
 
       setState(() {
         _status = 'request';
