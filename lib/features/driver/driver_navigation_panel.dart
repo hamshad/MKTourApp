@@ -354,10 +354,12 @@ class DriverNavigationPanel extends StatelessWidget {
           ],
 
           // Main Action Button
-          SizedBox(
-            width: double.infinity,
-            height: 56,
-            child: ElevatedButton(
+          Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
+            child: SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton(
               onPressed: status == 'awaiting_payment' ? null : onAction, // Disable if just waiting
               style: ElevatedButton.styleFrom(
                 backgroundColor: _actionColor,
@@ -381,6 +383,7 @@ class DriverNavigationPanel extends StatelessWidget {
                   ),
                 ),
               ),
+            ),
             ),
           ),
           const SizedBox(height: 16),

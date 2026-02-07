@@ -385,11 +385,17 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
 
           // Confirm Button
           Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: ElevatedButton(
+            padding: EdgeInsets.only(
+              left: 24,
+              right: 24,
+              top: 24,
+              bottom: 24,
+            ),
+            child: SafeArea(
+              child: SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
                 onPressed: _isLoading
                     ? null
                     : () => _confirmBooking(
@@ -428,10 +434,6 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
               ),
             ),
           ),
-        ],
-      ),
-    );
-  }
-
+          ),
 
 }

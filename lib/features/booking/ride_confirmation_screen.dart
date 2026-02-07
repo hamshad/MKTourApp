@@ -838,7 +838,12 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     final hasError = _fareError != null;
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 16,
+        bottom: 16,
+      ),
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [

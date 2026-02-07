@@ -181,8 +181,10 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
       context: context,
       builder: (BuildContext context) {
         return SafeArea(
-          child: Wrap(
-            children: <Widget>[
+          child: Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
+            child: Wrap(
+              children: <Widget>[
               ListTile(
                 leading: const Icon(Icons.photo_library),
                 title: const Text('Photo Library'),
@@ -200,6 +202,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                 },
               ),
             ],
+            ),
           ),
         );
       },

@@ -226,7 +226,12 @@ class _RideSearchingOverlayState extends State<RideSearchingOverlay>
 
                           // Cancel button
                           Padding(
-                            padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+                            padding: EdgeInsets.only(
+                              left: 24,
+                              right: 24,
+                              top: 24,
+                              bottom: 32 + MediaQuery.of(context).padding.bottom,
+                            ),
                             child: SizedBox(
                               width: double.infinity,
                               height: 56,

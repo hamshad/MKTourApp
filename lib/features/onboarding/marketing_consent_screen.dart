@@ -61,21 +61,24 @@ class _MarketingConsentScreenState extends State<MarketingConsentScreen> {
                 },
               ),
               const Spacer(),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _accepted != null
-                      ? () {
-                          // Store choice locally (mock)
-                          Navigator.pushNamed(context, '/payment-method');
-                        }
-                      : null,
-                  child: const FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      'Continue',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+              Padding(
+                padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _accepted != null
+                        ? () {
+                            // Store choice locally (mock)
+                            Navigator.pushNamed(context, '/payment-method');
+                          }
+                        : null,
+                    child: const FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        'Continue',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ),
                 ),

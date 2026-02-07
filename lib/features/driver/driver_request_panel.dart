@@ -297,10 +297,12 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
           const Spacer(),
 
           // Action Buttons
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
+          Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
                   onPressed: widget.onDecline,
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 18),
@@ -353,6 +355,7 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                 ),
               ),
             ],
+            ),
           ),
           const SizedBox(height: 16),
         ],

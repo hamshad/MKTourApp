@@ -361,10 +361,12 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
                   const SizedBox(height: 24),
                   
                   // Actions
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
+                  Padding(
+                    padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
                           onPressed: () {},
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 16),
@@ -419,6 +421,7 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
                         ),
                       ),
                     ],
+                    ),
                   ),
                 ],
               ),
