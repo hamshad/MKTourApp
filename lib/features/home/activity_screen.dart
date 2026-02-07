@@ -1,9 +1,85 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+
 import '../../core/theme.dart';
 import '../../core/auth_provider.dart';
 import '../activity/ride_detail_screen.dart';
+
+class _StatusFilter {
+  final String label;
+  final List<String> statusKeys;
+
+  const _StatusFilter({required this.label, required this.statusKeys});
+}
+
+const List<_StatusFilter> _statusFilters = [
+  _StatusFilter(label: 'All', statusKeys: []),
+  _StatusFilter(label: 'Requested', statusKeys: ['requested']),
+  _StatusFilter(label: 'Accepted', statusKeys: ['accepted']),
+  _StatusFilter(
+    label: 'Driver Arrived',
+    statusKeys: ['driver_arrived', 'arrived'],
+  ),
+  _StatusFilter(
+    label: 'In Progress',
+    statusKeys: ['in_progress', 'driver_assigned', 'started'],
+  ),
+  _StatusFilter(label: 'Completed', statusKeys: ['completed']),
+  _StatusFilter(label: 'Early Completed', statusKeys: ['early_completed']),
+  _StatusFilter(
+    label: 'Cancelled (User)',
+    statusKeys: ['cancelled_by_user', 'cancelled'],
+  ),
+  _StatusFilter(
+    label: 'Cancelled (Driver)',
+    statusKeys: ['cancelled_by_driver', 'cancelled'],
+  ),
+  _StatusFilter(label: 'Terminated', statusKeys: ['terminated']),
+  _StatusFilter(label: 'Expired', statusKeys: ['expired']),
+];
+
+const Set<String> _terminalStatuses = {
+  'completed',
+  'early_completed',
+  'cancelled',
+  'cancelled_by_user',
+  'cancelled_by_driver',
+  'expired',
+  'terminated',
+};
+
+const Map<String, String> _statusDisplayNames = {
+  'requested': 'Requested',
+  'accepted': 'Accepted',
+  'driver_arrived': 'Driver Arrived',
+  'arrived': 'Driver Arrived',
+  'in_progress': 'In Progress',
+  'driver_assigned': 'Driver Assigned',
+  'started': 'Ride Started',
+  'completed': 'Completed',
+  'early_completed': 'Early Completed',
+  'cancelled': 'Cancelled',
+  'cancelled_by_user': 'Cancelled (User)',
+  'cancelled_by_driver': 'Cancelled (Driver)',
+  'terminated': 'Terminated',
+  'expired': 'Expired',
+};
+
+String _formatStatusLabel(String status) {
+  final normalized = status.toLowerCase();
+  if (normalized.isEmpty) {
+    return 'Unknown';
+  }
+  final predefLabel = _statusDisplayNames[normalized];
+  if (predefLabel != null) return predefLabel;
+
+  return normalized
+      .split('_')
+      .where((segment) => segment.isNotEmpty)
+      .map((segment) => '${segment[0].toUpperCase()}${segment.substring(1)}')
+      .join(' ');
+}
 
 class ActivityScreen extends StatefulWidget {
   const ActivityScreen({super.key});
@@ -41,6 +117,11 @@ class _ActivityScreenState extends State<ActivityScreen> {
       setState(() => _isLoading = false);
     }
   }
+
+  _StatusFilter get _activeStatusFilter => _statusFilters.firstWhere(
+    (filter) => filter.label == _selectedFilter,
+    orElse: () => _statusFilters.first,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -90,6 +171,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
         }
 
         final allRidesFromSource = authProvider.rideHistory;
+        final selectedStatuses = _activeStatusFilter.statusKeys;
 
         // Filter rides based on tab
         List<dynamic> rides;
@@ -97,22 +179,14 @@ class _ActivityScreenState extends State<ActivityScreen> {
           rides = allRidesFromSource.where((ride) {
             final status = (ride['status'] as String?)?.toLowerCase() ?? '';
             // Ongoing includes everything that is NOT terminal
-            return status != 'completed' &&
-                status != 'cancelled' &&
-                status != 'expired' &&
-                status != 'early_completed';
+            return !_terminalStatuses.contains(status);
           }).toList();
         } else {
           // All Tab - apply chip filter
           rides = allRidesFromSource.where((ride) {
-            if (_selectedFilter == 'All') return true;
             final status = (ride['status'] as String?)?.toLowerCase() ?? '';
-            // Handle "In Progress" filter matching "in_progress" status
-            final filterValue = _selectedFilter.toLowerCase().replaceAll(
-              ' ',
-              '_',
-            );
-            return status == filterValue;
+            if (selectedStatuses.isEmpty) return true;
+            return selectedStatuses.contains(status);
           }).toList();
         }
 
@@ -174,32 +248,24 @@ class _ActivityScreenState extends State<ActivityScreen> {
   }
 
   Widget _buildFilterBar() {
-    final filters = [
-      'All',
-      'Requested',
-      'In Progress',
-      'Completed',
-      'Cancelled',
-      'Expired',
-    ];
     return Container(
       height: 60,
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: filters.length,
+        itemCount: _statusFilters.length,
         itemBuilder: (context, index) {
-          final filter = filters[index];
-          final isSelected = _selectedFilter == filter;
+          final filter = _statusFilters[index];
+          final isSelected = _selectedFilter == filter.label;
           return Padding(
             padding: const EdgeInsets.only(right: 8),
             child: FilterChip(
-              label: Text(filter),
+              label: Text(filter.label),
               selected: isSelected,
               onSelected: (selected) {
                 setState(() {
-                  _selectedFilter = filter;
+                  _selectedFilter = filter.label;
                 });
               },
               selectedColor: AppTheme.primaryColor.withValues(alpha: 0.1),
@@ -276,21 +342,27 @@ class _ActivityScreenState extends State<ActivityScreen> {
       case 'early_completed':
         return Colors.lightGreen;
       case 'cancelled':
+      case 'cancelled_by_user':
+      case 'cancelled_by_driver':
         return Colors.red;
       case 'expired':
         return Colors.orange;
+      case 'terminated':
+        return Colors.red.shade900;
       case 'requested':
-      case 'pending': // Legacy support
-        return Colors.amber;
-      case 'accepted':
-      case 'driver_assigned':
         return Colors.blue;
-      case 'in_progress':
-      case 'started': // Legacy support
-        return Colors.purple;
-      case 'arrived':
+      case 'accepted':
+        return Colors.orangeAccent;
       case 'driver_arrived':
+        return Colors.deepOrange;
+      case 'in_progress':
+      case 'driver_assigned':
+      case 'started':
+        return Colors.blue;
+      case 'arrived':
         return Colors.teal;
+      case 'pending':
+        return Colors.amber;
       default:
         return Colors.grey;
     }
@@ -305,6 +377,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
     required Map<String, dynamic> rideData,
   }) {
     final statusColor = _getStatusColor(status);
+    final displayStatus = _formatStatusLabel(status);
 
     return InkWell(
       onTap: () {
@@ -371,7 +444,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
               borderRadius: BorderRadius.circular(4),
             ),
             child: Text(
-              status.toUpperCase(),
+              displayStatus.toUpperCase(),
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
