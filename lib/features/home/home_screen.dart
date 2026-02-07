@@ -266,6 +266,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       isConnected,
     ) {
       if (isConnected) {
+        debugPrint(
+          '🔄 [HomeScreen] Socket reconnected, restoring listeners...',
+        );
+        // Re-setup socket listeners after reconnection
+        _restoreSocketListeners();
         _emitUserOnline();
       }
     });

@@ -65,6 +65,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
   // Last emitted location timestamp to throttle updates
   DateTime? _lastEmitTime;
   static const int _minEmitIntervalMs = 3000; // Minimum 3 seconds between emits
+  
+  // Track if socket listeners are set up to re-register after reconnection
+  bool _socketListenersSetup = false;
 
   @override
   void initState() {
@@ -108,11 +111,19 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
     _connectionSubscription = _socketService.connectionStatus.listen((
       isConnected,
     ) {
-      if (isConnected && _status != 'offline') {
+      if (isConnected) {
         debugPrint(
-          '🔄 [DriverHomeScreen] Reconnected, re-emitting driver status',
+          '🔄 [DriverHomeScreen] Socket reconnected, re-setting up listeners',
         );
-        _emitDriverOnline();
+        // Re-setup socket listeners after reconnection
+        _setupSocketListeners();
+        
+        if (_status != 'offline') {
+          debugPrint(
+            '🔄 [DriverHomeScreen] Re-emitting driver status',
+          );
+          _emitDriverOnline();
+        }
       }
     });
   }
@@ -175,6 +186,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
     _socketService.off('ride:longRunning');
     _socketService.off('ride:expired');
     _socketService.off('ride:cancelled');
+    _socketService.off('ride:cancelledByUser');
     _socketService.off('driver:status');
     _socketService.off('driver:locationUpdated');
     _socketService.off('payment:succeeded');
@@ -433,6 +445,23 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
 
   void _setupSocketListeners() {
     debugPrint('👂 [DriverHomeScreen] Setting up socket listeners...');
+    
+    // Clean up existing listeners before re-registering to prevent duplicates
+    if (_socketListenersSetup) {
+      debugPrint('🧹 [DriverHomeScreen] Cleaning up old socket listeners before re-setup...');
+      _socketService.off('ride:newRequest');
+      _socketService.off('ride:reminder');
+      _socketService.off('ride:longRunning');
+      _socketService.off('ride:expired');
+      _socketService.off('ride:cancelled');
+      _socketService.off('ride:cancelledByUser');
+      _socketService.off('driver:status');
+      _socketService.off('driver:locationUpdated');
+      _socketService.off('payment:succeeded');
+      _socketService.off('ride:paymentSelected');
+    }
+    
+    _socketListenersSetup = true;
 
     // Listen for driver status confirmation
     _socketService.on('driver:status', (data) {
