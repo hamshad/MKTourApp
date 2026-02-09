@@ -23,14 +23,33 @@ class UserRegistrationScreen extends StatefulWidget {
 
 class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
   final TextEditingController _otpController = TextEditingController();
+  final TextEditingController _nameController = TextEditingController();
   final ApiService _apiService = ApiService();
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.name != null) {
+      _nameController.text = widget.name!;
+    }
+  }
 
   Future<void> _completeRegistration() async {
     if (_otpController.text.length != 6) {
       CustomSnackbar.show(
         context,
         message: 'Please enter a valid 6-digit OTP',
+        type: SnackbarType.warning,
+      );
+      return;
+    }
+
+    // For new users, validate name field
+    if (widget.isNewUser && _nameController.text.trim().isEmpty) {
+      CustomSnackbar.show(
+        context,
+        message: 'Please enter your name',
         type: SnackbarType.warning,
       );
       return;
@@ -45,7 +64,7 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
         phone: widget.phoneNumber,
         otp: _otpController.text,
         role: 'user',
-        name: widget.name, 
+        name: widget.isNewUser ? _nameController.text.trim() : widget.name,
       );
 
       if (!mounted) return;
@@ -160,13 +179,52 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
                     hintStyle: TextStyle(color: Colors.grey, letterSpacing: 8),
                   ),
                   onChanged: (value) {
-                    if (value.length == 6) {
+                    if (value.length == 6 && !widget.isNewUser) {
                       _completeRegistration();
                     }
                   },
                   textAlign: TextAlign.center,
                 ),
               ),
+
+              if (widget.isNewUser) ...[              
+                const SizedBox(height: 32),
+                
+                // Name Input Section for new users
+                Text(
+                  'Your Name',
+                  style: GoogleFonts.outfit(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                
+                Container(
+                  decoration: BoxDecoration(
+                    color: AppTheme.surfaceColor,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppTheme.borderColor),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  child: TextField(
+                    controller: _nameController,
+                    style: GoogleFonts.outfit(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w500,
+                      color: AppTheme.textPrimary,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'Full Name',
+                      hintStyle: GoogleFonts.outfit(color: AppTheme.textSecondary),
+                      border: InputBorder.none,
+                      icon: const Icon(Icons.person_outline, color: AppTheme.textSecondary),
+                    ),
+                    textCapitalization: TextCapitalization.words,
+                  ),
+                ),
+              ],
               
               const Spacer(),
               

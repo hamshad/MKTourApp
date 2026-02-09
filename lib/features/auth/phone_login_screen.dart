@@ -103,6 +103,7 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
                 ),
               );
             } else {
+              // For new passengers, navigate directly to registration screen
               Navigator.push(
                 context,
                 MaterialPageRoute(
