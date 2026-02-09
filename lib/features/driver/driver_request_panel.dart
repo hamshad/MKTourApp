@@ -7,12 +7,14 @@ class DriverRequestPanel extends StatefulWidget {
   final VoidCallback onAccept;
   final VoidCallback onDecline;
   final Map<String, dynamic>? rideData;
+  final bool isLoading;
 
   const DriverRequestPanel({
     super.key,
     required this.onAccept,
     required this.onDecline,
     this.rideData,
+    this.isLoading = false,
   });
 
   @override
@@ -303,7 +305,7 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
               children: [
                 Expanded(
                   child: OutlinedButton(
-                  onPressed: widget.onDecline,
+                  onPressed: widget.isLoading ? null : widget.onDecline,
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 18),
                     side: BorderSide(
@@ -314,21 +316,30 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                       borderRadius: BorderRadius.circular(16),
                     ),
                   ),
-                  child: const Text(
-                    'Decline',
-                    style: TextStyle(
-                      color: Colors.red,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  child: widget.isLoading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.red,
+                          ),
+                        )
+                      : const Text(
+                          'Decline',
+                          style: TextStyle(
+                            color: Colors.red,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                 ),
               ),
               const SizedBox(width: 16),
               Expanded(
                 flex: 2,
                 child: ElevatedButton(
-                  onPressed: widget.onAccept,
+                  onPressed: widget.isLoading ? null : widget.onAccept,
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 18),
                     backgroundColor: AppTheme.primaryColor,
@@ -338,20 +349,29 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                       borderRadius: BorderRadius.circular(16),
                     ),
                   ),
-                  child: const FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      'Accept Ride',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                  ),
+                  child: widget.isLoading
+                      ? const SizedBox(
+                          height: 24,
+                          width: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            'Accept Ride',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
                 ),
               ),
             ],

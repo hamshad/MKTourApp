@@ -854,12 +854,20 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                       ),
                     ),
                     TextButton.icon(
-                      onPressed: _uploadVehicleImages,
-                      icon: const Icon(
-                        Icons.add_photo_alternate_outlined,
-                        size: 20,
-                      ),
-                      label: const Text('Add Photos'),
+                      onPressed: _isVehicleUploading ? null : _uploadVehicleImages,
+                      icon: _isVehicleUploading
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Icon(
+                              Icons.add_photo_alternate_outlined,
+                              size: 20,
+                            ),
+                      label: Text(_isVehicleUploading ? 'Uploading...' : 'Add Photos'),
                       style: TextButton.styleFrom(
                         foregroundColor: AppTheme.primaryColor,
                       ),

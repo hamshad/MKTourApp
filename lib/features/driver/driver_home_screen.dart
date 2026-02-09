@@ -1606,6 +1606,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
         rideData: _rideData,
         onAccept: _handleRideAction,
         onDecline: _declineRide,
+        isLoading: _isLoading,
       );
     } else if (_status == 'pickup' ||
         _status == 'arrived' ||
@@ -1619,6 +1620,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
         onCancel: _showCancellationReasonDialog,
         onEndEarly: _showEndRideEarlyDialog,
         navigationState: _navigationState,
+        isLoading: _isLoading,
       );
     } else {
       return _buildOfflineOnlineContent();

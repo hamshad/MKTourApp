@@ -10,6 +10,7 @@ class DriverNavigationPanel extends StatelessWidget {
   final VoidCallback? onEndEarly;
   final Map<String, dynamic>? rideData;
   final NavigationState? navigationState;
+  final bool isLoading;
 
   const DriverNavigationPanel({
     super.key,
@@ -19,6 +20,7 @@ class DriverNavigationPanel extends StatelessWidget {
     this.onEndEarly,
     this.rideData,
     this.navigationState,
+    this.isLoading = false,
   });
 
   String get _actionText {
@@ -297,7 +299,7 @@ class DriverNavigationPanel extends StatelessWidget {
               width: double.infinity,
               height: 48,
                 child: OutlinedButton(
-                  onPressed: onCancel,
+                  onPressed: isLoading ? null : onCancel,
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.red,
                     side: const BorderSide(color: Colors.red),
@@ -305,17 +307,26 @@ class DriverNavigationPanel extends StatelessWidget {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  child: const FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.close, color: Colors.red, size: 20),
-                        SizedBox(width: 8),
-                        Text('Cancel Ride'),
-                      ],
-                    ),
-                  ),
+                  child: isLoading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.red,
+                          ),
+                        )
+                      : const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.close, color: Colors.red, size: 20),
+                              SizedBox(width: 8),
+                              Text('Cancel Ride'),
+                            ],
+                          ),
+                        ),
                 ),
             ),
             const SizedBox(height: 12),
@@ -325,7 +336,7 @@ class DriverNavigationPanel extends StatelessWidget {
               width: double.infinity,
               height: 48,
                 child: OutlinedButton(
-                  onPressed: onEndEarly,
+                  onPressed: isLoading ? null : onEndEarly,
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.orange,
                     side: const BorderSide(color: Colors.orange),
@@ -333,21 +344,30 @@ class DriverNavigationPanel extends StatelessWidget {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  child: const FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.stop_circle_outlined,
-                          color: Colors.orange,
-                          size: 20,
+                  child: isLoading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.orange,
+                          ),
+                        )
+                      : const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.stop_circle_outlined,
+                                color: Colors.orange,
+                                size: 20,
+                              ),
+                              SizedBox(width: 8),
+                              Text('End Ride Early'),
+                            ],
+                          ),
                         ),
-                        SizedBox(width: 8),
-                        Text('End Ride Early'),
-                      ],
-                    ),
-                  ),
                 ),
             ),
             const SizedBox(height: 12),
@@ -360,7 +380,7 @@ class DriverNavigationPanel extends StatelessWidget {
               width: double.infinity,
               height: 56,
               child: ElevatedButton(
-              onPressed: status == 'awaiting_payment' ? null : onAction, // Disable if just waiting
+              onPressed: (status == 'awaiting_payment' || isLoading) ? null : onAction, // Disable if waiting or loading
               style: ElevatedButton.styleFrom(
                 backgroundColor: _actionColor,
                 elevation: 8,
@@ -369,20 +389,29 @@ class DriverNavigationPanel extends StatelessWidget {
                   borderRadius: BorderRadius.circular(16),
                 ),
               ),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  _actionText.toUpperCase(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                    letterSpacing: 1.2,
-                  ),
-                ),
-              ),
+              child: isLoading
+                  ? const SizedBox(
+                      height: 24,
+                      width: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: Colors.white,
+                      ),
+                    )
+                  : FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        _actionText.toUpperCase(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                    ),
             ),
             ),
           ),
