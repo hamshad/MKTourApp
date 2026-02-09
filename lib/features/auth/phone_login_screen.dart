@@ -6,7 +6,6 @@ import '../../core/api_service.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/custom_snackbar.dart';
 import 'driver_registration_screen.dart';
-import 'name_input_screen.dart';
 
 class PhoneLoginScreen extends StatefulWidget {
   final String role; // 'user' or 'driver'
@@ -67,23 +66,61 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
         );
 
         if (isNewUser) {
-          // Case A: New User -> Go to Name Input Screen
+          // Case A: New User -> Send OTP and go directly to registration screen
           debugPrint(
-            '🆕 [PhoneLoginScreen] New User detected. Navigating to NameInputScreen...',
+            '🆕 [PhoneLoginScreen] New User detected. Sending OTP...',
           );
+
+          // Send OTP
+          final otpResponse = await _apiService.sendOtp(fullPhoneNumber);
+
+          if (!mounted) return;
+
           setState(() {
             _isLoading = false;
           });
 
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => NameInputScreen(
-                phoneNumber: fullPhoneNumber,
-                role: widget.role,
-              ),
-            ),
-          );
+          if (otpResponse['success'] == true) {
+            final otp = otpResponse['data']['otp'];
+            if (otp != null) {
+              debugPrint('🎉 [PhoneLoginScreen] OTP Sent. OTP: $otp');
+              CustomSnackbar.show(
+                context,
+                message: 'OTP Sent: $otp',
+                type: SnackbarType.success,
+              );
+            }
+
+            // Navigate based on role
+            if (widget.role == 'driver') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => DriverRegistrationScreen(
+                    phoneNumber: fullPhoneNumber,
+                    isNewUser: true,
+                  ),
+                ),
+              );
+            } else {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => UserRegistrationScreen(
+                    phoneNumber: fullPhoneNumber,
+                    isNewUser: true,
+                    name: null,
+                  ),
+                ),
+              );
+            }
+          } else {
+            CustomSnackbar.show(
+              context,
+              message: otpResponse['message'] ?? 'Failed to send OTP',
+              type: SnackbarType.error,
+            );
+          }
         } else {
           // Case B: Returning User -> Show Welcome & Send OTP
           debugPrint(

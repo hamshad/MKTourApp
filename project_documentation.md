@@ -27,12 +27,12 @@ The authentication system supports both Passengers and Drivers, using phone numb
 4.  **Role Selection**: `lib/features/auth/role_selection_screen.dart` - User chooses to continue as "Passenger" or "Driver".
 5.  **Phone Login**: `lib/features/auth/phone_login_screen.dart` - User enters phone number.
     - *Logic*: Checks if user exists.
-    - *If New User*: Navigates to `NameInputScreen`.
-    - *If Existing User*: Sends OTP and navigates to Registration/OTP screen.
-6.  **Name Input (New Users)**: `lib/features/auth/name_input_screen.dart` - Collects name for new registrations.
-7.  **OTP Verification**:
+    - *If New Passenger*: Sends OTP and navigates to user registration screen.
+    - *If New Driver*: Sends OTP and navigates directly to driver registration screen (OTP → Name → Vehicle Details).
+    - *If Existing User*: Sends OTP and navigates to registration/OTP screen.
+6.  **OTP Verification**:
     - **Passenger**: `lib/features/auth/user_registration_screen.dart` - Verifies OTP for passengers.
-    - **Driver**: `lib/features/auth/driver_registration_screen.dart` - Verifies OTP and collects vehicle details for drivers.
+    - **Driver**: `lib/features/auth/driver_registration_screen.dart` - Verifies OTP and collects name + vehicle details (for new drivers) or just OTP (for returning drivers).
 
 ---
 
