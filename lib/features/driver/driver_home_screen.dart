@@ -69,6 +69,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
   // Track if socket listeners are set up to re-register after reconnection
   bool _socketListenersSetup = false;
 
+  // Cache driver ID to avoid unsafe Provider lookup in dispose
+  String? _cachedDriverId;
+
   @override
   void initState() {
     super.initState();
@@ -161,6 +164,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
       debugPrint('⚠️ [DriverHomeScreen] User is null, fetching profile...');
       await authProvider.fetchDriverProfile();
     }
+    // Cache driver ID for safe access during dispose
+    final user = authProvider.user;
+    _cachedDriverId = user?['_id'] ?? user?['id'] ?? user?['userId'];
   }
 
   Future<void> _initSocketAndListeners() async {
@@ -204,12 +210,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
     _locationService.dispose();
 
     // Emit driver offline when disposing (if was online)
-    if (_status != 'offline') {
-      final user = Provider.of<AuthProvider>(context, listen: false).user;
-      final driverId = user?['_id'] ?? user?['id'] ?? user?['userId'];
-      if (driverId != null) {
-        _socketService.emitDriverOffline(driverId);
-      }
+    if (_status != 'offline' && _cachedDriverId != null) {
+      _socketService.emitDriverOffline(_cachedDriverId!);
     }
 
     debugPrint('🔴 [DriverHomeScreen] Disposed');
