@@ -4,7 +4,7 @@ import 'dart:async';
 import 'dart:io' show Platform;
 import 'package:provider/provider.dart';
 import 'package:latlong2/latlong.dart' as latlong2;
-import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
+import '../../core/services/audio_service.dart';
 import '../../core/auth_provider.dart';
 import '../../core/theme.dart';
 import '../../core/services/socket_service.dart';
@@ -14,6 +14,7 @@ import '../../core/services/places_service.dart';
 import '../../core/services/marker_interpolation_service.dart';
 import '../../core/services/payment_service.dart';
 import '../../core/services/stripe_service.dart';
+import '../../core/services/google_pay_service.dart';
 import '../../core/widgets/platform_map.dart';
 import 'ride_complete_screen.dart';
 import 'payment_webview_screen.dart';
@@ -815,8 +816,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
       if (!mounted || !context.mounted) return;
 
-      // Play notification sound
-      FlutterRingtonePlayer().playNotification();
+      // Play app custom notification sound
+      AudioService.instance.playNotification();
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || !context.mounted) return;
@@ -2274,6 +2275,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                   ),
                 ),
                 const SizedBox(height: 24),
+                // Cash option - available for both iOS and Android
                 _buildPaymentOption(
                   icon: Icons.money,
                   title: 'Cash',
@@ -2281,12 +2283,22 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                   onTap: () => _handlePaymentSelection('cash'),
                 ),
                 const SizedBox(height: 16),
-                _buildPaymentOption(
-                  icon: Icons.link,
-                  title: 'Payment Link',
-                  subtitle: 'Pay via online link',
-                  onTap: () => _handlePaymentSelection('payment_link'),
-                ),
+                // Payment Link option - only for iOS (Apple devices)
+                if (Platform.isIOS)
+                  _buildPaymentOption(
+                    icon: Icons.link,
+                    title: 'Payment Link',
+                    subtitle: 'Pay via online link',
+                    onTap: () => _handlePaymentSelection('payment_link'),
+                  ),
+                // Pay Online option - only for Android devices
+                if (Platform.isAndroid)
+                  _buildPaymentOption(
+                    icon: Icons.credit_card,
+                    title: 'Pay Online',
+                    subtitle: 'Pay with Google Pay or Card',
+                    onTap: () => _handlePaymentSelection('pay_online'),
+                  ),
                 const SizedBox(height: 24),
               ],
             ),
@@ -2353,7 +2365,13 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   }
 
   Future<void> _handlePaymentSelection(String method) async {
+    debugPrint('═══════════════════════════════════════════════════════════');
+    debugPrint('💸 [Payment] ============ PAYMENT SELECTION START ============');
+    debugPrint('💸 [Payment] Method selected: $method');
+    debugPrint('💸 [Payment] Ride ID: ${widget.rideId}');
+    
     Navigator.pop(context); // Close selection modal
+    debugPrint('💸 [Payment] ✅ Closed payment modal');
 
     // Show loading
     showDialog(
@@ -2361,24 +2379,32 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       barrierDismissible: false,
       builder: (context) => const Center(child: CircularProgressIndicator()),
     );
+    debugPrint('💸 [Payment] ✅ Showing loading dialog');
 
-    debugPrint('💸 [Payment] Selecting: $method');
     try {
+      debugPrint('💸 [Payment] 📤 Sending request to backend...');
       final response = await _apiService.selectPaymentMethod(
         widget.rideId,
         method,
       );
 
+      debugPrint('💸 [Payment] 📥 Received response from backend');
+      debugPrint('💸 [Payment] Response: $response');
+
       // Close loading
       Navigator.pop(context);
+      debugPrint('💸 [Payment] ✅ Closed loading dialog');
 
       if (response['success'] == true) {
+        debugPrint('💸 [Payment] ✅ Response success = true');
         final data = response['data'];
+        debugPrint('💸 [Payment] Data: $data');
 
         // Handle nested ride structure (data.ride) or flat structure (data)
         final rideData = data['ride'] ?? data;
+        debugPrint('💸 [Payment] Ride data: $rideData');
+        
         final paymentMethod = rideData['paymentMethod'];
-
         debugPrint('💸 [Payment] Method from response: $paymentMethod');
 
         if (paymentMethod == 'stripe') {
@@ -2388,17 +2414,91 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
           );
 
           if (clientSecret != null) {
-            await StripeService.processPayment(clientSecret);
+            try {
+              // On Android, try native Google Pay first
+              if (Platform.isAndroid) {
+                debugPrint('💳 [Payment] Android: Trying native Google Pay...');
+                final gpayAvailable = await GooglePayService.isAvailable();
+
+                if (gpayAvailable) {
+                  debugPrint('💳 [Payment] Google Pay is available, requesting payment...');
+                  final fare = (rideData['amount'] as num?)?.toDouble() ?? widget.fare;
+                  // Backend returns amount in smallest unit (pence for GBP, cents for USD)
+                  // Divide by 100 to convert to actual currency amount
+                  final fareInActualCurrency = fare / 100;
+                  final currency = rideData['currency']?.toString().toUpperCase() ?? 'GBP';
+
+                  final gpayResult = await GooglePayService.requestPayment(
+                    amount: fareInActualCurrency,
+                    currencyCode: currency,
+                  );
+
+                  if (gpayResult['success'] == true) {
+                    debugPrint('💳 [Payment] Google Pay token received, confirming with Stripe...');
+                    final tokenJsonStr = gpayResult['token'] as String;
+                    await StripeService.confirmWithToken(clientSecret, tokenJsonStr);
+
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Payment Successful! Share OTP with driver.'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                    setState(() {
+                      _isPaymentMethodSelected = true;
+                      _selectedPaymentMethodDisplay = 'Google Pay';
+                    });
+                    return;
+                  } else if (gpayResult['error'] == 'cancelled') {
+                    debugPrint('💳 [Payment] Google Pay cancelled by user');
+                    _showPaymentSelectionModal();
+                    return;
+                  } else {
+                    debugPrint('💳 [Payment] Google Pay failed: ${gpayResult['error']}');
+                    debugPrint('💳 [Payment] Falling back to Stripe Payment Sheet...');
+                    // Fall through to Stripe Payment Sheet below
+                  }
+                } else {
+                  debugPrint('💳 [Payment] Google Pay not available, using Stripe Payment Sheet...');
+                  // Fall through to Stripe Payment Sheet below
+                }
+              }
+
+              // Fallback: Use Stripe Payment Sheet (iOS always, Android if Google Pay unavailable)
+              await StripeService.processPayment(clientSecret);
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Payment Successful! Share OTP with driver.'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+              setState(() {
+                _isPaymentMethodSelected = true;
+                _selectedPaymentMethodDisplay = Platform.isAndroid ? 'Paid Online' : 'Card';
+              });
+            } catch (e) {
+              debugPrint('❌ [Stripe] Payment failed: $e');
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Payment failed: ${StripeService.getErrorMessage(e)}'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+              _showPaymentSelectionModal(); // Re-show on payment failure
+              return;
+            }
+          } else {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Payment Successful! Share OTP with driver.'),
-                backgroundColor: Colors.green,
+                content: Text('Payment setup failed. Please try again.'),
+                backgroundColor: Colors.red,
               ),
             );
-            setState(() {
-              _isPaymentMethodSelected = true;
-              _selectedPaymentMethodDisplay = 'Card';
-            });
+            _showPaymentSelectionModal();
+            return;
           }
         } else if (paymentMethod == 'payment_link') {
           final paymentUrl = rideData['paymentUrl'];
@@ -2468,6 +2568,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
           });
         }
       } else {
+        debugPrint('❌ [Payment] Response success = false');
+        debugPrint('💸 [Payment] Error message: ${response['message']}');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -2478,13 +2580,19 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         _showPaymentSelectionModal(); // Re-show on API fail
       }
     } catch (e) {
-      if (Navigator.canPop(context))
+      debugPrint('❌ [Payment] EXCEPTION CAUGHT: $e');
+      debugPrint('💸 [Payment] Stack trace: $e');
+      
+      if (Navigator.canPop(context)) {
         Navigator.pop(context); // Ensure loading is closed
-      debugPrint('❌ [Payment] Error: $e');
+        debugPrint('💸 [Payment] ✅ Closed loading dialog after error');
+      }
+      
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Error: $e')));
       _showPaymentSelectionModal(); // Re-show on error
+      debugPrint('═══════════════════════════════════════════════════════════');
     }
   }
 }
