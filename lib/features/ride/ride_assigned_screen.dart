@@ -678,15 +678,21 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       // Stop ETA updates (no longer needed)
       _stopETAUpdates();
 
-      debugPrint('✅ [RideAssignedScreen] Updating UI to in_progress state');
-      setState(() {
-        _rideStatus = 'in_progress';
-      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !context.mounted) {
+          debugPrint('⚠️ [RideAssignedScreen] Widget unmounted in callback');
+          return;
+        }
 
-      _updateMarkers();
-      // Switch to navigation from current to dropoff
-      _fetchNavigationRoute();
-      debugPrint('✅ [RideAssignedScreen] Ride started state update complete');
+        debugPrint('✅ [RideAssignedScreen] Updating UI to in_progress state');
+        setState(() {
+          _rideStatus = 'in_progress';
+          _updateMarkers();
+          // Switch to navigation from current to dropoff
+          _fetchNavigationRoute();
+        });
+        debugPrint('✅ [RideAssignedScreen] Ride started state update complete');
+      });
     });
 
     _socketService.on('ride:completed', (data) {
@@ -2385,9 +2391,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       debugPrint('💸 [Payment] 📥 Received response from backend');
       debugPrint('💸 [Payment] Response: $response');
 
-      // Close loading
-      Navigator.pop(context);
-      debugPrint('💸 [Payment] ✅ Closed loading dialog');
+      // Keep loading dialog open while payment sheet initializes
+      // Will be closed after payment completes or fails
 
       if (response['success'] == true) {
         debugPrint('💸 [Payment] ✅ Response success = true');
@@ -2411,6 +2416,12 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
             try {
               // Use Stripe Payment Sheet - shows Google Pay + Card on Android, Apple Pay + Card on iOS
               await StripeService.processPayment(clientSecret);
+              
+              // Close loading dialog after payment sheet completes
+              if (Navigator.canPop(context)) {
+                Navigator.pop(context);
+              }
+              
               if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
@@ -2426,6 +2437,12 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
               });
             } catch (e) {
               debugPrint('❌ [Stripe] Payment failed: $e');
+              
+              // Close loading dialog on error
+              if (Navigator.canPop(context)) {
+                Navigator.pop(context);
+              }
+              
               if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -2437,6 +2454,11 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
               return;
             }
           } else {
+            // Close loading dialog if no client secret
+            if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            }
+            
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text('Payment setup failed. Please try again.'),
@@ -2451,6 +2473,11 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
           debugPrint('🔗 [Payment Link] URL present: ${paymentUrl != null}');
           if (paymentUrl != null) {
             debugPrint('🔗 [Payment Link] URL: $paymentUrl');
+          }
+
+          // Close loading dialog before navigating to WebView
+          if (Navigator.canPop(context)) {
+            Navigator.pop(context);
           }
 
           if (paymentUrl != null) {
@@ -2501,6 +2528,11 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
             );
           }
         } else {
+          // Close loading dialog for cash payment
+          if (Navigator.canPop(context)) {
+            Navigator.pop(context);
+          }
+          
           debugPrint('💵 [Cash] Payment method selected');
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -2516,6 +2548,12 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       } else {
         debugPrint('❌ [Payment] Response success = false');
         debugPrint('💸 [Payment] Error message: ${response['message']}');
+        
+        // Close loading dialog on API failure
+        if (Navigator.canPop(context)) {
+          Navigator.pop(context);
+        }
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -2529,8 +2567,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       debugPrint('❌ [Payment] EXCEPTION CAUGHT: $e');
       debugPrint('💸 [Payment] Stack trace: $e');
       
+      // Close loading dialog on exception
       if (Navigator.canPop(context)) {
-        Navigator.pop(context); // Ensure loading is closed
+        Navigator.pop(context);
         debugPrint('💸 [Payment] ✅ Closed loading dialog after error');
       }
       
