@@ -17,7 +17,7 @@ import '../../core/services/navigation_service.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
+import '../../core/services/audio_service.dart';
 
 class DriverHomeScreen extends StatefulWidget {
   const DriverHomeScreen({super.key});
@@ -192,8 +192,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
     _socketService.off('payment:succeeded');
     _socketService.off('ride:paymentSelected'); // Listener for payment choice
 
-    // Stop and clean up ringtone if still playing
-    FlutterRingtonePlayer().stop();
+    // Stop and clean up notification playback if still playing
+    AudioService.instance.stop();
 
     // Clean up streams
     _positionStreamSubscription?.cancel();
@@ -511,8 +511,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
         });
         _fetchRideHistory();
       }
-      // Stop ringtone if payment succeeded (though it should be stopped by now)
-      FlutterRingtonePlayer().stop();
+      // Stop notification playback if payment succeeded
+      AudioService.instance.stop();
     });
 
     // Listen for location update confirmation
@@ -583,7 +583,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
     _socketService.on('ride:cancelledByUser', (data) {
       debugPrint('❌ [DriverHomeScreen] Ride Cancelled By User: $data');
       if (mounted) {
-        FlutterRingtonePlayer().stop();
+        AudioService.instance.stop();
         final cancellationFee = data['cancellationFee'] ?? 0.0;
         setState(() {
           _status = 'online';
@@ -603,7 +603,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
     _socketService.on('ride:expired', (data) {
       debugPrint('⏰ [DriverHomeScreen] Ride Expired: $data');
       if (mounted) {
-        FlutterRingtonePlayer().stop();
+        AudioService.instance.stop();
         setState(() {
           _status = 'online';
           _currentRideId = null;
@@ -625,8 +625,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
     if (_status == 'online') {
       debugPrint('🔔 [DriverHomeScreen] Starting ringtone sound...');
       // Use playRingtone for better visibility as it's meant for alerts
-      // Play a short notification sound (non-looping)
-      FlutterRingtonePlayer().playNotification();
+      // Play app custom notification sound
+      AudioService.instance.playNotification();
 
       setState(() {
         _status = 'request';
@@ -672,7 +672,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
             _currentRideId = null;
             _rideData = null;
             _clearNavigationUi();
-            FlutterRingtonePlayer().stop();
+            AudioService.instance.stop();
           }
         });
 
@@ -808,7 +808,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
         // Accept Ride
         final response = await _apiService.acceptRide(_currentRideId!);
         if (response['success'] == true) {
-          FlutterRingtonePlayer().stop();
+          AudioService.instance.stop();
           setState(() {
             _status = 'pickup';
             if (response['data'] != null) {
@@ -956,7 +956,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
   Future<void> _declineRide() async {
     if (_currentRideId == null) return;
 
-    FlutterRingtonePlayer().stop();
+    AudioService.instance.stop();
     setState(() => _isLoading = true);
     try {
       final response = await _apiService.cancelRide(_currentRideId!);
