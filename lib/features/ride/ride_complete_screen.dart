@@ -79,6 +79,23 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
     super.dispose();
   }
 
+  String _paymentMethodLabel() {
+    final raw = (widget.rideData['paymentMethod'] ?? '').toString().toLowerCase();
+
+    if (raw.isEmpty) {
+      return 'Cash';
+    }
+
+    if (raw == 'cash') return 'Cash';
+
+    final onlineKeys = ['pay_online', 'online', 'card', 'card_payment', 'google_pay', 'apple_pay', 'payment_link'];
+    for (final k in onlineKeys) {
+      if (raw.contains(k)) return 'Online Payment';
+    }
+
+    return raw[0].toUpperCase() + raw.substring(1);
+  }
+
   Future<void> _submitRating() async {
     if (_rating == 0) {
       CustomSnackbar.show(
@@ -239,7 +256,7 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  widget.rideData['paymentMethod'] ?? 'Cash',
+                                  _paymentMethodLabel(),
                                   style: const TextStyle(
                                     fontWeight: FontWeight.w600,
                                     fontSize: 16,

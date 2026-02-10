@@ -1,9 +1,9 @@
 class ApiConstants {
   // Local development socket URL (commented when using live API)
-  static const String socketUrl = 'http://192.168.1.15:5000';
+  // static const String socketUrl = 'http://192.168.1.15:5000';
   // static const String socketUrl = 'http://192.168.1.22:5001';
   // Live API socket URL
-  // static const String socketUrl = 'https://api.mktours.co.uk';
+  static const String socketUrl = 'https://api.mktours.co.uk';
   static const String baseUrl = '$socketUrl/api/v1';
 
   // Auth Endpoints
