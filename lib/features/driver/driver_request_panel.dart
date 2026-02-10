@@ -305,7 +305,7 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
               children: [
                 Expanded(
                   child: OutlinedButton(
-                  onPressed: widget.isLoading ? null : () => Navigator.pop(context),
+                  onPressed: widget.isLoading ? null : widget.onDecline,
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 18),
                     side: BorderSide(
