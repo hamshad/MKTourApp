@@ -69,8 +69,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
   // Track if socket listeners are set up to re-register after reconnection
   bool _socketListenersSetup = false;
 
-  // Cache driver ID to avoid unsafe Provider lookup in dispose
-  String? _cachedDriverId;
+  // Store driverId to use in dispose without accessing context
+  String? _driverId;
 
   @override
   void initState() {
@@ -79,6 +79,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
     _initDriver();
     _initLocation();
     _setupConnectionListener();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Save driverId early to use in dispose
+    final user = Provider.of<AuthProvider>(context, listen: false).user;
+    _driverId = user?['_id'] ?? user?['id'] ?? user?['userId'];
   }
 
   @override
@@ -164,9 +172,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
       debugPrint('⚠️ [DriverHomeScreen] User is null, fetching profile...');
       await authProvider.fetchDriverProfile();
     }
-    // Cache driver ID for safe access during dispose
-    final user = authProvider.user;
-    _cachedDriverId = user?['_id'] ?? user?['id'] ?? user?['userId'];
   }
 
   Future<void> _initSocketAndListeners() async {
@@ -210,8 +215,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
     _locationService.dispose();
 
     // Emit driver offline when disposing (if was online)
-    if (_status != 'offline' && _cachedDriverId != null) {
-      _socketService.emitDriverOffline(_cachedDriverId!);
+    if (_status != 'offline' && _driverId != null) {
+      _socketService.emitDriverOffline(_driverId!);
     }
 
     debugPrint('🔴 [DriverHomeScreen] Disposed');
@@ -956,8 +961,17 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
   }
 
   void _declineRide() {
-    // Just close the panel without any API or state changes
-    _panelController.close();
+    if (_currentRideId == null) return;
+
+    AudioService.instance.stop();
+    
+    // Just reset to online state without calling API
+    setState(() {
+      _status = 'online';
+      _currentRideId = null;
+      _rideData = null;
+      _clearNavigationUi();
+    });
   }
 
   /// Show cancellation reason picker and cancel the ride
