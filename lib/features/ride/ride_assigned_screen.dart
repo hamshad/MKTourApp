@@ -2308,6 +2308,14 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     );
   }
 
+  void _reopenPaymentSelectionModal() {
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _showPaymentSelectionModal();
+    });
+  }
+
   Widget _buildPaymentOption({
     required IconData icon,
     required String title,
@@ -2414,14 +2422,66 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
           if (clientSecret != null) {
             try {
-              // Use Stripe Payment Sheet - shows Google Pay + Card on Android, Apple Pay + Card on iOS
+              // On Android, try native Google Pay first
+              if (Platform.isAndroid) {
+                debugPrint('💳 [Payment] Android: Trying native Google Pay first...');
+                final fare = (rideData['amount'] as num?)?.toDouble() ?? widget.fare;
+                // Backend returns amount in smallest unit (pence for GBP, cents for USD)
+                // Divide by 100 to convert to actual currency amount
+                final fareInActualCurrency = fare / 100;
+                final currency = rideData['currency']?.toString().toUpperCase() ?? 'GBP';
+
+                final gpayResult = await GooglePayService.requestPayment(
+                  amount: fareInActualCurrency,
+                  currencyCode: currency,
+                );
+
+                if (gpayResult['success'] == true) {
+                  debugPrint('💳 [Payment] Google Pay token received, confirming with Stripe...');
+                  final tokenJsonStr = gpayResult['token'] as String;
+                  await StripeService.confirmWithToken(clientSecret, tokenJsonStr);
+
+                  if (!mounted) return;
+                  // Close loading dialog after payment confirmation
+                  if (Navigator.canPop(context)) {
+                    Navigator.pop(context);
+                  }
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Payment Successful! Share OTP with driver.'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                  setState(() {
+                    _isPaymentMethodSelected = true;
+                    _selectedPaymentMethodDisplay = 'Google Pay';
+                  });
+                  return;
+                }
+
+                final gpayError = gpayResult['error']?.toString() ?? 'Unknown error';
+                if (gpayError == 'cancelled') {
+                  debugPrint('💳 [Payment] Google Pay cancelled by user');
+                  if (Navigator.canPop(context)) {
+                    Navigator.pop(context);
+                  }
+                  _reopenPaymentSelectionModal();
+                  return;
+                }
+
+                debugPrint('💳 [Payment] Google Pay failed: $gpayError');
+                debugPrint('💳 [Payment] Falling back to Stripe Payment Sheet...');
+                // Fall through to Stripe Payment Sheet below
+              }
+
+              // Fallback: Use Stripe Payment Sheet (iOS always, Android if Google Pay unavailable)
               await StripeService.processPayment(clientSecret);
-              
+
               // Close loading dialog after payment sheet completes
               if (Navigator.canPop(context)) {
                 Navigator.pop(context);
               }
-              
+
               if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
@@ -2431,18 +2491,16 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
               );
               setState(() {
                 _isPaymentMethodSelected = true;
-                _selectedPaymentMethodDisplay = Platform.isAndroid 
-                    ? 'Google Pay / Card' 
-                    : 'Apple Pay / Card';
+                _selectedPaymentMethodDisplay = Platform.isAndroid ? 'Paid Online' : 'Card';
               });
             } catch (e) {
               debugPrint('❌ [Stripe] Payment failed: $e');
-              
+
               // Close loading dialog on error
               if (Navigator.canPop(context)) {
                 Navigator.pop(context);
               }
-              
+
               if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -2450,7 +2508,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                   backgroundColor: Colors.red,
                 ),
               );
-              _showPaymentSelectionModal(); // Re-show on payment failure
+              _reopenPaymentSelectionModal(); // Re-show on payment failure
               return;
             }
           } else {
