@@ -678,21 +678,15 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       // Stop ETA updates (no longer needed)
       _stopETAUpdates();
 
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !context.mounted) {
-          debugPrint('⚠️ [RideAssignedScreen] Widget unmounted in callback');
-          return;
-        }
-
-        debugPrint('✅ [RideAssignedScreen] Updating UI to in_progress state');
-        setState(() {
-          _rideStatus = 'in_progress';
-          _updateMarkers();
-          // Switch to navigation from current to dropoff
-          _fetchNavigationRoute();
-        });
-        debugPrint('✅ [RideAssignedScreen] Ride started state update complete');
+      debugPrint('✅ [RideAssignedScreen] Updating UI to in_progress state');
+      setState(() {
+        _rideStatus = 'in_progress';
       });
+
+      _updateMarkers();
+      // Switch to navigation from current to dropoff
+      _fetchNavigationRoute();
+      debugPrint('✅ [RideAssignedScreen] Ride started state update complete');
     });
 
     _socketService.on('ride:completed', (data) {
@@ -2415,57 +2409,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
           if (clientSecret != null) {
             try {
-              // On Android, try native Google Pay first
-              if (Platform.isAndroid) {
-                debugPrint('💳 [Payment] Android: Trying native Google Pay...');
-                final gpayAvailable = await GooglePayService.isAvailable();
-
-                if (gpayAvailable) {
-                  debugPrint('💳 [Payment] Google Pay is available, requesting payment...');
-                  final fare = (rideData['amount'] as num?)?.toDouble() ?? widget.fare;
-                  // Backend returns amount in smallest unit (pence for GBP, cents for USD)
-                  // Divide by 100 to convert to actual currency amount
-                  final fareInActualCurrency = fare / 100;
-                  final currency = rideData['currency']?.toString().toUpperCase() ?? 'GBP';
-
-                  final gpayResult = await GooglePayService.requestPayment(
-                    amount: fareInActualCurrency,
-                    currencyCode: currency,
-                  );
-
-                  if (gpayResult['success'] == true) {
-                    debugPrint('💳 [Payment] Google Pay token received, confirming with Stripe...');
-                    final tokenJsonStr = gpayResult['token'] as String;
-                    await StripeService.confirmWithToken(clientSecret, tokenJsonStr);
-
-                    if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Payment Successful! Share OTP with driver.'),
-                        backgroundColor: Colors.green,
-                      ),
-                    );
-                    setState(() {
-                      _isPaymentMethodSelected = true;
-                      _selectedPaymentMethodDisplay = 'Google Pay';
-                    });
-                    return;
-                  } else if (gpayResult['error'] == 'cancelled') {
-                    debugPrint('💳 [Payment] Google Pay cancelled by user');
-                    _showPaymentSelectionModal();
-                    return;
-                  } else {
-                    debugPrint('💳 [Payment] Google Pay failed: ${gpayResult['error']}');
-                    debugPrint('💳 [Payment] Falling back to Stripe Payment Sheet...');
-                    // Fall through to Stripe Payment Sheet below
-                  }
-                } else {
-                  debugPrint('💳 [Payment] Google Pay not available, using Stripe Payment Sheet...');
-                  // Fall through to Stripe Payment Sheet below
-                }
-              }
-
-              // Fallback: Use Stripe Payment Sheet (iOS always, Android if Google Pay unavailable)
+              // Use Stripe Payment Sheet - shows Google Pay + Card on Android, Apple Pay + Card on iOS
               await StripeService.processPayment(clientSecret);
               if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
@@ -2476,7 +2420,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
               );
               setState(() {
                 _isPaymentMethodSelected = true;
-                _selectedPaymentMethodDisplay = Platform.isAndroid ? 'Paid Online' : 'Card';
+                _selectedPaymentMethodDisplay = Platform.isAndroid 
+                    ? 'Google Pay / Card' 
+                    : 'Apple Pay / Card';
               });
             } catch (e) {
               debugPrint('❌ [Stripe] Payment failed: $e');

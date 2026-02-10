@@ -953,39 +953,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
     }
   }
 
-  Future<void> _declineRide() async {
-    if (_currentRideId == null) return;
-
-    AudioService.instance.stop();
-    setState(() => _isLoading = true);
-    try {
-      final response = await _apiService.cancelRide(_currentRideId!);
-      // Even if it fails, we reset UI to online to avoid getting stuck
-      setState(() {
-        _status = 'online';
-        _currentRideId = null;
-        _rideData = null;
-        _clearNavigationUi();
-      });
-
-      if (response['success'] == true) {
-        CustomSnackbar.show(
-          context,
-          message: 'Ride Declined',
-          type: SnackbarType.info,
-        );
-      }
-    } catch (e) {
-      debugPrint('Error declining ride: $e');
-      setState(() {
-        _status = 'online';
-        _currentRideId = null;
-        _rideData = null;
-        _clearNavigationUi();
-      });
-    } finally {
-      setState(() => _isLoading = false);
-    }
+  void _declineRide() {
+    // Just close the panel without any API or state changes
+    _panelController.close();
   }
 
   /// Show cancellation reason picker and cancel the ride
