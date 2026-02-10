@@ -15,7 +15,7 @@ class AudioService {
       await _player.setAudioContext(
         AudioContext(
           iOS: AudioContextIOS(
-            category: AVAudioSessionCategory.playback,
+            category: AVAudioSessionCategory.ambient,
             options: {
               AVAudioSessionOptions.duckOthers,
               AVAudioSessionOptions.defaultToSpeaker,
@@ -24,8 +24,8 @@ class AudioService {
           android: AudioContextAndroid(
             isSpeakerphoneOn: true,
             stayAwake: true,
-            contentType: AndroidContentType.music,
-            usageType: AndroidUsageType.notificationEvent,
+            contentType: AndroidContentType.sonification,
+            usageType: AndroidUsageType.notification,
             audioFocus: AndroidAudioFocus.gainTransientMayDuck,
           ),
         ),
