@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../core/api_service.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/custom_snackbar.dart';
+import '../../core/services/fcm_service.dart';
 import '../home/home_screen.dart';
 
 class UserRegistrationScreen extends StatefulWidget {
@@ -60,11 +61,15 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
     });
 
     try {
+      // Get FCM token
+      final fcmToken = FcmService.instance.fcmToken;
+      
       final response = await _apiService.verifyOtp(
         phone: widget.phoneNumber,
         otp: _otpController.text,
         role: 'user',
         name: widget.isNewUser ? _nameController.text.trim() : widget.name,
+        fcmToken: fcmToken, // Send FCM token during login (Option 1)
       );
 
       if (!mounted) return;

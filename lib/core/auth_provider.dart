@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'api_service.dart';
 import 'services/socket_service.dart';
+import 'services/fcm_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthProvider with ChangeNotifier {
@@ -27,6 +28,30 @@ class AuthProvider with ChangeNotifier {
   Map<String, dynamic>? get driverProfileStatus => _driverProfileStatus;
   String? get lastDeleteMessage => _lastDeleteMessage;
 
+  /// Send FCM token to backend based on current role
+  Future<void> _sendFcmToken() async {
+    try {
+      final fcmToken = FcmService.instance.fcmToken;
+      if (fcmToken == null || fcmToken.isEmpty) {
+        debugPrint('🔔 [AuthProvider] No FCM token available');
+        return;
+      }
+
+      debugPrint('🔔 [AuthProvider] Sending FCM token to backend...');
+
+      if (isDriver) {
+        await _apiService.updateDriverFcmToken(fcmToken);
+        debugPrint('🔔 [AuthProvider] Driver FCM token sent successfully');
+      } else {
+        await _apiService.updateUserFcmToken(fcmToken);
+        debugPrint('🔔 [AuthProvider] User FCM token sent successfully');
+      }
+    } catch (e) {
+      debugPrint('🔴 [AuthProvider] Error sending FCM token: $e');
+      // Don't throw - FCM token update failure shouldn't block auth flow
+    }
+  }
+
   Future<bool> login(String email, String password) async {
     try {
       final response = await _apiService.login(email, password);
@@ -35,6 +60,7 @@ class AuthProvider with ChangeNotifier {
         _user = response['user'];
         _role = 'user';
         await SocketService().initSocket();
+        await _sendFcmToken(); // Send FCM token after login
         notifyListeners();
         return true;
       }
@@ -62,6 +88,7 @@ class AuthProvider with ChangeNotifier {
         _user = response['user'];
         _role = 'user';
         await SocketService().initSocket();
+        await _sendFcmToken(); // Send FCM token after signup
         notifyListeners();
         return true;
       }
@@ -79,6 +106,7 @@ class AuthProvider with ChangeNotifier {
         _isAuthenticated = true;
         _role = 'user';
         await SocketService().initSocket();
+        await _sendFcmToken(); // Send FCM token when profile is fetched
         notifyListeners();
       }
     } catch (e) {
@@ -98,6 +126,7 @@ class AuthProvider with ChangeNotifier {
         _isAuthenticated = true;
         _role = 'driver';
         await SocketService().initSocket();
+        await _sendFcmToken(); // Send FCM token when driver profile is fetched
         notifyListeners();
       }
     } catch (e) {
@@ -367,7 +396,9 @@ class AuthProvider with ChangeNotifier {
   Future<bool> deleteAccount() async {
     try {
       debugPrint('📦 [AuthProvider] deleteAccount called');
-      debugPrint('📦 [AuthProvider] Current role: ${isDriver ? 'driver' : 'user'}');
+      debugPrint(
+        '📦 [AuthProvider] Current role: ${isDriver ? 'driver' : 'user'}',
+      );
 
       Map<String, dynamic> response;
       if (isDriver) {

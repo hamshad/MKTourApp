@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "261419081333",
+    "project_id": "mk-tours-ee9ff",
+    "storage_bucket": "mk-tours-ee9ff.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:261419081333:android:bfff45af3a98562fec623c",
+        "android_client_info": {
+          "package_name": "com.mokshasolutions.mktours"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB8WYfZfrt8K52XECINtcrASVnNj0tANRE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

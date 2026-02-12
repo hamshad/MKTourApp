@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'core/theme.dart';
 import 'core/auth_provider.dart';
 import 'core/config/api_config.dart';
 import 'core/services/stripe_service.dart';
+import 'core/services/fcm_service.dart';
 import 'features/auth/splash_screen.dart';
 import 'features/auth/signup_screen.dart';
 import 'features/onboarding/intro_screen.dart';
@@ -30,11 +32,19 @@ import 'core/services/location_cache_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Initialize Firebase
+  await Firebase.initializeApp();
+  debugPrint('🔥 Firebase initialized');
+
   // Initialize environment variables
   await ApiConfig.initialize();
 
   // Initialize Stripe
   await StripeService.init();
+
+  // Initialize FCM Service for push notifications
+  await FcmService.instance.initialize();
+  debugPrint('🔔 FCM Service initialized');
 
   // Initialize Socket Service
   final socketService = SocketService();

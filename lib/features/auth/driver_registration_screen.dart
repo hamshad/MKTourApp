@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/api_service.dart';
 import '../../core/services/location_service.dart';
+import '../../core/services/fcm_service.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/custom_snackbar.dart';
 import '../../core/models/vehicle.dart';
@@ -115,12 +116,16 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
         };
       }
 
+      // Get FCM token
+      final fcmToken = FcmService.instance.fcmToken;
+      
       final response = await _apiService.verifyOtp(
         phone: widget.phoneNumber,
         otp: _otpController.text,
         role: 'driver',
         name: widget.isNewUser ? _nameController.text : null,
         vehicleDetails: vehicleDetails,
+        fcmToken: fcmToken, // Send FCM token during login (Option 1)
       );
 
       if (!mounted) return;
