@@ -99,7 +99,10 @@ class StripeService {
   /// Process payment with provided client secret
   /// For Android: Shows Google Pay as primary option
   /// For iOS: Shows Apple Pay as primary option
-  static Future<void> processPayment(String clientSecret) async {
+  static Future<void> processPayment(
+    String clientSecret, {
+    bool forceCardOnly = false,
+  }) async {
     try {
       final isAndroid = Platform.isAndroid;
       final isIOS = Platform.isIOS;
@@ -117,6 +120,17 @@ class StripeService {
       if (isAndroid) {
         debugPrint('💳 [Stripe] 🤖 ANDROID DETECTED - Configuring Google Pay');
         debugPrint('💳 [Stripe] Setting up Google Pay with merchant country: GB');
+
+        final paymentMethodOrder = forceCardOnly
+            ? const ['card']
+            : const ['google_pay', 'card'];
+        final googlePayConfig = forceCardOnly
+            ? null
+            : const PaymentSheetGooglePay(
+                merchantCountryCode: 'GB',
+                testEnv: true, // Must be true when using pk_test_ keys
+                currencyCode: 'GBP',
+              );
         
         await Stripe.instance.initPaymentSheet(
           paymentSheetParameters: SetupPaymentSheetParameters(
@@ -126,7 +140,7 @@ class StripeService {
             // Disable Link to show Google Pay
             allowsDelayedPaymentMethods: false,
             // Important: Google Pay must be first for Android
-            paymentMethodOrder: const ['google_pay', 'card'],
+            paymentMethodOrder: paymentMethodOrder,
             appearance: PaymentSheetAppearance(
               colors: const PaymentSheetAppearanceColors(
                 primary: Color(0xFF22C55E), // Green for consistency
@@ -134,14 +148,12 @@ class StripeService {
               shapes: const PaymentSheetShape(borderRadius: 12),
             ),
             // Google Pay configuration for Android
-            googlePay: const PaymentSheetGooglePay(
-              merchantCountryCode: 'GB',
-              testEnv: true, // Must be true when using pk_test_ keys
-              currencyCode: 'GBP',
-            ),
+            googlePay: googlePayConfig,
           ),
         );
-        debugPrint('💳 [Stripe] ✅ Google Pay payment sheet initialized (Link disabled)');
+        debugPrint(
+          '💳 [Stripe] ✅ ${forceCardOnly ? 'Card-only' : 'Google Pay'} payment sheet initialized (Link disabled)',
+        );
       } 
       // For iOS, use Apple Pay
       else if (isIOS) {
