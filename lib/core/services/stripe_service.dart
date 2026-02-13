@@ -122,15 +122,23 @@ class StripeService {
         debugPrint('💳 [Stripe] Setting up Google Pay with merchant country: GB');
 
         final paymentMethodOrder = forceCardOnly
-            ? const ['card']
-            : const ['google_pay', 'card'];
+          ? const ['card']
+          : const ['google_pay', 'card'];
+
+        final flag = (dotenv.env['GOOGLE_PAY_TEST_ENV'] ?? '').toLowerCase();
+        final bool googlePayTestEnv = flag == 'true'
+          ? true
+          : flag == 'false'
+            ? false
+            : (Stripe.publishableKey).startsWith('pk_test_');
+
         final googlePayConfig = forceCardOnly
-            ? null
-            : const PaymentSheetGooglePay(
-                merchantCountryCode: 'GB',
-                testEnv: true, // Must be true when using pk_test_ keys
-                currencyCode: 'GBP',
-              );
+          ? null
+          : PaymentSheetGooglePay(
+            merchantCountryCode: 'GB',
+            testEnv: googlePayTestEnv,
+            currencyCode: 'GBP',
+            );
         
         await Stripe.instance.initPaymentSheet(
           paymentSheetParameters: SetupPaymentSheetParameters(

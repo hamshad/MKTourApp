@@ -69,6 +69,11 @@ class GooglePayService {
   }
 
   static bool get _isTestMode {
+    final flag = (dotenv.env['GOOGLE_PAY_TEST_ENV'] ?? '').toLowerCase();
+    if (flag == 'true' || flag == 'false') {
+      return flag == 'true';
+    }
+
     final key = dotenv.env['STRIPE_PUBLISHABLE_KEY'] ?? '';
     return key.startsWith('pk_test_');
   }

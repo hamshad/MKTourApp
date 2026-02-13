@@ -65,15 +65,13 @@ class PaymentService {
         style: ThemeMode.system,
         paymentMethodOrder: const ['apple_pay', 'card'],
         appearance: PaymentSheetAppearance(
-          colors: PaymentSheetAppearanceColors(
-            primary: primaryColor,
-          ),
+          colors: PaymentSheetAppearanceColors(primary: primaryColor),
           shapes: const PaymentSheetShape(borderRadius: 12),
         ),
         applePay: const PaymentSheetApplePay(merchantCountryCode: 'GB'),
         googlePay: const PaymentSheetGooglePay(
           merchantCountryCode: 'GB',
-          testEnv: true,
+          testEnv: false,
         ),
       ),
     );
@@ -91,7 +89,9 @@ class PaymentService {
   }) async {
     try {
       final primaryColor = Theme.of(context).primaryColor;
-      debugPrint('💳 PaymentService: Presenting payment sheet for ride: $rideId');
+      debugPrint(
+        '💳 PaymentService: Presenting payment sheet for ride: $rideId',
+      );
       await _presentPaymentSheet(
         primaryColor: primaryColor,
         clientSecret: clientSecret,
@@ -101,7 +101,9 @@ class PaymentService {
         message: 'Payment successful! Thank you.',
       );
     } on StripeException catch (e) {
-      debugPrint('⚠️ PaymentService: Stripe error (completion) - ${e.error.message}');
+      debugPrint(
+        '⚠️ PaymentService: Stripe error (completion) - ${e.error.message}',
+      );
       return PaymentResult.failure(error: StripeService.getErrorMessage(e));
     } catch (e) {
       debugPrint('❌ PaymentService: Error (completion) - $e');
@@ -128,7 +130,8 @@ class PaymentService {
     String? notes,
   }) async {
     String? rideId;
-    final bool shouldPresentPaymentSheet = paymentTiming == PaymentTiming.payNow;
+    final bool shouldPresentPaymentSheet =
+        paymentTiming == PaymentTiming.payNow;
     try {
       final primaryColor = Theme.of(context).primaryColor;
       debugPrint('💳 PaymentService: Starting payment flow');
@@ -150,8 +153,10 @@ class PaymentService {
             : 'pay_later',
         if (notes != null && notes.isNotEmpty) 'notes': notes,
         // Include Google Places IDs for airport detection if available
-        if (pickupLocation['placeId'] != null) 'pickupPlaceId': pickupLocation['placeId'],
-        if (dropoffLocation['placeId'] != null) 'dropoffPlaceId': dropoffLocation['placeId'],
+        if (pickupLocation['placeId'] != null)
+          'pickupPlaceId': pickupLocation['placeId'],
+        if (dropoffLocation['placeId'] != null)
+          'dropoffPlaceId': dropoffLocation['placeId'],
       };
 
       debugPrint('💳 PaymentService: Creating ride with payment intent...');
@@ -188,7 +193,7 @@ class PaymentService {
         );
         debugPrint('✅ PaymentService: Payment sheet completed (pay_now)');
       } else if (shouldPresentPaymentSheet) {
-          throw Exception('Payment intent missing from server response');
+        throw Exception('Payment intent missing from server response');
       } else {
         debugPrint(
           '💳 PaymentService: pay_later selected; skipping payment sheet at booking time',
@@ -207,7 +212,7 @@ class PaymentService {
       );
     } on StripeException catch (e) {
       debugPrint('⚠️ PaymentService: Stripe error - ${e.error.message}');
-      
+
       // Cleanup: Cancel ride on backend if payment was cancelled or failed
       if (shouldPresentPaymentSheet && rideId != null) {
         debugPrint('🧹 PaymentService: Cleaning up cancelled ride: $rideId');
@@ -222,7 +227,7 @@ class PaymentService {
           debugPrint('⚠️ PaymentService: Cleanup failed - $cleanupError');
         }
       }
-      
+
       return PaymentResult.failure(error: StripeService.getErrorMessage(e));
     } catch (e) {
       debugPrint('❌ PaymentService: Error - $e');
