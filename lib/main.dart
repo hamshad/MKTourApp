@@ -3,9 +3,11 @@ import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'core/theme.dart';
 import 'core/auth_provider.dart';
+import 'core/api_service.dart';
 import 'core/config/api_config.dart';
 import 'core/services/stripe_service.dart';
 import 'core/services/fcm_service.dart';
+import 'core/services/places_service.dart';
 import 'features/auth/splash_screen.dart';
 import 'features/auth/signup_screen.dart';
 import 'features/onboarding/intro_screen.dart';
@@ -66,9 +68,38 @@ void main() async {
 class RideEaseApp extends StatelessWidget {
   const RideEaseApp({super.key});
 
+  // Global navigator key for navigation from anywhere
+  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
   @override
   Widget build(BuildContext context) {
+    // Set up 401 unauthorized handler to trigger logout
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    ApiService.onUnauthorized = () async {
+      debugPrint('🔴 [RideEaseApp] 401 Unauthorized - Triggering logout');
+      await authProvider.logout();
+      
+      // Navigate to role selection screen after logout
+      navigatorKey.currentState?.pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
+        (route) => false,
+      );
+      debugPrint('🔴 [RideEaseApp] Navigated to role selection after 401');
+    };
+    PlacesService.onUnauthorized = () async {
+      debugPrint('🔴 [RideEaseApp] 401 Unauthorized from PlacesService - Triggering logout');
+      await authProvider.logout();
+      
+      // Navigate to role selection screen after logout
+      navigatorKey.currentState?.pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
+        (route) => false,
+      );
+      debugPrint('🔴 [RideEaseApp] Navigated to role selection after 401');
+    };
+    
     return MaterialApp(
+      navigatorKey: navigatorKey,
       title: 'RideEase',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,

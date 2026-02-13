@@ -424,7 +424,35 @@ class AuthProvider with ChangeNotifier {
     return false;
   }
 
+  bool _isLoggingOut = false;
+  
   Future<void> logout() async {
+    // Prevent recursive logout calls
+    if (_isLoggingOut) {
+      debugPrint('⚠️ [AuthProvider] logout() - Already logging out, skipping...');
+      return;
+    }
+    
+    _isLoggingOut = true;
+    debugPrint('🚪 [AuthProvider] logout() - Starting logout process...');
+    
+    // Clear FCM token from backend before logging out
+    try {
+      final role = _role;
+      debugPrint('🔔 [AuthProvider] Clearing FCM token for role: $role');
+      
+      if (role == 'driver') {
+        await _apiService.updateDriverFcmToken(null);
+      } else if (role == 'user') {
+        await _apiService.updateUserFcmToken(null);
+      }
+      
+      debugPrint('✅ [AuthProvider] FCM token cleared from backend');
+    } catch (e) {
+      // Don't fail logout if FCM token clear fails
+      debugPrint('⚠️ [AuthProvider] Failed to clear FCM token: $e');
+    }
+    
     _isAuthenticated = false;
     _user = null;
     _rideHistory = [];
@@ -437,5 +465,8 @@ class AuthProvider with ChangeNotifier {
     await prefs.remove(_prefsDriverProfileStatusKey);
     SocketService().disconnect();
     notifyListeners();
+    
+    _isLoggingOut = false;
+    debugPrint('✅ [AuthProvider] Logout complete');
   }
 }

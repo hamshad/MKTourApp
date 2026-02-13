@@ -7,6 +7,36 @@ import '../constants/api_constants.dart';
 /// Places API Service using backend proxy for secure API key management
 /// All requests go through your backend which handles Google API calls
 class PlacesService {
+  // Callback to trigger logout when 401 is detected
+  static Function()? onUnauthorized;
+
+  /// Check if response is 401 with invalid token message and trigger logout
+  Future<bool> _checkUnauthorized(http.Response response) async {
+    if (response.statusCode == 401) {
+      try {
+        final responseData = json.decode(response.body);
+        final message = responseData['message']?.toString() ?? '';
+        
+        if (message.toLowerCase().contains('invalid token') ||
+            message.toLowerCase().contains('authorization denied') ||
+            message.toLowerCase().contains('expired token')) {
+          debugPrint('🔴 [PlacesService] 401 Unauthorized detected: $message');
+          debugPrint('🔴 [PlacesService] Triggering logout...');
+          
+          // Trigger logout callback
+          if (onUnauthorized != null) {
+            onUnauthorized!();
+          }
+          
+          return true;
+        }
+      } catch (e) {
+        debugPrint('🔴 [PlacesService] Error parsing 401 response: $e');
+      }
+    }
+    return false;
+  }
+
   /// Search for places using autocomplete
   /// Uses session token for billing optimization
   Future<List<Map<String, dynamic>>> searchPlaces(
@@ -38,6 +68,9 @@ class PlacesService {
       final response = await http.get(url, headers: headers);
 
       debugPrint('🔍 [Response] Status Code: ${response.statusCode}');
+      
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -116,6 +149,9 @@ class PlacesService {
 
       final response = await http.get(url, headers: headers);
       debugPrint('📍 [Response] Status Code: ${response.statusCode}');
+      
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
 
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
@@ -188,6 +224,9 @@ class PlacesService {
       debugPrint(
         '📍 PlacesService.getAddressFromLatLng - Response Status: ${response.statusCode}',
       );
+      
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -258,6 +297,9 @@ class PlacesService {
 
       final response = await http.get(url, headers: headers);
       debugPrint('🗺️ [Response] Status Code: ${response.statusCode}');
+      
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
 
       if (response.statusCode == 200) {
         final decoded = json.decode(response.body);
@@ -446,6 +488,9 @@ class PlacesService {
       debugPrint(
         '📍 PlacesService.getDistanceAndFare - Response Status: ${response.statusCode}',
       );
+      
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
 
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);

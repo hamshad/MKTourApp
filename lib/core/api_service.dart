@@ -16,6 +16,36 @@ class ApiService {
   static const String _prefsAuthRoleKey = 'auth_role';
   static const String _prefsDriverProfileStatusKey = 'driver_profile_status';
 
+  // Callback to trigger logout when 401 is detected
+  static Function()? onUnauthorized;
+
+  /// Check if response is 401 with invalid token message and trigger logout
+  Future<bool> _checkUnauthorized(http.Response response) async {
+    if (response.statusCode == 401) {
+      try {
+        final responseData = jsonDecode(response.body);
+        final message = responseData['message']?.toString() ?? '';
+        
+        if (message.toLowerCase().contains('invalid token') ||
+            message.toLowerCase().contains('authorization denied') ||
+            message.toLowerCase().contains('expired token')) {
+          debugPrint('🔴 [ApiService] 401 Unauthorized detected: $message');
+          debugPrint('🔴 [ApiService] Triggering logout and FCM token cleanup...');
+          
+          // Trigger logout callback (which will clear FCM token)
+          if (onUnauthorized != null) {
+            onUnauthorized!();
+          }
+          
+          return true;
+        }
+      } catch (e) {
+        debugPrint('🔴 [ApiService] Error parsing 401 response: $e');
+      }
+    }
+    return false;
+  }
+
   Future<Map<String, dynamic>> login(String email, String password) async {
     try {
       final response = await http.post(
@@ -105,6 +135,9 @@ class ApiService {
 
       debugPrint('🟣 [ApiService] Response Status: ${response.statusCode}');
       debugPrint('🟣 [ApiService] Response Body: ${response.body}');
+      
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
 
       if (response.statusCode == 200) {
         debugPrint('🟢 [ApiService] deleteUserAccount Success');
@@ -155,6 +188,9 @@ class ApiService {
 
       debugPrint('🟣 [ApiService] Response Status: ${response.statusCode}');
       debugPrint('🟣 [ApiService] Response Body: ${response.body}');
+      
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
 
       if (response.statusCode == 200) {
         debugPrint('🟢 [ApiService] deleteDriverAccount Success');
@@ -416,6 +452,9 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
+      
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
 
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
@@ -485,6 +524,9 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
+      
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
 
       if (response.statusCode == 200) {
         debugPrint('🟢 [ApiService] getUserProfile Success');
@@ -555,6 +597,9 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
+      
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
 
       if (response.statusCode == 200) {
         debugPrint('🟢 [ApiService] updateUserProfile Success');
@@ -603,6 +648,9 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
+      
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
 
       if (response.statusCode == 201) {
         debugPrint('🟢 [ApiService] createRide Success');
@@ -695,6 +743,9 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
+      
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
 
       final responseData = jsonDecode(response.body);
 
@@ -765,6 +816,9 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
+      
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
 
       final responseData = jsonDecode(response.body);
 
@@ -840,6 +894,9 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
+      
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
 
       final responseData = jsonDecode(response.body);
 
@@ -926,6 +983,9 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
+      
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         return jsonDecode(response.body);
@@ -974,6 +1034,9 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
+      
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
 
       if (response.statusCode == 200) {
         debugPrint('🟢 [ApiService] getRideDetails Success');
@@ -1026,6 +1089,9 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
+      
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
 
       if (response.statusCode == 200) {
         debugPrint('🟢 [ApiService] getDriverProfile Success');
@@ -1083,6 +1149,9 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
+      
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
 
       if (response.statusCode == 200) {
         debugPrint('🟢 [ApiService] uploadVehicleImages Success');
@@ -1138,6 +1207,9 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
+      
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
 
       if (response.statusCode == 200) {
         debugPrint('🟢 [ApiService] deleteVehicleImage Success');
@@ -1225,6 +1297,9 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
+      
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
 
       if (response.statusCode == 200) {
         debugPrint('🟢 [ApiService] uploadDriverLicense Success');
@@ -1287,6 +1362,9 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
+      
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
 
       if (response.statusCode == 200) {
         debugPrint('🟢 [ApiService] Driver location updated successfully');
@@ -1343,6 +1421,9 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
+      
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
 
       if (response.statusCode == 200) {
         debugPrint('🟢 [ApiService] updateDriverStatus Success');
@@ -1399,6 +1480,9 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
+      
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
 
       if (response.statusCode == 200) {
         debugPrint('🟢 [ApiService] updateDriverProfilePicture Success');
@@ -1453,6 +1537,9 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
+      
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
 
       if (response.statusCode == 200) {
         debugPrint('🟢 [ApiService] updateDriverProfile Success');
@@ -1507,6 +1594,9 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
+      
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
 
       if (response.statusCode == 200) {
         debugPrint('🟢 [ApiService] getRideHistory Success');
@@ -1555,6 +1645,9 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
+      
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
 
       if (response.statusCode == 200) {
         debugPrint('🟢 [ApiService] getDriverRides Success');
@@ -1579,15 +1672,20 @@ class ApiService {
   }
 
   /// Update FCM token for user profile (Option 2 - dedicated endpoint)
-  Future<Map<String, dynamic>> updateUserFcmToken(String fcmToken) async {
+  Future<Map<String, dynamic>> updateUserFcmToken(String? fcmToken) async {
     debugPrint(
       '🔵 ------------------------------------------------------------------',
     );
     debugPrint('🔵 [ApiService] updateUserFcmToken called');
     debugPrint('🔵 [Request] URL: $baseUrl/users/fcm-token');
-    debugPrint(
-      '🔵 [Request] FCM Token: ${fcmToken.substring(0, fcmToken.length > 20 ? 20 : fcmToken.length)}...',
-    );
+    
+    if (fcmToken == null) {
+      debugPrint('🔵 [Request] FCM Token: null (clearing token)');
+    } else {
+      debugPrint(
+        '🔵 [Request] FCM Token: ${fcmToken.substring(0, fcmToken.length > 20 ? 20 : fcmToken.length)}...',
+      );
+    }
 
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -1608,6 +1706,8 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
+      
+      // NOTE: No 401 check here - this is called during logout, don't trigger another logout
 
       if (response.statusCode == 200) {
         debugPrint('🟢 [ApiService] updateUserFcmToken Success');
@@ -1634,15 +1734,20 @@ class ApiService {
   }
 
   /// Update FCM token for driver profile (Option 2 - dedicated endpoint)
-  Future<Map<String, dynamic>> updateDriverFcmToken(String fcmToken) async {
+  Future<Map<String, dynamic>> updateDriverFcmToken(String? fcmToken) async {
     debugPrint(
       '🔵 ------------------------------------------------------------------',
     );
     debugPrint('🔵 [ApiService] updateDriverFcmToken called');
     debugPrint('🔵 [Request] URL: $baseUrl/drivers/fcm-token');
-    debugPrint(
-      '🔵 [Request] FCM Token: ${fcmToken.substring(0, fcmToken.length > 20 ? 20 : fcmToken.length)}...',
-    );
+    
+    if (fcmToken == null) {
+      debugPrint('🔵 [Request] FCM Token: null (clearing token)');
+    } else {
+      debugPrint(
+        '🔵 [Request] FCM Token: ${fcmToken.substring(0, fcmToken.length > 20 ? 20 : fcmToken.length)}...',
+      );
+    }
 
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -1663,6 +1768,8 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
+      
+      // NOTE: No 401 check here - this is called during logout, don't trigger another logout
 
       if (response.statusCode == 200) {
         debugPrint('🟢 [ApiService] updateDriverFcmToken Success');

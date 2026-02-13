@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme.dart';
 import '../account/edit_profile_screen.dart';
 import '../account/payment_methods_screen.dart';
@@ -191,11 +190,8 @@ class _AccountScreenState extends State<AccountScreen> {
                 // const SizedBox(height: 32),
                 TextButton(
                   onPressed: () async {
-                    // Clear auth token
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.remove('auth_token');
-                    await prefs.remove('auth_role');
-                    auth.logout();
+                    // Logout (clears auth token, role, profile status, and FCM token)
+                    await auth.logout();
 
                     // Navigate to login screen
                     if (!context.mounted) return;
