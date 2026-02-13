@@ -119,6 +119,10 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   bool _isPaymentMethodSelected = false;
   String _selectedPaymentMethodDisplay = '';
 
+  // Chrome Custom Tab payment link tracking
+  bool _waitingForPaymentLink = false;
+  Completer<bool>? _paymentLinkCompleter;
+
   // CRITICAL: Prevent duplicate listener setup
   bool _socketListenersInitialized = false;
 
@@ -166,8 +170,50 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         _socketService.joinDriverRoom(_currentDriverId!);
       }
 
-      // 3. CRITICAL: Manual Sync Fallback
+      // 3. Check payment link result if waiting
+      if (_waitingForPaymentLink) {
+        _checkPaymentLinkResult();
+        return; // Skip ride sync — we'll handle navigation from the completer
+      }
+
+      // 4. CRITICAL: Manual Sync Fallback
       _syncRideStatus();
+    }
+  }
+
+  /// Called when app resumes after Chrome Custom Tab is closed.
+  /// Checks backend for payment status and completes the Completer.
+  Future<void> _checkPaymentLinkResult() async {
+    if (!_waitingForPaymentLink || _paymentLinkCompleter == null || _paymentLinkCompleter!.isCompleted) return;
+
+    try {
+      // Small delay to allow Stripe webhook to reach the backend
+      await Future.delayed(const Duration(seconds: 2));
+
+      debugPrint('🔗 [Payment Link] Checking payment status after Chrome Custom Tab closed...');
+      final response = await _apiService.getRideDetails(widget.rideId);
+
+      final data = response['data'] ?? response;
+      final ride = data['ride'] ?? data;
+      final paymentStatus = ride['paymentStatus']?.toString().toLowerCase() ?? '';
+      final paymentMethod = ride['paymentMethod']?.toString().toLowerCase() ?? '';
+
+      debugPrint('🔗 [Payment Link] paymentStatus=$paymentStatus, paymentMethod=$paymentMethod');
+
+      if (paymentStatus == 'paid' ||
+          paymentStatus == 'succeeded' ||
+          paymentStatus == 'completed') {
+        _paymentLinkCompleter!.complete(true);
+      } else {
+        _paymentLinkCompleter!.complete(false);
+      }
+    } catch (e) {
+      debugPrint('❌ [Payment Link] Error checking payment status: $e');
+      if (!_paymentLinkCompleter!.isCompleted) {
+        _paymentLinkCompleter!.complete(false);
+      }
+    } finally {
+      _waitingForPaymentLink = false;
     }
   }
 
@@ -307,13 +353,25 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       interpolated,
     ) {
       if (mounted) {
-        setState(() {
-          _driverLocation = latlong2.LatLng(
-            interpolated.position.latitude,
-            interpolated.position.longitude,
-          );
-          _updateMarkers();
-        });
+        // Only update if position actually changed (prevent infinite rebuilds)
+        final newLocation = latlong2.LatLng(
+          interpolated.position.latitude,
+          interpolated.position.longitude,
+        );
+        
+        // Check if position changed by more than ~1 meter
+        final distance = const latlong2.Distance().as(
+          latlong2.LengthUnit.Meter,
+          _driverLocation ?? newLocation,
+          newLocation,
+        );
+        
+        if (distance > 1.0 || _driverLocation == null) {
+          setState(() {
+            _driverLocation = newLocation;
+            _updateMarkers();
+          });
+        }
       }
     });
 
@@ -1093,9 +1151,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       );
     }
 
-    setState(() {
-      _markers = newMarkers;
-    });
+    // Don't call setState here - let the caller handle it
+    _markers = newMarkers;
   }
 
   /// Fetch navigation route based on current ride status
@@ -1796,13 +1853,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   }
 
   Widget _buildStatusPanel() {
-    // Debug logging for UI rendering
-    debugPrint('🎨 [RideAssignedScreen] Building status panel');
-    debugPrint('🎨 [RideAssignedScreen] Current status: $_rideStatus');
-    debugPrint(
-      '🎨 [RideAssignedScreen] OTP value: "$_otp" (isEmpty: ${_otp.isEmpty})',
-    );
-    debugPrint('🎨 [RideAssignedScreen] Driver data: $_driver');
+    // Debug logging removed to prevent log spam
 
     return Container(
       padding: const EdgeInsets.all(24),
@@ -2283,20 +2334,20 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                   onTap: () => _handlePaymentSelection('cash'),
                 ),
                 const SizedBox(height: 16),
-                // Payment Link option - only for iOS (Apple devices)
-                if (Platform.isIOS)
-                  _buildPaymentOption(
-                    icon: Icons.link,
-                    title: 'Payment Link',
-                    subtitle: 'Pay via online link',
-                    onTap: () => _handlePaymentSelection('payment_link'),
-                  ),
+                // Payment Link option - available on both iOS and Android
+                _buildPaymentOption(
+                  icon: Icons.link,
+                  title: 'Payment Link',
+                  subtitle: 'Pay via online link',
+                  onTap: () => _handlePaymentSelection('payment_link'),
+                ),
                 // Android options: Google Pay or Card (both use pay_online API)
                 if (Platform.isAndroid) ...[
+                  const SizedBox(height: 16),
                   _buildPaymentOption(
                     icon: Icons.account_balance_wallet,
                     title: 'Google Pay',
-                    subtitle: 'Fast checkout with Google Pay',
+                    subtitle: 'Pay with native Google Pay',
                     onTap: () => _handlePaymentSelection(
                       'pay_online',
                       preferredPayment: 'google_pay',
@@ -2306,7 +2357,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                   _buildPaymentOption(
                     icon: Icons.credit_card,
                     title: 'Card',
-                    subtitle: 'Pay with card details',
+                    subtitle: 'Pay with card details (Stripe)',
                     onTap: () => _handlePaymentSelection(
                       'pay_online',
                       preferredPayment: 'card',
@@ -2589,48 +2640,101 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
             debugPrint('🔗 [Payment Link] URL: $paymentUrl');
           }
 
-          // Close loading dialog before navigating to WebView
+          // Close loading dialog before opening browser / WebView
           if (Navigator.canPop(context)) {
             Navigator.pop(context);
           }
 
           if (paymentUrl != null) {
-            debugPrint('✅ [Payment Link] Opening in-app WebView');
+            if (Platform.isAndroid) {
+              // ── Android: Chrome Custom Tab ──────────────────────────
+              debugPrint('✅ [Payment Link] Opening in Chrome Custom Tab (Android)');
 
-            // Navigate to WebView screen
-            final result = await Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => PaymentWebViewScreen(
-                  paymentUrl: paymentUrl,
-                  rideId: widget.rideId,
-                ),
-              ),
-            );
+              _paymentLinkCompleter = Completer<bool>();
+              _waitingForPaymentLink = true;
 
-            // Handle result from WebView
-            if (result != null && result['success'] == true) {
-              debugPrint('✅ [Payment Link] Payment completed successfully');
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Payment successful! Share OTP with driver.'),
-                  backgroundColor: Colors.green,
-                ),
+              final launched = await launchUrl(
+                Uri.parse(paymentUrl),
+                mode: LaunchMode.inAppBrowserView,
               );
-              setState(() {
-                _isPaymentMethodSelected = true;
-                _selectedPaymentMethodDisplay = 'Payment Link';
-              });
+
+              if (!launched) {
+                _waitingForPaymentLink = false;
+                _paymentLinkCompleter = null;
+                debugPrint('❌ [Payment Link] Could not open Chrome Custom Tab');
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Could not open payment page. Please try again.'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                _reopenPaymentSelectionModal();
+                return;
+              }
+
+              // Block until the Completer is resolved by _checkPaymentLinkResult
+              final success = await _paymentLinkCompleter!.future;
+
+              if (!mounted) return;
+              if (success) {
+                debugPrint('✅ [Payment Link] Payment completed (Chrome Custom Tab)');
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Payment successful! Share OTP with driver.'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+                setState(() {
+                  _isPaymentMethodSelected = true;
+                  _selectedPaymentMethodDisplay = 'Payment Link';
+                });
+              } else {
+                debugPrint('❌ [Payment Link] Payment not completed (Chrome Custom Tab)');
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Payment was not completed. Please try again.'),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+                _reopenPaymentSelectionModal();
+              }
             } else {
-              debugPrint('❌ [Payment Link] Payment cancelled or failed');
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Payment was not completed. Please try again.'),
-                  backgroundColor: Colors.orange,
+              // ── iOS / other: In-app WebView ──────────────────────────
+              debugPrint('✅ [Payment Link] Opening in-app WebView');
+
+              final result = await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => PaymentWebViewScreen(
+                    paymentUrl: paymentUrl,
+                    rideId: widget.rideId,
+                  ),
                 ),
               );
-              // Re-show payment selection modal
-              _showPaymentSelectionModal();
+
+              if (result != null && result['success'] == true) {
+                debugPrint('✅ [Payment Link] Payment completed successfully');
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Payment successful! Share OTP with driver.'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+                setState(() {
+                  _isPaymentMethodSelected = true;
+                  _selectedPaymentMethodDisplay = 'Payment Link';
+                });
+              } else {
+                debugPrint('❌ [Payment Link] Payment cancelled or failed');
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Payment was not completed. Please try again.'),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+                _reopenPaymentSelectionModal();
+              }
             }
           } else {
             debugPrint('❌ [Payment Link] URL missing in response');

@@ -19,6 +19,7 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
   late final WebViewController _controller;
   bool _isLoading = true;
   String _currentUrl = '';
+  bool _paymentFlowCompleted = false;
 
   @override
   void initState() {
@@ -76,22 +77,59 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
   }
 
   bool _checkPaymentCompletion(String url) {
-    if (url.isEmpty) return false;
-    
-    // Stripe Checkout success URLs for mktours
-    if (url.contains('mktours.app/payment-success') || 
-        url.contains('success') || 
-        url.contains('payment/success')) {
+    if (url.isEmpty || _paymentFlowCompleted) return false;
+
+    final lowerUrl = url.toLowerCase();
+    Uri? uri;
+    try {
+      uri = Uri.parse(url);
+    } catch (_) {}
+
+    final qp = uri?.queryParameters ?? const <String, String>{};
+  final path = (uri?.path ?? '').toLowerCase();
+    final redirectStatus = (qp['redirect_status'] ?? '').toLowerCase();
+    final status = (qp['status'] ?? '').toLowerCase();
+    final paymentStatus = (qp['payment_status'] ?? '').toLowerCase();
+
+    final bool isSuccess =
+        lowerUrl.contains('mktours.app/payment-success') ||
+    lowerUrl.contains('/payment-success') ||
+    path.endsWith('/payment-success') ||
+        lowerUrl.contains('/payment/success') ||
+        lowerUrl.contains('/success') ||
+        redirectStatus == 'succeeded' ||
+        status == 'success' ||
+        status == 'succeeded' ||
+        status == 'paid' ||
+        paymentStatus == 'paid';
+
+    final bool isCancelled =
+        lowerUrl.contains('mktours.app/payment-cancel') ||
+    lowerUrl.contains('/payment-cancel') ||
+    path.endsWith('/payment-cancel') ||
+        lowerUrl.contains('/payment/cancel') ||
+        lowerUrl.contains('/cancel') ||
+        redirectStatus == 'failed' ||
+        redirectStatus == 'canceled' ||
+        redirectStatus == 'cancelled' ||
+        status == 'failed' ||
+        status == 'canceled' ||
+        status == 'cancelled';
+
+    if (isSuccess) {
       debugPrint('✅ [WebView] Payment successful detected: $url');
+      _paymentFlowCompleted = true;
       _handlePaymentSuccess();
       return true;
-    } else if (url.contains('mktours.app/payment-cancel') || 
-               url.contains('cancel') || 
-               url.contains('payment/cancel')) {
+    }
+
+    if (isCancelled) {
       debugPrint('❌ [WebView] Payment cancelled detected: $url');
+      _paymentFlowCompleted = true;
       _handlePaymentCancelled();
       return true;
     }
+
     return false;
   }
 
@@ -101,31 +139,8 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
   }
 
   void _handlePaymentCancelled() {
-    // Show dialog to user
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Payment Cancelled'),
-        content: const Text('Your payment was cancelled. Would you like to try again?'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context); // Close dialog
-              Navigator.pop(context, {'success': false}); // Close WebView
-            },
-            child: const Text('Go Back'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context); // Close dialog
-              // Reload the payment page
-              _controller.loadRequest(Uri.parse(widget.paymentUrl));
-            },
-            child: const Text('Try Again'),
-          ),
-        ],
-      ),
-    );
+    // Close WebView and let parent screen re-open payment options
+    Navigator.pop(context, {'success': false});
   }
 
   @override

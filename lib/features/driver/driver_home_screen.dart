@@ -201,6 +201,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
     _socketService.off('driver:status');
     _socketService.off('driver:locationUpdated');
     _socketService.off('payment:succeeded');
+    _socketService.off('payment:authorized');
+    _socketService.off('payment:captured');
+    _socketService.off('payment:failed');
+    _socketService.off('payment:cancelled');
     _socketService.off('ride:paymentSelected'); // Listener for payment choice
 
     // Stop and clean up notification playback if still playing
@@ -465,6 +469,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
       _socketService.off('driver:status');
       _socketService.off('driver:locationUpdated');
       _socketService.off('payment:succeeded');
+      _socketService.off('payment:authorized');
+      _socketService.off('payment:captured');
+      _socketService.off('payment:failed');
+      _socketService.off('payment:cancelled');
       _socketService.off('ride:paymentSelected');
     }
     
@@ -520,6 +528,62 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
       }
       // Stop notification playback if payment succeeded
       AudioService.instance.stop();
+    });
+
+    _socketService.on('payment:authorized', (data) {
+      debugPrint('💳 [DriverHomeScreen] Payment authorized: $data');
+      if (!mounted) return;
+
+      final rideId = data['bookingId']?.toString() ?? data['rideId']?.toString();
+      if (rideId == _currentRideId) {
+        CustomSnackbar.show(
+          context,
+          message: 'Payment authorized by rider.',
+          type: SnackbarType.info,
+        );
+      }
+    });
+
+    _socketService.on('payment:captured', (data) {
+      debugPrint('💳 [DriverHomeScreen] Payment captured: $data');
+      if (!mounted) return;
+
+      final rideId = data['bookingId']?.toString() ?? data['rideId']?.toString();
+      if (rideId == _currentRideId) {
+        CustomSnackbar.show(
+          context,
+          message: 'Payment captured successfully.',
+          type: SnackbarType.success,
+        );
+      }
+    });
+
+    _socketService.on('payment:failed', (data) {
+      debugPrint('💳 [DriverHomeScreen] Payment failed: $data');
+      if (!mounted) return;
+
+      final rideId = data['bookingId']?.toString() ?? data['rideId']?.toString();
+      if (rideId == _currentRideId) {
+        CustomSnackbar.show(
+          context,
+          message: data['message']?.toString() ?? 'Rider payment failed.',
+          type: SnackbarType.error,
+        );
+      }
+    });
+
+    _socketService.on('payment:cancelled', (data) {
+      debugPrint('💳 [DriverHomeScreen] Payment cancelled: $data');
+      if (!mounted) return;
+
+      final rideId = data['bookingId']?.toString() ?? data['rideId']?.toString();
+      if (rideId == _currentRideId) {
+        CustomSnackbar.show(
+          context,
+          message: data['message']?.toString() ?? 'Rider cancelled payment.',
+          type: SnackbarType.warning,
+        );
+      }
     });
 
     // Listen for location update confirmation

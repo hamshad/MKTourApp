@@ -182,12 +182,7 @@ class _PlatformMapState extends State<PlatformMap> {
 
   @override
   Widget build(BuildContext context) {
-    debugPrint('🗺️ PlatformMap: Building with Google Maps');
-    debugPrint('   → Markers: ${widget.markers.length}');
-    debugPrint('   → Polylines: ${widget.polylines.length}');
-    if (widget.polylines.isNotEmpty) {
-      debugPrint('   → First polyline points: ${widget.polylines.first.points.length}');
-    }
+    // Debug logging removed to prevent log spam
 
     // Convert MapMarker to Google Maps Marker (Moved to build for reactivity)
     final googleMarkers = widget.markers.map((m) {
