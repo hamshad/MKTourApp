@@ -14,7 +14,6 @@ import '../../core/services/places_service.dart';
 import '../../core/services/marker_interpolation_service.dart';
 import '../../core/services/payment_service.dart';
 import '../../core/services/stripe_service.dart';
-import '../../core/services/google_pay_service.dart';
 import '../../core/widgets/platform_map.dart';
 import 'ride_complete_screen.dart';
 import 'payment_webview_screen.dart';
@@ -2341,29 +2340,6 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                   subtitle: 'Pay via online link',
                   onTap: () => _handlePaymentSelection('payment_link'),
                 ),
-                // Android options: Google Pay or Card (both use pay_online API)
-                if (Platform.isAndroid) ...[
-                  const SizedBox(height: 16),
-                  _buildPaymentOption(
-                    icon: Icons.account_balance_wallet,
-                    title: 'Google Pay',
-                    subtitle: 'Pay with native Google Pay',
-                    onTap: () => _handlePaymentSelection(
-                      'pay_online',
-                      preferredPayment: 'google_pay',
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  _buildPaymentOption(
-                    icon: Icons.credit_card,
-                    title: 'Card',
-                    subtitle: 'Pay with card details (Stripe)',
-                    onTap: () => _handlePaymentSelection(
-                      'pay_online',
-                      preferredPayment: 'card',
-                    ),
-                  ),
-                ],
                 const SizedBox(height: 24),
               ],
             ),
@@ -2437,10 +2413,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     );
   }
 
-  Future<void> _handlePaymentSelection(
-    String method, {
-    String? preferredPayment,
-  }) async {
+  Future<void> _handlePaymentSelection(String method) async {
     debugPrint('═══════════════════════════════════════════════════════════');
     debugPrint('💸 [Payment] ============ PAYMENT SELECTION START ============');
     debugPrint('💸 [Payment] Method selected: $method');
@@ -2490,97 +2463,6 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
           if (clientSecret != null) {
             try {
-              final prefersGooglePay = preferredPayment == 'google_pay';
-              final prefersCard = preferredPayment == 'card';
-
-              // Android: explicit Google Pay path
-              if (Platform.isAndroid && prefersGooglePay) {
-                debugPrint('💳 [Payment] Android: Google Pay selected, starting Google Pay...');
-                final fare = (rideData['amount'] as num?)?.toDouble() ?? widget.fare;
-                // Backend returns amount in smallest unit (pence for GBP, cents for USD)
-                // Divide by 100 to convert to actual currency amount
-                final fareInActualCurrency = fare / 100;
-                final currency = rideData['currency']?.toString().toUpperCase() ?? 'GBP';
-
-                final gpayResult = await GooglePayService.requestPayment(
-                  amount: fareInActualCurrency,
-                  currencyCode: currency,
-                );
-
-                if (gpayResult['success'] == true) {
-                  debugPrint('💳 [Payment] Google Pay token received, confirming with Stripe...');
-                  final tokenJsonStr = gpayResult['token'] as String;
-                  await StripeService.confirmWithToken(clientSecret, tokenJsonStr);
-
-                  if (!mounted) return;
-                  // Close loading dialog after payment confirmation
-                  if (Navigator.canPop(context)) {
-                    Navigator.pop(context);
-                  }
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Payment Successful! Share OTP with driver.'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                  setState(() {
-                    _isPaymentMethodSelected = true;
-                    _selectedPaymentMethodDisplay = 'Google Pay';
-                  });
-                  return;
-                }
-
-                final gpayError = gpayResult['error']?.toString() ?? 'Unknown error';
-                if (gpayError == 'cancelled') {
-                  debugPrint('💳 [Payment] Google Pay cancelled by user');
-                  if (Navigator.canPop(context)) {
-                    Navigator.pop(context);
-                  }
-                  _reopenPaymentSelectionModal();
-                  return;
-                }
-
-                debugPrint('💳 [Payment] Google Pay failed: $gpayError');
-                if (Navigator.canPop(context)) {
-                  Navigator.pop(context);
-                }
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Google Pay failed: $gpayError'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-                _reopenPaymentSelectionModal();
-                return;
-              }
-
-              // Android: explicit Card path
-              if (Platform.isAndroid && prefersCard) {
-                debugPrint('💳 [Payment] Android: Card selected, opening card sheet...');
-                await StripeService.processPayment(
-                  clientSecret,
-                  forceCardOnly: true,
-                );
-
-                // Close loading dialog after payment sheet completes
-                if (Navigator.canPop(context)) {
-                  Navigator.pop(context);
-                }
-
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Payment Successful! Share OTP with driver.'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-                setState(() {
-                  _isPaymentMethodSelected = true;
-                  _selectedPaymentMethodDisplay = 'Card';
-                });
-                return;
-              }
-
               // Default fallback: Use Stripe Payment Sheet
               await StripeService.processPayment(clientSecret);
 
