@@ -13,11 +13,86 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> {
+class _SplashScreenState extends State<SplashScreen>
+  with TickerProviderStateMixin {
+  late final AnimationController _mainController;
+  late final AnimationController _pulseController;
+
+  late final Animation<double> _lottieFade;
+  late final Animation<double> _lottieScale;
+  late final Animation<double> _taglineFade;
+  late final Animation<Offset> _taglineSlide;
+  late final Animation<double> _logoFade;
+  late final Animation<Offset> _logoSlide;
+  late final Animation<double> _textFade;
+
   @override
   void initState() {
     super.initState();
+
+    _mainController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    );
+
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2200),
+    )..repeat(reverse: true);
+
+    _lottieFade = CurvedAnimation(
+      parent: _mainController,
+      curve: const Interval(0.0, 0.35, curve: Curves.easeOut),
+    );
+    _lottieScale = Tween<double>(begin: 0.88, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _mainController,
+        curve: const Interval(0.0, 0.45, curve: Curves.easeOutBack),
+      ),
+    );
+
+    _taglineFade = CurvedAnimation(
+      parent: _mainController,
+      curve: const Interval(0.2, 0.55, curve: Curves.easeOut),
+    );
+    _taglineSlide = Tween<Offset>(
+      begin: const Offset(0, 0.35),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(
+        parent: _mainController,
+        curve: const Interval(0.2, 0.6, curve: Curves.easeOutCubic),
+      ),
+    );
+
+    _logoFade = CurvedAnimation(
+      parent: _mainController,
+      curve: const Interval(0.45, 0.75, curve: Curves.easeOut),
+    );
+    _logoSlide = Tween<Offset>(
+      begin: const Offset(0, 0.22),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(
+        parent: _mainController,
+        curve: const Interval(0.45, 0.8, curve: Curves.easeOutCubic),
+      ),
+    );
+
+    _textFade = CurvedAnimation(
+      parent: _mainController,
+      curve: const Interval(0.65, 1.0, curve: Curves.easeOut),
+    );
+
+    _mainController.forward();
     _checkAuth();
+  }
+
+  @override
+  void dispose() {
+    _mainController.dispose();
+    _pulseController.dispose();
+    super.dispose();
   }
 
   Future<void> _checkAuth() async {
@@ -55,42 +130,144 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Lottie.asset(
-              'lib/assets/lottie/splash.json',
-              repeat: false,
-              width: MediaQuery.of(context).size.width * 0.8,
-              height: MediaQuery.of(context).size.width * 0.8,
-              fit: BoxFit.contain,
+      body: Stack(
+        children: [
+          AnimatedBuilder(
+            animation: _pulseController,
+            builder: (context, _) {
+              return Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Colors.white,
+                      const Color(0xFFEFF5FF).withOpacity(
+                        0.7 + (_pulseController.value * 0.2),
+                      ),
+                      const Color(0xFFFFF2E5).withOpacity(
+                        0.62 + (_pulseController.value * 0.18),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                FadeTransition(
+                  opacity: _lottieFade,
+                  child: ScaleTransition(
+                    scale: _lottieScale,
+                    child: Lottie.asset(
+                      'lib/assets/lottie/splash.json',
+                      repeat: false,
+                      width: width * 0.8,
+                      height: width * 0.8,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                FadeTransition(
+                  opacity: _taglineFade,
+                  child: SlideTransition(
+                    position: _taglineSlide,
+                    child: Text(
+                      'Your Journey, Simplified',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.3,
+                        color: const Color(0xFF1F2A44),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 26),
+                FadeTransition(
+                  opacity: _logoFade,
+                  child: SlideTransition(
+                    position: _logoSlide,
+                    child: Image.asset(
+                      'lib/assets/images/Logo-01.png',
+                      width: 200,
+                      height: 100,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                FadeTransition(
+                  opacity: _textFade,
+                  child: Text(
+                    'MK-Tours',
+                    style: Theme.of(context).textTheme.displayLarge,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                FadeTransition(
+                  opacity: _textFade,
+                  child: AnimatedBuilder(
+                    animation: _pulseController,
+                    builder: (context, child) {
+                      return Transform.scale(
+                        scale: 1 + (_pulseController.value * 0.035),
+                        child: child,
+                      );
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(28),
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF0F4C81), Color(0xFF1B6CA8)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x441B6CA8),
+                            blurRadius: 18,
+                            offset: Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.auto_awesome,
+                            color: Colors.white,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Proud to Serve',
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.5,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 32),
-
-            Image.asset(
-              'lib/assets/images/Logo-01.png',
-              width: 200,
-              height: 100,
-              fit: BoxFit.contain,
-            ),
-
-            const SizedBox(height: 12),
-
-            Text('MK-Tours', style: Theme.of(context).textTheme.displayLarge),
-            const SizedBox(height: 12),
-
-            Text(
-              'Proud to Serve',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(fontWeight: FontWeight.w600),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

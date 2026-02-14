@@ -574,8 +574,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         return;
       }
 
-      // Use post-frame callback to ensure setState is called at safe time
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Use scheduleMicrotask for reliable iOS execution
+      debugPrint('📍 [RideAssignedScreen] Scheduling ride:accepted state update...');
+      scheduleMicrotask(() {
         if (!mounted || !context.mounted) return;
 
         setState(() {
@@ -735,13 +736,16 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       // Stop ETA updates (no longer needed)
       _stopETAUpdates();
 
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Use scheduleMicrotask for reliable iOS execution
+      debugPrint('📍 [RideAssignedScreen] Scheduling ride:started state update...');
+      scheduleMicrotask(() {
         if (!mounted || !context.mounted) {
-          debugPrint('⚠️ [RideAssignedScreen] Widget unmounted in callback');
+          debugPrint('⚠️ [RideAssignedScreen] Widget unmounted in microtask');
           return;
         }
 
         debugPrint('✅ [RideAssignedScreen] Updating UI to in_progress state');
+        debugPrint('   → Current status before setState: $_rideStatus');
         setState(() {
           _rideStatus = 'in_progress';
           _updateMarkers();
@@ -749,6 +753,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
           _fetchNavigationRoute();
         });
         debugPrint('✅ [RideAssignedScreen] Ride started state update complete');
+        debugPrint('   → New status after setState: $_rideStatus');
+        debugPrint('   → Widget is still mounted: $mounted');
       });
     });
 
@@ -876,7 +882,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       // Play app custom notification sound
       AudioService.instance.playNotification();
 
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      debugPrint('📍 [RideAssignedScreen] Scheduling driver arrived state update...');
+      scheduleMicrotask(() {
         if (!mounted || !context.mounted) return;
 
         setState(() {
@@ -898,7 +905,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
       if (!mounted || !context.mounted) return;
 
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      debugPrint('📍 [RideAssignedScreen] Scheduling OTP expired state update...');
+      scheduleMicrotask(() {
         if (!mounted || !context.mounted) return;
 
         setState(() {
@@ -2351,7 +2359,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
   void _reopenPaymentSelectionModal() {
     if (!mounted) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    scheduleMicrotask(() {
       if (!mounted) return;
       _showPaymentSelectionModal();
     });
