@@ -207,6 +207,40 @@ class AuthProvider with ChangeNotifier {
     return false;
   }
 
+  Future<bool> updateDriverLicense(File license) async {
+    try {
+      final response = await _apiService.updateDriverLicense(license);
+      if (response['success'] == true && response['data'] != null) {
+        // Update local user data with new license if needed
+        if (response['data']['driver'] != null) {
+          _user = response['data']['driver'];
+          notifyListeners();
+        }
+        return true;
+      }
+    } catch (e) {
+      print('Error updating driver license: $e');
+    }
+    return false;
+  }
+
+  Future<bool> deleteDriverLicense() async {
+    try {
+      final response = await _apiService.deleteDriverLicense();
+      if (response['success'] == true && response['data'] != null) {
+        // Update local user data with removed license
+        if (response['data']['driver'] != null) {
+          _user = response['data']['driver'];
+          notifyListeners();
+        }
+        return true;
+      }
+    } catch (e) {
+      print('Error deleting driver license: $e');
+    }
+    return false;
+  }
+
   Future<bool> checkAuth() async {
     try {
       await fetchUserProfile();

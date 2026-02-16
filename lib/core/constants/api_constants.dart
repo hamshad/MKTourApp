@@ -1,9 +1,9 @@
 class ApiConstants {
   // Local development socket URL (commented when using live API)
-  static const String socketUrl = 'http://192.168.1.17:5000';
+  // static const String socketUrl = 'http://192.168.1.14:5000';
   // static const String socketUrl = 'http://192.168.1.22:5001';
   // Live API socket URL
-  // static const String socketUrl = 'https://api.mktours.co.uk';
+  static const String socketUrl = 'https://api.mktours.co.uk';
   static const String baseUrl = '$socketUrl/api/v1';
 
   // Auth Endpoints
@@ -34,6 +34,8 @@ class ApiConstants {
   static const String deleteVehicleImage =
       '$baseUrl/drivers/delete-vehicle-image';
   static const String uploadLicense = '$baseUrl/drivers/upload-license';
+  static const String updateLicense = '$baseUrl/drivers/update-license';
+  static const String deleteLicense = '$baseUrl/drivers/delete-license';
   static const String updateDriverStatus = '$baseUrl/drivers/status';
   static const String updateDriver = '$baseUrl/drivers/update';
   static const String updateDriverLocation = '$baseUrl/drivers/location';

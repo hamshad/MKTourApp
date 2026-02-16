@@ -162,6 +162,9 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
               backgroundColor: success ? Colors.green : Colors.red,
             ),
           );
+          if (success) {
+            _fetchProfile(); // Refresh profile to show new license
+          }
         }
       }
     } catch (e) {
@@ -175,6 +178,170 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
         );
       }
     }
+  }
+
+  Future<void> _updateLicense() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'doc', 'docx'],
+      );
+
+      if (result != null) {
+        final file = File(result.files.single.path!);
+
+        // Check size limit (5MB)
+        final sizeInBytes = await file.length();
+        if (sizeInBytes > 5 * 1024 * 1024) {
+          // 5MB
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Document must be less than 5MB'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+
+        if (!mounted) return;
+        setState(() => _isLoading = true);
+
+        final success = await Provider.of<AuthProvider>(
+          context,
+          listen: false,
+        ).updateDriverLicense(file);
+
+        if (mounted) {
+          setState(() => _isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                success
+                    ? 'License updated successfully'
+                    : 'Failed to update license',
+              ),
+              backgroundColor: success ? Colors.green : Colors.red,
+            ),
+          );
+          if (success) {
+            _fetchProfile(); // Refresh profile to show updated license
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error picking license: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteLicense() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete License'),
+        content: const Text(
+          'Are you sure you want to delete your driver license document?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.red,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      setState(() => _isLoading = true);
+      if (!mounted) return;
+
+      final success = await Provider.of<AuthProvider>(
+        context,
+        listen: false,
+      ).deleteDriverLicense();
+
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              success
+                  ? 'License deleted successfully'
+                  : 'Failed to delete license',
+            ),
+            backgroundColor: success ? Colors.green : Colors.red,
+          ),
+        );
+        if (success) {
+          _fetchProfile(); // Refresh profile to reflect deletion
+        }
+      }
+    }
+  }
+
+  void _showLicenseOptions() {
+    // Capture the license document URL before showing the bottom sheet
+    final user = Provider.of<AuthProvider>(context, listen: false).user;
+    final licenseDoc = user?['licenseDocument'] as String?;
+    
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext bottomSheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(bottomSheetContext).padding.bottom,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.visibility, color: AppTheme.primaryColor),
+                  title: const Text('View License'),
+                  onTap: () {
+                    Navigator.pop(bottomSheetContext);
+                    if (licenseDoc != null) {
+                      _launchURL(licenseDoc, title: 'Driver License');
+                    }
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.edit, color: AppTheme.primaryColor),
+                  title: const Text('Update License'),
+                  onTap: () {
+                    Navigator.pop(bottomSheetContext);
+                    _updateLicense();
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.delete, color: Colors.red),
+                  title: const Text('Delete License', style: TextStyle(color: Colors.red)),
+                  onTap: () {
+                    Navigator.pop(bottomSheetContext);
+                    _deleteLicense();
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _showImageSourceActionSheet() {
@@ -477,40 +644,19 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
         // Check for PDF signature (magic bytes) and Content-Type
         try {
           debugPrint('🔵 [_launchURL] Checking file signature/headers...');
-          final response = await http.get(
-            uri,
-            headers: {'Range': 'bytes=0-9'}, // Fetch first 10 bytes
-          );
+          final response = await http.head(uri);
 
           debugPrint(
-            '🔵 [_launchURL] Head/Range response status: ${response.statusCode}',
+            '🔵 [_launchURL] Head response status: ${response.statusCode}',
           );
           debugPrint(
             '🔵 [_launchURL] Content-Type: ${response.headers['content-type']}',
           );
 
-          if (response.statusCode == 200 || response.statusCode == 206) {
-            // Check magic bytes for PDF: %PDF-
-            // We use bodyBytes to check the raw bytes
-            final bytes = response.bodyBytes;
-            debugPrint('🔵 [_launchURL] First ${bytes.length} bytes: $bytes');
-
-            if (bytes.length >= 4 &&
-                bytes[0] == 0x25 && // %
-                bytes[1] == 0x50 && // P
-                bytes[2] == 0x44 && // D
-                bytes[3] == 0x46) {
-              // F
-              isPdf = true;
-              debugPrint('🟢 [_launchURL] PDF magic bytes detected!');
-            }
-
-            // Also check Content-Type header as backup
-            if (!isPdf &&
-                response.headers['content-type']?.toLowerCase().contains(
-                      'application/pdf',
-                    ) ==
-                    true) {
+          if (response.statusCode == 200) {
+            // Check Content-Type header
+            final contentType = response.headers['content-type']?.toLowerCase() ?? '';
+            if (contentType.contains('application/pdf') || contentType.contains('pdf')) {
               isPdf = true;
               debugPrint('🟢 [_launchURL] PDF Content-Type detected!');
             }
@@ -1060,7 +1206,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                         licenseDoc != null ? 'Verified' : 'Action Required',
                         onTap: () {
                           if (licenseDoc != null) {
-                            _launchURL(licenseDoc, title: 'Driver License');
+                            _showLicenseOptions();
                           } else {
                             _uploadLicense();
                           }
@@ -1076,7 +1222,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                                   borderRadius: BorderRadius.circular(20),
                                 ),
                                 child: const Text(
-                                  'View',
+                                  'Manage',
                                   style: TextStyle(
                                     color: Colors.green,
                                     fontWeight: FontWeight.bold,

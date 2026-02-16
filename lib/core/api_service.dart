@@ -1325,6 +1325,149 @@ class ApiService {
     }
   }
 
+  Future<Map<String, dynamic>> updateDriverLicense(File licenseDocument) async {
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
+    debugPrint('🔵 [ApiService] updateDriverLicense called');
+    debugPrint('🔵 [Request] URL: ${ApiConstants.updateLicense}');
+    debugPrint('🔵 [Request] File: ${licenseDocument.path}');
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+
+      if (token == null) {
+        throw Exception('No auth token found');
+      }
+
+      var request = http.MultipartRequest(
+        'PUT',
+        Uri.parse(ApiConstants.updateLicense),
+      );
+      request.headers['Authorization'] = 'Bearer $token';
+
+      // Get the file extension and determine the correct MIME type
+      final filePath = licenseDocument.path;
+      final fileName = filePath.split('/').last;
+      final extension = fileName.split('.').last.toLowerCase();
+
+      String contentType;
+      switch (extension) {
+        case 'pdf':
+          contentType = 'application/pdf';
+          break;
+        case 'doc':
+          contentType = 'application/msword';
+          break;
+        case 'docx':
+          contentType =
+              'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+          break;
+        default:
+          contentType = 'application/octet-stream';
+      }
+
+      debugPrint('🔵 [Request] File name: $fileName');
+      debugPrint('🔵 [Request] Extension: $extension');
+      debugPrint('🔵 [Request] Content-Type: $contentType');
+
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'document',
+          licenseDocument.path,
+          filename: fileName,
+          contentType: MediaType.parse(contentType),
+        ),
+      );
+
+      debugPrint('🔵 [Request] Sending multipart request...');
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
+      debugPrint('🟣 [Response] Body: ${response.body}');
+      
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
+
+      if (response.statusCode == 200) {
+        debugPrint('🟢 [ApiService] updateDriverLicense Success');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
+        return jsonDecode(response.body);
+      } else {
+        debugPrint(
+          '🔴 [ApiService] updateDriverLicense Failed: ${response.body}',
+        );
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
+        throw Exception('Failed to update driver license: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('🟠 [ApiService] Exception caught: $e');
+      debugPrint(
+        '🔵 ------------------------------------------------------------------',
+      );
+      throw Exception('Failed to update driver license: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>> deleteDriverLicense() async {
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
+    debugPrint('🔵 [ApiService] deleteDriverLicense called');
+    debugPrint('🔵 [Request] URL: ${ApiConstants.deleteLicense}');
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+
+      if (token == null) {
+        throw Exception('No auth token found');
+      }
+
+      final response = await http.delete(
+        Uri.parse(ApiConstants.deleteLicense),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
+      debugPrint('🟣 [Response] Body: ${response.body}');
+      
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
+
+      if (response.statusCode == 200) {
+        debugPrint('🟢 [ApiService] deleteDriverLicense Success');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
+        return jsonDecode(response.body);
+      } else {
+        debugPrint(
+          '🔴 [ApiService] deleteDriverLicense Failed: ${response.body}',
+        );
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
+        throw Exception('Failed to delete driver license: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('🟠 [ApiService] Exception caught: $e');
+      debugPrint(
+        '🔵 ------------------------------------------------------------------',
+      );
+      throw Exception('Failed to delete driver license: $e');
+    }
+  }
+
   /// Update driver's location (called after login or periodically)
   Future<Map<String, dynamic>> updateDriverLocation({
     required double latitude,
