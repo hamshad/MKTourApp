@@ -1,27 +1,67 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intl/intl.dart';
 import '../../core/theme.dart';
 
-class DriverRideDetailScreen extends StatelessWidget {
+class DriverRideDetailScreen extends StatefulWidget {
   final Map<String, dynamic> rideData;
 
   const DriverRideDetailScreen({super.key, required this.rideData});
 
   @override
+  State<DriverRideDetailScreen> createState() => _DriverRideDetailScreenState();
+}
+
+class _DriverRideDetailScreenState extends State<DriverRideDetailScreen> {
+  GoogleMapController? _mapController;
+
+  @override
+  void initState() {
+    super.initState();
+    // Map bounds will be fitted in onMapCreated
+  }
+
+  void _fitMapBounds() {
+    if (_mapController == null) return;
+
+    final pickupCoords =
+        widget.rideData['pickupLocation']?['coordinates'] ?? [0.0, 0.0];
+    final dropoffCoords =
+        widget.rideData['dropoffLocation']?['coordinates'] ?? [0.0, 0.0];
+
+    final pickup = LatLng(pickupCoords[1], pickupCoords[0]);
+    final dropoff = LatLng(dropoffCoords[1], dropoffCoords[0]);
+
+    final bounds = LatLngBounds(
+      southwest: LatLng(
+        pickup.latitude < dropoff.latitude ? pickup.latitude : dropoff.latitude,
+        pickup.longitude < dropoff.longitude ? pickup.longitude : dropoff.longitude,
+      ),
+      northeast: LatLng(
+        pickup.latitude > dropoff.latitude ? pickup.latitude : dropoff.latitude,
+        pickup.longitude > dropoff.longitude ? pickup.longitude : dropoff.longitude,
+      ),
+    );
+
+    // Fit the map to show both markers with padding
+    _mapController!.animateCamera(
+      CameraUpdate.newLatLngBounds(bounds, 80),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final fare = _toDouble(rideData['fare']);
-    final tip = _toDouble(rideData['tip']);
-    final surge = _toDouble(rideData['surge']);
+    final fare = _toDouble(widget.rideData['fare']);
+    final tip = _toDouble(widget.rideData['tip']);
+    final surge = _toDouble(widget.rideData['surge']);
     final total = fare + tip + surge;
-    final status = (rideData['status'] ?? 'completed').toString();
-    final passenger = rideData['user'] is Map
-        ? rideData['user'] as Map<String, dynamic>
-        : rideData['passenger'] is Map
-            ? rideData['passenger'] as Map<String, dynamic>
-            : rideData['userData'] is Map
-                ? rideData['userData'] as Map<String, dynamic>
+    final status = (widget.rideData['status'] ?? 'completed').toString();
+    final passenger = widget.rideData['user'] is Map
+        ? widget.rideData['user'] as Map<String, dynamic>
+        : widget.rideData['passenger'] is Map
+            ? widget.rideData['passenger'] as Map<String, dynamic>
+            : widget.rideData['userData'] is Map
+                ? widget.rideData['userData'] as Map<String, dynamic>
                 : null;
 
     return Scaffold(
@@ -55,7 +95,7 @@ class DriverRideDetailScreen extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            _formatDateTime(rideData['createdAt']),
+                            _formatDateTime(widget.rideData['createdAt']),
                             style: const TextStyle(
                               color: AppTheme.textSecondary,
                               fontSize: 14,
@@ -165,8 +205,8 @@ class DriverRideDetailScreen extends StatelessWidget {
                     Icons.my_location,
                     Colors.green,
                     'Pickup',
-                    _formatTime(rideData['pickupTime'] ?? rideData['acceptedAt']),
-                    rideData['pickupLocation']?['address'] ??
+                    _formatTime(widget.rideData['pickupTime'] ?? widget.rideData['acceptedAt']),
+                    widget.rideData['pickupLocation']?['address'] ??
                         'Unknown Location',
                   ),
                   const SizedBox(height: 24),
@@ -174,8 +214,8 @@ class DriverRideDetailScreen extends StatelessWidget {
                     Icons.location_on,
                     Colors.red,
                     'Drop-off',
-                    _formatTime(rideData['dropoffTime'] ?? rideData['completedAt']),
-                    rideData['dropoffLocation']?['address'] ??
+                    _formatTime(widget.rideData['dropoffTime'] ?? widget.rideData['completedAt']),
+                    widget.rideData['dropoffLocation']?['address'] ??
                         'Unknown Destination',
                   ),
 
@@ -194,7 +234,7 @@ class DriverRideDetailScreen extends StatelessWidget {
                           color: AppTheme.textSecondary,
                         ),
                       ),
-                      if (rideData['isAirportTransfer'] == true) ...[
+                      if (widget.rideData['isAirportTransfer'] == true) ...[
                         const SizedBox(width: 12),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -376,53 +416,111 @@ class DriverRideDetailScreen extends StatelessWidget {
     // Parse coordinates
     // Assuming GeoJSON [lng, lat]
     final pickupCoords =
-        rideData['pickupLocation']?['coordinates'] ?? [0.0, 0.0];
+        widget.rideData['pickupLocation']?['coordinates'] ?? [0.0, 0.0];
     final dropoffCoords =
-        rideData['dropoffLocation']?['coordinates'] ?? [0.0, 0.0];
+        widget.rideData['dropoffLocation']?['coordinates'] ?? [0.0, 0.0];
 
     final pickup = LatLng(pickupCoords[1], pickupCoords[0]);
     final dropoff = LatLng(dropoffCoords[1], dropoffCoords[0]);
 
-    // Center map
+    // Create curved polyline points
+    final curvedPoints = _createCurvedPolyline(pickup, dropoff);
+
+    // Calculate appropriate center and zoom
     final center = LatLng(
       (pickup.latitude + dropoff.latitude) / 2,
       (pickup.longitude + dropoff.longitude) / 2,
     );
 
-    return FlutterMap(
-      options: MapOptions(initialCenter: center, initialZoom: 13.0),
-      children: [
-        TileLayer(
-          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-          userAgentPackageName: 'com.mokshasolutions.mktours',
-        ),
-        PolylineLayer(
-          polylines: [
-            Polyline(
-              points: [pickup, dropoff],
-              strokeWidth: 4.0,
-              color: AppTheme.primaryColor,
-            ),
-          ],
-        ),
-        MarkerLayer(
-          markers: [
-            Marker(
-              point: pickup,
-              child: const Icon(
-                Icons.location_on,
-                color: Colors.green,
-                size: 40,
-              ),
-            ),
-            Marker(
-              point: dropoff,
-              child: const Icon(Icons.location_on, color: Colors.red, size: 40),
-            ),
-          ],
-        ),
-      ],
+    // Create Google Maps markers
+    final markers = <Marker>{
+      Marker(
+        markerId: const MarkerId('pickup'),
+        position: pickup,
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+        infoWindow: const InfoWindow(title: 'Pickup'),
+      ),
+      Marker(
+        markerId: const MarkerId('dropoff'),
+        position: dropoff,
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        infoWindow: const InfoWindow(title: 'Drop-off'),
+      ),
+    };
+
+    // Create Google Maps polyline
+    final polylines = <Polyline>{
+      Polyline(
+        polylineId: const PolylineId('route'),
+        points: curvedPoints,
+        color: AppTheme.primaryColor,
+        width: 5,
+        geodesic: true,
+        jointType: JointType.round,
+        startCap: Cap.roundCap,
+        endCap: Cap.roundCap,
+      ),
+    };
+
+    return GoogleMap(
+      initialCameraPosition: CameraPosition(
+        target: center,
+        zoom: 13.0,
+      ),
+      markers: markers,
+      polylines: polylines,
+      onMapCreated: (GoogleMapController controller) {
+        _mapController = controller;
+        // Fit bounds after map is created
+        Future.delayed(const Duration(milliseconds: 500), _fitMapBounds);
+      },
+      mapType: MapType.normal,
+      myLocationButtonEnabled: false,
+      zoomControlsEnabled: false,
+      mapToolbarEnabled: false,
     );
+  }
+
+  /// Creates a curved polyline between two points using quadratic Bezier curve
+  List<LatLng> _createCurvedPolyline(LatLng start, LatLng end) {
+    final List<LatLng> points = [];
+    
+    // Calculate midpoint
+    final midLat = (start.latitude + end.latitude) / 2;
+    final midLng = (start.longitude + end.longitude) / 2;
+    
+    // Calculate perpendicular offset for the curve
+    // The curve will bulge perpendicular to the line connecting start and end
+    final latDiff = end.latitude - start.latitude;
+    final lngDiff = end.longitude - start.longitude;
+    final distance = (latDiff * latDiff + lngDiff * lngDiff);
+    
+    // Create a control point offset perpendicular to the line
+    // Reduce offset for very short distances
+    final offsetFactor = distance > 0.0001 ? 0.15 : 0.05;
+    final controlLat = midLat + (lngDiff * offsetFactor);
+    final controlLng = midLng - (latDiff * offsetFactor);
+    
+    final controlPoint = LatLng(controlLat, controlLng);
+    
+    // Generate points along a quadratic bezier curve
+    const int segments = 30; // Increased for smoother curve
+    for (int i = 0; i <= segments; i++) {
+      final t = i / segments;
+      final nt = 1 - t;
+      
+      // Quadratic bezier formula: B(t) = (1-t)²P0 + 2(1-t)tP1 + t²P2
+      final lat = nt * nt * start.latitude +
+          2 * nt * t * controlPoint.latitude +
+          t * t * end.latitude;
+      final lng = nt * nt * start.longitude +
+          2 * nt * t * controlPoint.longitude +
+          t * t * end.longitude;
+      
+      points.add(LatLng(lat, lng));
+    }
+    
+    return points;
   }
 
   String _formatTime(String? isoString) {
