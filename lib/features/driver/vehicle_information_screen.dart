@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import '../../core/auth_provider.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/custom_snackbar.dart';
+import '../../core/models/vehicle.dart';
+import '../../core/services/vehicle_service.dart';
 
 /// Vehicle Information Update Screen
 /// Allows drivers to update vehicle details required before going online
@@ -21,18 +23,36 @@ class _VehicleInformationScreenState extends State<VehicleInformationScreen> {
   
   String? _selectedCategorySlug;
   bool _isLoading = false;
-
-  // Vehicle categories matching the backend
-  final List<Map<String, String>> _vehicleCategories = [
-    {'slug': 'car_4_seater', 'name': 'Car 4 Seater'},
-    {'slug': 'suv_6_seater', 'name': 'SUV 6 Seater'},
-    {'slug': 'mpv_8_seater', 'name': 'MPV 8 Seater'},
-  ];
+  List<VehicleCategory> _categories = [];
+  bool _isLoadingCategories = true;
+  final VehicleService _vehicleService = VehicleService();
 
   @override
   void initState() {
     super.initState();
-    _loadExistingData();
+    _loadCategories();
+  }
+
+  Future<void> _loadCategories() async {
+    try {
+      final categories = await _vehicleService.getVehicleCategories();
+      if (mounted) {
+        setState(() {
+          _categories = categories;
+          _isLoadingCategories = false;
+        });
+        _loadExistingData();
+      }
+    } catch (e) {
+      debugPrint('Error loading categories: $e');
+      if (mounted) {
+        setState(() {
+          _categories = _vehicleService.defaultCategories;
+          _isLoadingCategories = false;
+        });
+        _loadExistingData();
+      }
+    }
   }
 
   void _loadExistingData() {
@@ -42,7 +62,7 @@ class _VehicleInformationScreenState extends State<VehicleInformationScreen> {
     if (vehicle != null) {
       final loadedSlug = vehicle['categorySlug']?.toString();
       // Only set the value if it exists in the available categories list
-      if (loadedSlug != null && _vehicleCategories.any((cat) => cat['slug'] == loadedSlug)) {
+      if (loadedSlug != null && _categories.any((cat) => cat.slug == loadedSlug)) {
         _selectedCategorySlug = loadedSlug;
       }
       _modelController.text = vehicle['model']?.toString() ?? '';
@@ -119,7 +139,9 @@ class _VehicleInformationScreenState extends State<VehicleInformationScreen> {
       appBar: AppBar(
         title: const Text('Vehicle Information'),
       ),
-      body: SingleChildScrollView(
+      body: _isLoadingCategories
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Form(
           key: _formKey,
@@ -165,10 +187,14 @@ class _VehicleInformationScreenState extends State<VehicleInformationScreen> {
                   ),
                   prefixIcon: const Icon(Icons.category),
                 ),
-                items: _vehicleCategories.map((category) {
+                items: _categories.map((category) {
                   return DropdownMenuItem(
-                    value: category['slug'],
-                    child: Text(category['name']!),
+                    value: category.slug,
+                    child: Text(
+                      category.name == category.slug || category.name == 'Unknown'
+                          ? VehicleCategory.formatSlug(category.slug)
+                          : category.name,
+                    ),
                   );
                 }).toList(),
                 onChanged: (value) {
