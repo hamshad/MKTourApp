@@ -1468,6 +1468,169 @@ class ApiService {
     }
   }
 
+  /// Generic Document Upload/Update for Sections 1 & 2
+  /// Uses the new standardized API endpoint: POST /api/v1/drivers/documents/:type
+  /// Supports: licenseFront, licenseBack, privateHireLicence, roadTax, mot, insurance
+  Future<Map<String, dynamic>> uploadDocument(
+    String documentType,
+    File document,
+  ) async {
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
+    debugPrint('🔵 [ApiService] uploadDocument called');
+    debugPrint('🔵 [Request] Document Type: $documentType');
+    debugPrint('🔵 [Request] URL: ${ApiConstants.uploadDocument(documentType)}');
+    debugPrint('🔵 [Request] File: ${document.path}');
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+
+      if (token == null) {
+        throw Exception('No auth token found');
+      }
+
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse(ApiConstants.uploadDocument(documentType)),
+      );
+      request.headers['Authorization'] = 'Bearer $token';
+
+      // Get the file extension and determine the correct MIME type
+      final filePath = document.path;
+      final fileName = filePath.split('/').last;
+      final extension = fileName.split('.').last.toLowerCase();
+
+      String contentType;
+      switch (extension) {
+        case 'pdf':
+          contentType = 'application/pdf';
+          break;
+        case 'doc':
+          contentType = 'application/msword';
+          break;
+        case 'docx':
+          contentType =
+              'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+          break;
+        case 'jpg':
+        case 'jpeg':
+          contentType = 'image/jpeg';
+          break;
+        case 'png':
+          contentType = 'image/png';
+          break;
+        case 'heic':
+          contentType = 'image/heic';
+          break;
+        default:
+          contentType = 'application/octet-stream';
+      }
+
+      debugPrint('🔵 [Request] File name: $fileName');
+      debugPrint('🔵 [Request] Extension: $extension');
+      debugPrint('🔵 [Request] Content-Type: $contentType');
+
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'document',
+          document.path,
+          filename: fileName,
+          contentType: MediaType.parse(contentType),
+        ),
+      );
+
+      debugPrint('🔵 [Request] Sending multipart request...');
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
+      debugPrint('🟣 [Response] Body: ${response.body}');
+      
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
+
+      if (response.statusCode == 200) {
+        debugPrint('🟢 [ApiService] uploadDocument Success');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
+        return jsonDecode(response.body);
+      } else {
+        debugPrint(
+          '🔴 [ApiService] uploadDocument Failed: ${response.body}',
+        );
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
+        throw Exception('Failed to upload document: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('🟠 [ApiService] Exception caught: $e');
+      debugPrint(
+        '🔵 ------------------------------------------------------------------',
+      );
+      throw Exception('Failed to upload document: $e');
+    }
+  }
+
+  /// Delete a specific document
+  /// DELETE /api/v1/drivers/documents/:type
+  Future<Map<String, dynamic>> deleteDocument(String documentType) async {
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
+    debugPrint('🔵 [ApiService] deleteDocument called');
+    debugPrint('🔵 [Request] Document Type: $documentType');
+    debugPrint('🔵 [Request] URL: ${ApiConstants.deleteDocument(documentType)}');
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+
+      if (token == null) {
+        throw Exception('No auth token found');
+      }
+
+      final response = await http.delete(
+        Uri.parse(ApiConstants.deleteDocument(documentType)),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
+      debugPrint('🟣 [Response] Body: ${response.body}');
+      
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
+
+      if (response.statusCode == 200) {
+        debugPrint('🟢 [ApiService] deleteDocument Success');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
+        return jsonDecode(response.body);
+      } else {
+        debugPrint(
+          '🔴 [ApiService] deleteDocument Failed: ${response.body}',
+        );
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
+        throw Exception('Failed to delete document: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('🟠 [ApiService] Exception caught: $e');
+      debugPrint(
+        '🔵 ------------------------------------------------------------------',
+      );
+      throw Exception('Failed to delete document: $e');
+    }
+  }
+
   /// Update driver's location (called after login or periodically)
   Future<Map<String, dynamic>> updateDriverLocation({
     required double latitude,
@@ -1581,14 +1744,29 @@ class ApiService {
         debugPrint(
           '🔵 ------------------------------------------------------------------',
         );
-        throw Exception('Failed to update driver status: ${response.body}');
+        // Return the error response instead of throwing, so caller can handle error codes
+        try {
+          final errorResponse = jsonDecode(response.body);
+          return errorResponse;
+        } catch (e) {
+          // If response body is not valid JSON, return a structured error
+          return {
+            'success': false,
+            'message': 'Failed to update driver status',
+            'statusCode': response.statusCode,
+          };
+        }
       }
     } catch (e) {
       debugPrint('🟠 [ApiService] Exception caught: $e');
       debugPrint(
         '🔵 ------------------------------------------------------------------',
       );
-      throw Exception('Failed to update driver status: $e');
+      // Return error instead of throwing for better error handling
+      return {
+        'success': false,
+        'message': 'Error updating driver status: $e',
+      };
     }
   }
 

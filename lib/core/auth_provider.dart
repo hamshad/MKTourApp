@@ -241,6 +241,73 @@ class AuthProvider with ChangeNotifier {
     return false;
   }
 
+  /// Generic document upload for Sections 1 & 2
+  /// documentType: licenseFront, licenseBack, privateHireLicence, roadTax, mot, insurance
+  Future<Map<String, dynamic>> uploadDocument(
+    String documentType,
+    File document,
+  ) async {
+    try {
+      final response = await _apiService.uploadDocument(documentType, document);
+      if (response['success'] == true) {
+        // Refresh profile status after upload
+        await fetchDriverProfileStatus();
+        return response;
+      }
+      return response;
+    } catch (e) {
+      print('Error uploading document ($documentType): $e');
+      rethrow;
+    }
+  }
+
+  /// Delete a specific document
+  Future<Map<String, dynamic>> deleteDocument(String documentType) async {
+    try {
+      final response = await _apiService.deleteDocument(documentType);
+      if (response['success'] == true) {
+        // Refresh profile status after deletion
+        await fetchDriverProfileStatus();
+        return response;
+      }
+      return response;
+    } catch (e) {
+      print('Error deleting document ($documentType): $e');
+      rethrow;
+    }
+  }
+
+  /// Update vehicle information (required before going online)
+  Future<Map<String, dynamic>> updateVehicleInformation({
+    required String categorySlug,
+    required String model,
+    required String number,
+    required String color,
+  }) async {
+    try {
+      final response = await _apiService.updateDriverProfile({
+        'vehicle': {
+          'categorySlug': categorySlug,
+          'model': model,
+          'number': number,
+          'color': color,
+        }
+      });
+      
+      if (response['success'] == true && response['data'] != null) {
+        _user = response['data'];
+        // Refresh profile status after updating vehicle
+        await fetchDriverProfileStatus();
+        notifyListeners();
+      }
+      
+      return response;
+    } catch (e) {
+      print('Error updating vehicle information: $e');
+      rethrow;
+    }
+  }
+
   Future<bool> checkAuth() async {
     try {
       await fetchUserProfile();
@@ -301,6 +368,13 @@ class AuthProvider with ChangeNotifier {
     final response = await _apiService.getDriverProfileStatus();
     if (response['success'] == true && response['data'] != null) {
       final data = response['data'];
+      
+      // Extract driver data if present (from profile-status endpoint)
+      if (data is Map && data['driver'] != null) {
+        _user = data['driver'];
+      }
+      
+      // Extract profileStatus
       final profileStatus = (data is Map && data['profileStatus'] != null)
           ? data['profileStatus']
           : data;

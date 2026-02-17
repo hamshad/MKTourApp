@@ -1,6 +1,6 @@
 class ApiConstants {
   // Local development socket URL (commented when using live API)
-  // static const String socketUrl = 'http://192.168.1.14:5000';
+  // static const String socketUrl = 'http://192.168.1.18:5000';
   // static const String socketUrl = 'http://192.168.1.22:5001';
   // Live API socket URL
   static const String socketUrl = 'https://api.mktours.co.uk';
@@ -41,6 +41,12 @@ class ApiConstants {
   static const String updateDriverLocation = '$baseUrl/drivers/location';
   static const String driverProfileStatus = '$baseUrl/drivers/profile-status';
   static const String driverRides = '$baseUrl/drivers/rides';
+
+  // Generic Document Endpoints (Section 1 & 2)
+  static String uploadDocument(String type) =>
+      '$baseUrl/drivers/documents/$type';
+  static String deleteDocument(String type) =>
+      '$baseUrl/drivers/documents/$type';
 
   // Ride Endpoints
   static const String createRide = '$baseUrl/rides/create';

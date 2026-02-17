@@ -768,24 +768,42 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
           '🟢 [DriverHomeScreen] Status updated successfully to $_status',
         );
       } else {
-        if (mounted) {
-          CustomSnackbar.show(
-            context,
-            message: 'Failed to update status: ${response['message']}',
-            type: SnackbarType.error,
-          );
-        }
+        // Handle error responses, including 403 validation errors
+        // Check for error code in both locations: root level or nested in 'errors' object
+        final errors = response['errors'] as Map<String, dynamic>?;
+        final errorCode = errors?['code']?.toString() ?? response['code']?.toString() ?? '';
+        final errorMessage = response['message']?.toString() ?? 'Failed to update status';
+        
         debugPrint('🔴 [DriverHomeScreen] Failed to update status');
+        debugPrint('🔴 [DriverHomeScreen] Error Code: $errorCode');
+        debugPrint('🔴 [DriverHomeScreen] Error Message: $errorMessage');
+        
+        if (mounted) {
+          // Check for specific error codes
+          if (errorCode == 'PROFILE_INCOMPLETE') {
+            _showProfileIncompleteDialog(errorMessage);
+          } else if (errorCode == 'NOT_APPROVED') {
+            _showNotApprovedDialog(errorMessage);
+          } else {
+            CustomSnackbar.show(
+              context,
+              message: errorMessage,
+              type: SnackbarType.error,
+            );
+          }
+        }
       }
     } catch (e) {
+      // This should rarely happen now since API service returns errors instead of throwing
+      debugPrint('🔴 [DriverHomeScreen] Unexpected error updating status: $e');
+      
       if (mounted) {
         CustomSnackbar.show(
           context,
-          message: 'Error updating status: $e',
+          message: 'Unexpected error: ${e.toString()}',
           type: SnackbarType.error,
         );
       }
-      debugPrint('🔴 [DriverHomeScreen] Error updating status: $e');
     } finally {
       if (mounted) {
         setState(() {
@@ -796,6 +814,74 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
         }
       }
     }
+  }
+
+  void _showProfileIncompleteDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('Profile Incomplete'),
+          ],
+        ),
+        content: Text(
+          message.isEmpty 
+              ? 'Please complete your profile by uploading all required documents before going online.'
+              : message,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // Navigate to document checklist screen
+              Navigator.pushNamed(context, '/driver/documents');
+            },
+            child: const Text('Complete Profile'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showNotApprovedDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.pending, color: Colors.blue),
+            SizedBox(width: 8),
+            Text('Pending Approval'),
+          ],
+        ),
+        content: Text(
+          message.isEmpty
+              ? 'Your account is pending admin approval. Please wait for verification to complete before going online.'
+              : message,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // Navigate to document checklist screen to view status
+              Navigator.pushNamed(context, '/driver/documents');
+            },
+            child: const Text('View Status'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _fetchRideHistory() async {

@@ -26,6 +26,8 @@ import 'features/driver/driver_earnings_screen.dart';
 import 'features/driver/driver_activity_screen.dart';
 import 'features/driver/driver_ride_detail_screen.dart';
 import 'features/driver/driver_ride_history_screen.dart';
+import 'features/driver/document_checklist_screen.dart';
+import 'features/driver/vehicle_information_screen.dart';
 import 'features/auth/role_selection_screen.dart';
 
 import 'core/services/socket_service.dart';
@@ -119,6 +121,8 @@ class RideEaseApp extends StatelessWidget {
         '/driver-earnings': (context) => const DriverEarningsScreen(),
         '/driver-activity': (context) => const DriverActivityScreen(),
         '/driver-ride-history': (context) => const DriverRideHistoryScreen(),
+        '/driver/vehicle-info': (context) => const VehicleInformationScreen(),
+        '/driver/documents': (context) => const DocumentChecklistScreen(),
       },
       onGenerateRoute: (settings) {
         // Handle routes with arguments dynamically

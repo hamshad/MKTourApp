@@ -1,16 +1,12 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme.dart';
 import '../../core/auth_provider.dart';
 import '../auth/phone_login_screen.dart';
 import '../auth/role_selection_screen.dart';
 import 'edit_driver_profile_screen.dart';
-import '../../core/widgets/pdf_viewer_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/models/vehicle.dart';
 
@@ -25,8 +21,6 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
   bool _isLoading = false;
   bool _isVehicleUploading = false;
   final ImagePicker _picker = ImagePicker();
-  final PageController _pageController = PageController();
-  int _currentImageIndex = 0;
 
   @override
   void initState() {
@@ -116,232 +110,6 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
         );
       }
     }
-  }
-
-  Future<void> _uploadLicense() async {
-    try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['pdf', 'doc', 'docx'],
-      );
-
-      if (result != null) {
-        final file = File(result.files.single.path!);
-
-        // Check size limit (5MB)
-        final sizeInBytes = await file.length();
-        if (sizeInBytes > 5 * 1024 * 1024) {
-          // 5MB
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Document must be less than 5MB'),
-              backgroundColor: Colors.red,
-            ),
-          );
-          return;
-        }
-
-        if (!mounted) return;
-        setState(() => _isLoading = true);
-
-        final success = await Provider.of<AuthProvider>(
-          context,
-          listen: false,
-        ).uploadDriverLicense(file);
-
-        if (mounted) {
-          setState(() => _isLoading = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                success
-                    ? 'License uploaded successfully'
-                    : 'Failed to upload license',
-              ),
-              backgroundColor: success ? Colors.green : Colors.red,
-            ),
-          );
-          if (success) {
-            _fetchProfile(); // Refresh profile to show new license
-          }
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error picking license: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _updateLicense() async {
-    try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['pdf', 'doc', 'docx'],
-      );
-
-      if (result != null) {
-        final file = File(result.files.single.path!);
-
-        // Check size limit (5MB)
-        final sizeInBytes = await file.length();
-        if (sizeInBytes > 5 * 1024 * 1024) {
-          // 5MB
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Document must be less than 5MB'),
-              backgroundColor: Colors.red,
-            ),
-          );
-          return;
-        }
-
-        if (!mounted) return;
-        setState(() => _isLoading = true);
-
-        final success = await Provider.of<AuthProvider>(
-          context,
-          listen: false,
-        ).updateDriverLicense(file);
-
-        if (mounted) {
-          setState(() => _isLoading = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                success
-                    ? 'License updated successfully'
-                    : 'Failed to update license',
-              ),
-              backgroundColor: success ? Colors.green : Colors.red,
-            ),
-          );
-          if (success) {
-            _fetchProfile(); // Refresh profile to show updated license
-          }
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error picking license: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _deleteLicense() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete License'),
-        content: const Text(
-          'Are you sure you want to delete your driver license document?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.red,
-            ),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      setState(() => _isLoading = true);
-      if (!mounted) return;
-
-      final success = await Provider.of<AuthProvider>(
-        context,
-        listen: false,
-      ).deleteDriverLicense();
-
-      if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              success
-                  ? 'License deleted successfully'
-                  : 'Failed to delete license',
-            ),
-            backgroundColor: success ? Colors.green : Colors.red,
-          ),
-        );
-        if (success) {
-          _fetchProfile(); // Refresh profile to reflect deletion
-        }
-      }
-    }
-  }
-
-  void _showLicenseOptions() {
-    // Capture the license document URL before showing the bottom sheet
-    final user = Provider.of<AuthProvider>(context, listen: false).user;
-    final licenseDoc = user?['licenseDocument'] as String?;
-    
-    showModalBottomSheet(
-      context: context,
-      builder: (BuildContext bottomSheetContext) {
-        return SafeArea(
-          child: Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(bottomSheetContext).padding.bottom,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.visibility, color: AppTheme.primaryColor),
-                  title: const Text('View License'),
-                  onTap: () {
-                    Navigator.pop(bottomSheetContext);
-                    if (licenseDoc != null) {
-                      _launchURL(licenseDoc, title: 'Driver License');
-                    }
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.edit, color: AppTheme.primaryColor),
-                  title: const Text('Update License'),
-                  onTap: () {
-                    Navigator.pop(bottomSheetContext);
-                    _updateLicense();
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.delete, color: Colors.red),
-                  title: const Text('Delete License', style: TextStyle(color: Colors.red)),
-                  onTap: () {
-                    Navigator.pop(bottomSheetContext);
-                    _deleteLicense();
-                  },
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
   }
 
   void _showImageSourceActionSheet() {
@@ -633,73 +401,6 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     );
   }
 
-  Future<void> _launchURL(String urlString, {String title = 'Document'}) async {
-    debugPrint('🔵 [_launchURL] Attempting to launch: $urlString');
-    try {
-      final Uri uri = Uri.parse(urlString);
-      bool isPdf = uri.path.toLowerCase().endsWith('.pdf');
-      debugPrint('🔵 [_launchURL] Initial extension check: isPdf=$isPdf');
-
-      if (!isPdf) {
-        // Check for PDF signature (magic bytes) and Content-Type
-        try {
-          debugPrint('🔵 [_launchURL] Checking file signature/headers...');
-          final response = await http.head(uri);
-
-          debugPrint(
-            '🔵 [_launchURL] Head response status: ${response.statusCode}',
-          );
-          debugPrint(
-            '🔵 [_launchURL] Content-Type: ${response.headers['content-type']}',
-          );
-
-          if (response.statusCode == 200) {
-            // Check Content-Type header
-            final contentType = response.headers['content-type']?.toLowerCase() ?? '';
-            if (contentType.contains('application/pdf') || contentType.contains('pdf')) {
-              isPdf = true;
-              debugPrint('🟢 [_launchURL] PDF Content-Type detected!');
-            }
-          }
-        } catch (e) {
-          debugPrint('🔴 [_launchURL] Error checking file type: $e');
-        }
-      }
-
-      if (isPdf) {
-        debugPrint('🟢 [_launchURL] Opening as PDF in internal viewer');
-        if (mounted) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) =>
-                  PdfViewerScreen(url: urlString, title: title),
-            ),
-          );
-        }
-      } else {
-        debugPrint('🟡 [_launchURL] Not a PDF, launching externally');
-        // For non-PDF documents (doc, docx), launch externally
-        // inAppBrowserView often fails for direct file downloads/viewing
-        if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-          debugPrint('🔴 [_launchURL] Failed to launch external URL');
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Could not open document')),
-            );
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('🔴 [_launchURL] Critical error launching URL: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Invalid URL')));
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -751,7 +452,6 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
           final List<String> vehicleImagePublicIds = (rawPublicIds is List)
               ? rawPublicIds.map((e) => e.toString()).toList()
               : [];
-          final licenseDoc = driver['licenseDocument'] as String?;
 
           final profileStatus = authProvider.driverProfileStatus;
           final verificationStatus = profileStatus?['verificationStatus']
@@ -999,24 +699,44 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                         color: AppTheme.textPrimary,
                       ),
                     ),
-                    TextButton.icon(
-                      onPressed: _isVehicleUploading ? null : _uploadVehicleImages,
-                      icon: _isVehicleUploading
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : const Icon(
-                              Icons.add_photo_alternate_outlined,
-                              size: 20,
-                            ),
-                      label: Text(_isVehicleUploading ? 'Uploading...' : 'Add Photos'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: AppTheme.primaryColor,
-                      ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          onPressed: () async {
+                            final result = await Navigator.pushNamed(
+                              context,
+                              '/driver/vehicle-info',
+                            );
+                            if (result == true) {
+                              _fetchProfile();
+                            }
+                          },
+                          icon: const Icon(
+                            Icons.edit_outlined,
+                            size: 22,
+                          ),
+                          color: AppTheme.primaryColor,
+                          tooltip: 'Edit Vehicle Details',
+                        ),
+                        IconButton(
+                          onPressed: _isVehicleUploading ? null : _uploadVehicleImages,
+                          icon: _isVehicleUploading
+                              ? const SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.add_photo_alternate_outlined,
+                                  size: 22,
+                                ),
+                          color: AppTheme.primaryColor,
+                          tooltip: _isVehicleUploading ? 'Uploading...' : 'Add Vehicle Photos',
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -1200,40 +920,79 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                   ),
                   child: Column(
                     children: [
+                      // Driver Documents Menu Item
                       _buildMenuItem(
-                        Icons.description_outlined,
-                        'Driver License',
-                        licenseDoc != null ? 'Verified' : 'Action Required',
+                        Icons.folder_outlined,
+                        'Driver Documents',
+                        'Manage all required documents',
                         onTap: () {
-                          if (licenseDoc != null) {
-                            _showLicenseOptions();
-                          } else {
-                            _uploadLicense();
-                          }
+                          Navigator.pushNamed(context, '/driver/documents');
                         },
-                        trailing: licenseDoc != null
-                            ? Container(
+                        trailing: Consumer<AuthProvider>(
+                          builder: (context, auth, _) {
+                            final statusData = auth.driverProfileStatus;
+                            if (statusData == null) {
+                              return const Icon(
+                                Icons.arrow_forward_ios,
+                                color: Colors.grey,
+                                size: 16,
+                              );
+                            }
+                            
+                            final missingItems = statusData['missingItems'] as Map<String, dynamic>?;
+                            if (missingItems == null) {
+                              return const Icon(
+                                Icons.arrow_forward_ios,
+                                color: Colors.grey,
+                                size: 16,
+                              );
+                            }
+                            
+                            final missingCount = missingItems.values
+                                .where((value) => value == true)
+                                .length;
+                            
+                            if (missingCount > 0) {
+                              return Container(
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 10,
                                   vertical: 4,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: Colors.green.withValues(alpha: 0.1),
+                                  color: Colors.orange.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(20),
                                 ),
-                                child: const Text(
-                                  'Manage',
-                                  style: TextStyle(
-                                    color: Colors.green,
+                                child: Text(
+                                  '$missingCount Missing',
+                                  style: const TextStyle(
+                                    color: Colors.orange,
                                     fontWeight: FontWeight.bold,
                                     fontSize: 12,
                                   ),
                                 ),
-                              )
-                            : const Icon(
-                                Icons.upload_file,
-                                color: AppTheme.primaryColor,
+                              );
+                            }
+                            
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
                               ),
+                              decoration: BoxDecoration(
+                                color: Colors.green.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: const Text(
+                                'Complete',
+                                style: TextStyle(
+                                  color: Colors.green,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                         showDivider: true,
                       ),
                       // _buildMenuItem(
