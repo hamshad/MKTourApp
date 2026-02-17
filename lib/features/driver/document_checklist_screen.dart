@@ -65,6 +65,8 @@ class _DocumentChecklistScreenState extends State<DocumentChecklistScreen> {
         return _driverProfile!['licenseFront'];
       case DocumentType.licenseBack:
         return _driverProfile!['licenseBack'];
+      case DocumentType.dbsCertificate:
+        return _driverProfile!['dbsCertificate'];
       case DocumentType.privateHireLicence:
         return _driverProfile!['privateHireLicence'];
       case DocumentType.roadTax:
