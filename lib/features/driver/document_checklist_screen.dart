@@ -10,6 +10,7 @@ import '../../core/models/driver_document.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/custom_snackbar.dart';
 import '../../core/widgets/pdf_viewer_screen.dart';
+import '../../core/constants/api_constants.dart';
 
 /// Document Checklist Screen for Driver Registration
 /// Shows Section 1 (License) and Section 2 (Vehicle Documents)
@@ -58,24 +59,46 @@ class _DocumentChecklistScreenState extends State<DocumentChecklistScreen> {
   String? _getDocumentUrl(DocumentType docType) {
     if (_driverProfile == null) return null;
     
+    String? rawUrl;
     // Map document types to their corresponding fields in the driver profile
     // Document URLs are stored at the top level of the driver object
     switch (docType) {
       case DocumentType.licenseFront:
-        return _driverProfile!['licenseFront'];
+        rawUrl = _driverProfile!['licenseFront'];
+        break;
       case DocumentType.licenseBack:
-        return _driverProfile!['licenseBack'];
+        rawUrl = _driverProfile!['licenseBack'];
+        break;
       case DocumentType.dbsCertificate:
-        return _driverProfile!['dbsCertificate'];
+        rawUrl = _driverProfile!['dbsCertificate'];
+        break;
       case DocumentType.privateHireLicence:
-        return _driverProfile!['privateHireLicence'];
+        rawUrl = _driverProfile!['privateHireLicence'];
+        break;
       case DocumentType.roadTax:
-        return _driverProfile!['roadTax'];
+        rawUrl = _driverProfile!['roadTax'];
+        break;
       case DocumentType.mot:
-        return _driverProfile!['mot'];
+        rawUrl = _driverProfile!['mot'];
+        break;
       case DocumentType.insurance:
-        return _driverProfile!['insurance'];
+        rawUrl = _driverProfile!['insurance'];
+        break;
     }
+    
+    if (rawUrl == null) return null;
+    
+    // Remove "undefined" if it appears at the start
+    if (rawUrl.startsWith('undefined')) {
+      rawUrl = rawUrl.replaceFirst('undefined', '');
+    }
+    
+    // If URL is relative (starts with / or doesn't contain http/https), prepend the socketUrl
+    if (rawUrl.startsWith('/') || (!rawUrl.contains('http://') && !rawUrl.contains('https://'))) {
+      return '${ApiConstants.socketUrl}$rawUrl';
+    }
+    
+    return rawUrl;
   }
 
   Future<void> _pickAndUploadDocument(DocumentType docType) async {

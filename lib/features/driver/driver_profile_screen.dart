@@ -9,6 +9,7 @@ import '../auth/role_selection_screen.dart';
 import 'edit_driver_profile_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/models/vehicle.dart';
+import '../../core/constants/api_constants.dart';
 
 class DriverProfileScreen extends StatefulWidget {
   const DriverProfileScreen({super.key});
@@ -26,6 +27,23 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
   void initState() {
     super.initState();
     _fetchProfile();
+  }
+
+  String _cleanImageUrl(String? url) {
+    if (url == null) return '';
+    
+    // Remove "undefined" if it appears at the start
+    String cleanedUrl = url;
+    if (cleanedUrl.startsWith('undefined')) {
+      cleanedUrl = cleanedUrl.replaceFirst('undefined', '');
+    }
+    
+    // If URL is relative (starts with / or doesn't contain http/https), prepend the socketUrl
+    if (cleanedUrl.startsWith('/') || (!cleanedUrl.contains('http://') && !cleanedUrl.contains('https://'))) {
+      return '${ApiConstants.socketUrl}$cleanedUrl';
+    }
+    
+    return cleanedUrl;
   }
 
   Future<void> _fetchProfile() async {
@@ -446,7 +464,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
           final vehicle = driver['vehicle'] ?? {};
           final rawVehicleImages = driver['vehicleImages'];
           final List<String> vehicleImages = (rawVehicleImages is List)
-              ? rawVehicleImages.map((e) => e.toString()).toList()
+              ? rawVehicleImages.map((e) => _cleanImageUrl(e.toString())).toList()
               : [];
           final rawPublicIds = driver['vehicleImagePublicIds'];
           final List<String> vehicleImagePublicIds = (rawPublicIds is List)
@@ -556,7 +574,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                         GestureDetector(
                           onTap: driver['profilePicture'] != null
                               ? () => _showFullScreenImage([
-                                  driver['profilePicture'],
+                                  _cleanImageUrl(driver['profilePicture']),
                                 ], 0)
                               : null,
                           child: Container(
@@ -579,7 +597,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                               backgroundColor: AppTheme.surfaceColor,
                               backgroundImage: driver['profilePicture'] != null
                                   ? CachedNetworkImageProvider(
-                                      driver['profilePicture'],
+                                      _cleanImageUrl(driver['profilePicture']),
                                     )
                                   : null,
                               child: driver['profilePicture'] == null
