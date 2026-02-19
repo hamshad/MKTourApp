@@ -3,13 +3,13 @@ enum DocumentType {
   // Section 1: Driving License
   licenseFront('licenseFront', 'License Front', 'Section 1: Driving License'),
   licenseBack('licenseBack', 'License Back', 'Section 1: Driving License'),
-  dbsCertificate('dbsCertificate', 'DBS Certificate', 'Section 1: Driving License'),
 
   // Section 2: Vehicle Documents
   privateHireLicence('privateHireLicence', 'Private Hire Licence', 'Section 2: Vehicle Documents'),
   roadTax('roadTax', 'Road Tax', 'Section 2: Vehicle Documents'),
   mot('mot', 'MOT Certificate', 'Section 2: Vehicle Documents'),
-  insurance('insurance', 'Insurance Certificate', 'Section 2: Vehicle Documents');
+  insurance('insurance', 'Insurance Certificate', 'Section 2: Vehicle Documents'),
+  dbsCertificate('dbsCertificate', 'DBS Certificate', 'Section 2: Vehicle Documents');
 
   final String apiKey;
   final String displayName;
@@ -18,10 +18,10 @@ enum DocumentType {
   const DocumentType(this.apiKey, this.displayName, this.section);
 
   /// Get all Section 1 documents (License)
-  static List<DocumentType> get section1 => [licenseFront, licenseBack, dbsCertificate];
+  static List<DocumentType> get section1 => [licenseFront, licenseBack];
 
   /// Get all Section 2 documents (Vehicle)
-  static List<DocumentType> get section2 => [privateHireLicence, roadTax, mot, insurance];
+  static List<DocumentType> get section2 => [privateHireLicence, roadTax, mot, insurance, dbsCertificate];
 
   /// Parse from API key string
   static DocumentType? fromApiKey(String key) {
