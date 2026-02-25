@@ -127,7 +127,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
   // Promo (Free Ride) state
   bool _isPromoRide = false;
+  bool _promoFullyCovered = false;
   double _promoOriginalFare = 0.0;
+  double? _currentFare;
   double? _completedFare; // actual fare captured from ride:completed event
   Map<String, dynamic>? _completedRideData; // full ride:completed payload
 
@@ -241,6 +243,28 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
       if (response['success'] == true && response['data'] != null) {
         final rideData = response['data'];
+
+        // Capture promo info from sync
+        final bool isPromo = rideData['isPromoRide'] == true;
+        // Backend may omit promoFullyCovered; infer it from fare == 0 when it's a promo ride
+        final double? currentFare = rideData['fare'] != null
+            ? (rideData['fare'] as num).toDouble()
+            : null;
+        final bool fullyCovered = rideData['promoFullyCovered'] == true ||
+            (isPromo && currentFare != null && currentFare == 0.0);
+        final double? originalFare = rideData['originalFare'] != null
+            ? (rideData['originalFare'] as num).toDouble()
+            : null;
+
+        if (mounted) {
+          setState(() {
+            _isPromoRide = isPromo;
+            _promoFullyCovered = fullyCovered;
+            if (originalFare != null) _promoOriginalFare = originalFare;
+            if (currentFare != null) _currentFare = currentFare;
+          });
+        }
+
         final status = rideData['status'];
         final driverData = rideData['driver'];
         final hasValidDriver = _isValidDriver(driverData);
@@ -630,6 +654,21 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
               data['code']?.toString() ??
               '';
 
+          // Capture fare & promo info eagerly so we don't need an extra
+          // API call when the driver arrives.
+          if (data['fare'] != null) {
+            final double acceptedFare = (data['fare'] as num).toDouble();
+            _currentFare = acceptedFare;
+            if (acceptedFare == 0.0) {
+              _isPromoRide = true;
+              _promoFullyCovered = true;
+            }
+          }
+          if (data['isPromoRide'] == true) _isPromoRide = true;
+          if (data['originalFare'] != null) {
+            _promoOriginalFare = (data['originalFare'] as num).toDouble();
+          }
+
           debugPrint('🔐 [RideAssignedScreen] Extracted OTP: "$_otp"');
           debugPrint('👤 [RideAssignedScreen] Extracted driver: $_driver');
 
@@ -849,6 +888,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         setState(() {
           _isPromoRide = true;
           _promoOriginalFare = originalFare;
+          _currentFare = newFare;
+          if (newFare == 0) _promoFullyCovered = true;
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -981,7 +1022,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       _showPaymentSuccessScreen(mergedRideData);
     });
 
-    _socketService.on('ride:driverArrived', (data) {
+    _socketService.on('ride:driverArrived', (data) async {
       debugPrint('🚖 [RideAssignedScreen] Driver Arrived: $data');
 
       if (!mounted || !context.mounted) return;
@@ -989,24 +1030,55 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       // Play app custom notification sound
       AudioService.instance.playNotification();
 
-      debugPrint(
-        '📍 [RideAssignedScreen] Scheduling driver arrived state update...',
-      );
-      scheduleMicrotask(() {
-        if (!mounted || !context.mounted) return;
-
+      // Update map state immediately
+      if (mounted) {
         setState(() {
           _rideStatus = 'driver_arrived';
-          // Set driver position to pickup location (driver is at pickup)
           _driverLocation = _pickupLocation;
-          // Clear navigation polyline - car is stationary
           _polylines = [];
           _updateMarkers();
         });
+      }
 
-        // Show visual arrival message box
-        _showDriverArrivedDialog();
-      });
+      // Only call the API if fare info wasn't already captured from ride:accepted.
+      if (_currentFare == null) {
+        debugPrint('🚖 [RideAssignedScreen] Fare unknown — fetching ride details before dialog...');
+        try {
+          final response = await _apiService.getRideDetails(widget.rideId);
+          if (mounted && response['success'] == true && response['data'] != null) {
+            final rideData = response['data'];
+            final bool isPromo = rideData['isPromoRide'] == true;
+            final double? fare = rideData['fare'] != null
+                ? (rideData['fare'] as num).toDouble()
+                : null;
+            final bool fullyCovered = rideData['promoFullyCovered'] == true ||
+                (isPromo && fare != null && fare == 0.0);
+            final double? originalFare = rideData['originalFare'] != null
+                ? (rideData['originalFare'] as num).toDouble()
+                : null;
+            setState(() {
+              _isPromoRide = isPromo;
+              _promoFullyCovered = fullyCovered;
+              if (originalFare != null) _promoOriginalFare = originalFare;
+              if (fare != null) _currentFare = fare;
+            });
+            debugPrint(
+              '🚖 [RideAssignedScreen] Pre-dialog sync — isPromo: $isPromo, fullyCovered: $fullyCovered, fare: $fare',
+            );
+          }
+        } catch (e) {
+          debugPrint('⚠️ [RideAssignedScreen] Pre-dialog ride sync failed: $e');
+        }
+      } else {
+        debugPrint(
+          '🚖 [RideAssignedScreen] Fare already known ($_currentFare), skipping API call. promoFullyCovered: $_promoFullyCovered',
+        );
+      }
+
+      if (!mounted || !context.mounted) return;
+
+      // Show visual arrival message box
+      _showDriverArrivedDialog();
     });
 
     _socketService.on('ride:otpExpired', (data) {
@@ -1509,7 +1581,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
           // Full refund - show success message and navigate home
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Ride cancelled. Full refund processed.'),
+              content: Text('Ride cancelled.'),
               backgroundColor: Colors.green,
             ),
           );
@@ -1824,9 +1896,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                     ),
                     elevation: 2,
                   ),
-                  child: const Text(
-                    'Continue to Payment',
-                    style: TextStyle(
+                  child: Text(
+                    _promoFullyCovered ? 'Continue' : 'Continue to Payment',
+                    style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
@@ -2066,11 +2138,44 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  _isPromoRide && _promoOriginalFare > 0
-                      ? 'Original Fare: £${_promoOriginalFare.toStringAsFixed(2)}'
-                      : 'Estimated Fare: £${widget.fare.toStringAsFixed(2)}',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+                RichText(
+                  text: TextSpan(
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black,
+                      fontFamily: 'Outfit', // Match AppTheme if possible
+                    ),
+                    children: [
+                      if (_isPromoRide && _promoOriginalFare > 0) ...[
+                        TextSpan(
+                          text: '£${_promoOriginalFare.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            decoration: TextDecoration.lineThrough,
+                            color: Colors.grey,
+                            fontWeight: FontWeight.normal,
+                          ),
+                        ),
+                        const TextSpan(text: ' '),
+                        TextSpan(
+                          text:
+                              '£${(_currentFare ?? widget.fare).toStringAsFixed(2)}',
+                          style: const TextStyle(color: Color(0xFF16A34A)),
+                        ),
+                        const TextSpan(
+                          text: ' (Estimated)',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
+                            fontWeight: FontWeight.normal,
+                          ),
+                        ),
+                      ] else
+                        TextSpan(
+                          text:
+                              'Estimated Fare: £${widget.fare.toStringAsFixed(2)}',
+                        ),
+                    ],
+                  ),
                 ),
                 // Text('Distance: 5.2 mi'), // Mock distance for now
               ],
@@ -2187,9 +2292,18 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                                 .toLowerCase()
                                 .contains('card')
                           ? Icons.credit_card
+                          : _selectedPaymentMethodDisplay
+                                .toLowerCase()
+                                .contains('free')
+                          ? Icons.card_giftcard
                           : Icons.money,
                       size: 14,
-                      color: Colors.grey[700],
+                      color:
+                          _selectedPaymentMethodDisplay.toLowerCase().contains(
+                            'free',
+                          )
+                          ? const Color(0xFF16A34A)
+                          : Colors.grey[700],
                     ),
                     const SizedBox(width: 6),
                     Text(
@@ -2197,7 +2311,12 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
-                        color: Colors.grey[700],
+                        color:
+                            _selectedPaymentMethodDisplay
+                                .toLowerCase()
+                                .contains('free')
+                            ? const Color(0xFF16A34A)
+                            : Colors.grey[700],
                       ),
                     ),
                   ],
@@ -2465,6 +2584,17 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   }
 
   void _showPaymentSelectionModal() {
+    // Skip the modal entirely if the ride is fully covered by a promo.
+    // Also infer it at call-time: if it's a promo ride and fare is 0, treat as fully covered.
+    final bool effectivelyFree = _promoFullyCovered ||
+        (_isPromoRide && _currentFare != null && _currentFare == 0.0);
+    if (effectivelyFree) {
+      if (!_promoFullyCovered) {
+        setState(() => _promoFullyCovered = true);
+      }
+      _handlePaymentSelection('cash', fromAutoSelect: true);
+      return;
+    }
     showModalBottomSheet(
       context: context,
       isDismissible: false,
@@ -2493,6 +2623,36 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                     color: AppTheme.textPrimary,
                   ),
                 ),
+                if (_isPromoRide) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF22C55E).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: const Color(0xFF22C55E).withOpacity(0.3),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        Text('🎁 ', style: TextStyle(fontSize: 14)),
+                        Text(
+                          '£4.45 discount applied!',
+                          style: TextStyle(
+                            color: Color(0xFF16A34A),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 24),
                 // Cash option - available for both iOS and Android
                 _buildPaymentOption(
@@ -2582,7 +2742,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     );
   }
 
-  Future<void> _handlePaymentSelection(String method) async {
+  Future<void> _handlePaymentSelection(String method,
+      {bool fromAutoSelect = false}) async {
     debugPrint('═══════════════════════════════════════════════════════════');
     debugPrint(
       '💸 [Payment] ============ PAYMENT SELECTION START ============',
@@ -2590,8 +2751,10 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     debugPrint('💸 [Payment] Method selected: $method');
     debugPrint('💸 [Payment] Ride ID: ${widget.rideId}');
 
-    Navigator.pop(context); // Close selection modal
-    debugPrint('💸 [Payment] ✅ Closed payment modal');
+    if (!fromAutoSelect) {
+      Navigator.pop(context); // Close selection modal
+      debugPrint('💸 [Payment] ✅ Closed payment modal');
+    }
 
     // Show loading
     showDialog(
@@ -2622,6 +2785,62 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         // Handle nested ride structure (data.ride) or flat structure (data)
         final rideData = data['ride'] ?? data;
         debugPrint('💸 [Payment] Ride data: $rideData');
+
+        // NEW: Handle promo fields
+        final bool isPromoRide = rideData['isPromoRide'] == true;
+        final bool promoFullyCovered = rideData['promoFullyCovered'] == true;
+        final double? originalFare = rideData['originalFare'] != null
+            ? (rideData['originalFare'] as num).toDouble()
+            : null;
+        final double? newFare = rideData['amount'] != null
+            ? (rideData['amount'] as num).toDouble() /
+                  100.0 // assumed amount is in pence/cents
+            : null;
+
+        // Infer fully-covered from amount==0 when backend omits promoFullyCovered
+        final bool effectiveFullyCovered = promoFullyCovered ||
+            (isPromoRide &&
+                rideData['amount'] != null &&
+                (rideData['amount'] as num) == 0);
+
+        if (isPromoRide || effectiveFullyCovered) {
+          setState(() {
+            _isPromoRide = true;
+            _promoFullyCovered = effectiveFullyCovered;
+            if (originalFare != null) _promoOriginalFare = originalFare;
+            if (newFare != null) _currentFare = newFare;
+          });
+        }
+
+        if (effectiveFullyCovered) {
+          // Skip payment entirely as it's a free ride
+          if (Navigator.canPop(context)) {
+            Navigator.pop(context);
+          }
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('🎁 Your ride is free! No payment needed.'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 4),
+            ),
+          );
+
+          setState(() {
+            _isPaymentMethodSelected = true;
+            _selectedPaymentMethodDisplay = 'Free Ride 🎁';
+          });
+          return;
+        }
+
+        if (isPromoRide) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('🎁 £4.45 discount applied!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
 
         final paymentMethod = rideData['paymentMethod'];
         debugPrint('💸 [Payment] Method from response: $paymentMethod');

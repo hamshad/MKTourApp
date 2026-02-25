@@ -272,7 +272,7 @@ class PaymentService {
 
       String message;
       if (paymentStatus == 'refunded') {
-        message = 'Ride cancelled. Full refund processed.';
+        message = 'Ride cancelled.';
       } else if (paymentStatus == 'partially_refunded') {
         message =
             'Ride cancelled. Partial refund processed (£$cancellationFee cancellation fee).';
