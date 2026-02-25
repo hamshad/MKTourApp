@@ -1123,8 +1123,40 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         );
         if (response['success'] == true) {
           final paymentMethod = _rideData?['paymentMethod'];
+          final rideResult = response['data'] as Map<String, dynamic>? ?? {};
+          final bool isPromoFreeRide = rideResult['isPromoRide'] == true &&
+              (rideResult['fare'] is num
+                  ? (rideResult['fare'] as num).toDouble()
+                  : 0.0) ==
+                  0.0;
 
-          if (paymentMethod == 'cash') {
+          if (paymentMethod == 'cash' && isPromoFreeRide) {
+            // Fully discounted promo ride — no cash to collect, auto-finalize
+            final confirmResponse =
+                await _apiService.confirmCashCollection(_currentRideId!);
+            if (confirmResponse['success'] == true) {
+              setState(() {
+                _status = 'online';
+                _currentRideId = null;
+                _rideData = null;
+                _clearNavigationUi();
+              });
+              _fetchRideHistory();
+              CustomSnackbar.show(
+                context,
+                message:
+                    'Promotional ride complete — no cash to collect.',
+                type: SnackbarType.success,
+              );
+            } else {
+              CustomSnackbar.show(
+                context,
+                message:
+                    'Failed to finalize: ${confirmResponse['message']}',
+                type: SnackbarType.error,
+              );
+            }
+          } else if (paymentMethod == 'cash') {
             setState(() {
               _status = 'awaiting_cash_confirmation';
             });

@@ -42,6 +42,11 @@ class NotificationType {
   static const String rideCancelledByUser = 'ride_cancelled_by_user';
   static const String paymentSelected = 'payment_selected';
   static const String rideReminder = 'ride_reminder';
+
+  // Promo Notifications (User)
+  static const String promoUnlocked = 'promo_unlocked';
+  static const String promoApplied = 'promo_applied';
+  static const String promoClaimed = 'promo_claimed';
 }
 
 /// FCM Notification payload data
@@ -52,6 +57,8 @@ class FcmNotificationData {
   final String? newOTP;
   final double? fare;
   final double? amount;
+  final double? originalFare;
+  final String? promoStatus;
   final String? reason;
   final String? paymentMethod;
   final String? driverName;
@@ -65,6 +72,8 @@ class FcmNotificationData {
     this.newOTP,
     this.fare,
     this.amount,
+    this.originalFare,
+    this.promoStatus,
     this.reason,
     this.paymentMethod,
     this.driverName,
@@ -80,6 +89,8 @@ class FcmNotificationData {
       newOTP: data['newOTP'] ?? data['newOtp'],
       fare: _parseDouble(data['fare']),
       amount: _parseDouble(data['amount']),
+      originalFare: _parseDouble(data['originalFare']),
+      promoStatus: data['promoStatus'],
       reason: data['reason'],
       paymentMethod: data['paymentMethod'],
       driverName: data['driverName'] ?? data['name'],
@@ -377,6 +388,9 @@ class FcmService {
       case NotificationType.driverArrived:
       case NotificationType.rideStarted:
       case NotificationType.rideCompleted:
+      case NotificationType.promoUnlocked:
+      case NotificationType.promoApplied:
+      case NotificationType.promoClaimed:
         AudioService.instance.playNotification();
         break;
       default:
@@ -508,6 +522,15 @@ mixin FcmNotificationHandler<T extends StatefulWidget> on State<T> {
       case NotificationType.rideLongRunning:
         onRideLongRunning(data);
         break;
+      case NotificationType.promoUnlocked:
+        onPromoUnlocked(data);
+        break;
+      case NotificationType.promoApplied:
+        onPromoApplied(data);
+        break;
+      case NotificationType.promoClaimed:
+        onPromoClaimed(data);
+        break;
       default:
         debugPrint('🔔 [FCM Handler] Unknown notification type: ${data.type}');
     }
@@ -541,4 +564,9 @@ mixin FcmNotificationHandler<T extends StatefulWidget> on State<T> {
   // Common notification handlers
   void onRideExpired(FcmNotificationData data) {}
   void onRideLongRunning(FcmNotificationData data) {}
+
+  // Promo notification handlers
+  void onPromoUnlocked(FcmNotificationData data) {}
+  void onPromoApplied(FcmNotificationData data) {}
+  void onPromoClaimed(FcmNotificationData data) {}
 }

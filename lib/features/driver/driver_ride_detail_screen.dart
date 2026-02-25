@@ -54,7 +54,12 @@ class _DriverRideDetailScreenState extends State<DriverRideDetailScreen> {
     final fare = _toDouble(widget.rideData['fare']);
     final tip = _toDouble(widget.rideData['tip']);
     final surge = _toDouble(widget.rideData['surge']);
-    final total = fare + tip + surge;
+    final bool isPromoRide = widget.rideData['isPromoRide'] == true;
+    final double originalFare = _toDouble(widget.rideData['originalFare']);
+    // Drivers always see the original fare (the amount they earn),
+    // not the discounted fare the passenger pays.
+    final double displayFare = isPromoRide && originalFare > 0 ? originalFare : fare;
+    final total = displayFare + tip + surge;
     final status = (widget.rideData['status'] ?? 'completed').toString();
     final passenger = widget.rideData['user'] is Map
         ? widget.rideData['user'] as Map<String, dynamic>
@@ -263,7 +268,35 @@ class _DriverRideDetailScreenState extends State<DriverRideDetailScreen> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  _buildFareRow('Trip Fare', _formatCurrency(fare)),
+                  if (isPromoRide)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF22C55E).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                              color: const Color(0xFF22C55E).withOpacity(0.3)),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('🎁', style: TextStyle(fontSize: 12)),
+                            SizedBox(width: 6),
+                            Text(
+                              'Promo ride — passenger fare was discounted. Your earnings are unchanged.',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Color(0xFF16A34A),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  _buildFareRow('Trip Fare', _formatCurrency(displayFare)),
                   if (surge > 0) _buildFareRow('Surge', _formatCurrency(surge)),
                   if (tip > 0) _buildFareRow('Tip', _formatCurrency(tip)),
                   const Padding(

@@ -1941,6 +1941,60 @@ class ApiService {
     }
   }
 
+  /// Fetch the current user's promo (free ride) status.
+  /// Returns completedRides, promoStatus ("none" | "eligible" | "claimed"),
+  /// ridesUntilEligible, isEligible, isClaimed, and a human‑readable message.
+  Future<Map<String, dynamic>> getPromoStatus() async {
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
+    debugPrint('🔵 [ApiService] getPromoStatus called');
+    debugPrint('🔵 [Request] URL: ${ApiConstants.promoStatus}');
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString(_prefsAuthTokenKey);
+
+      if (token == null) {
+        throw Exception('No auth token found');
+      }
+
+      final response = await http.get(
+        Uri.parse(ApiConstants.promoStatus),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
+      debugPrint('🟣 [Response] Body: ${response.body}');
+
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
+
+      if (response.statusCode == 200) {
+        debugPrint('🟢 [ApiService] getPromoStatus Success');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
+        return jsonDecode(response.body);
+      } else {
+        debugPrint('🔴 [ApiService] getPromoStatus Failed: ${response.body}');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
+        return {'success': false, 'message': 'Failed to get promo status'};
+      }
+    } catch (e) {
+      debugPrint('🟠 [ApiService] getPromoStatus Exception: $e');
+      debugPrint(
+        '🔵 ------------------------------------------------------------------',
+      );
+      return {'success': false, 'message': 'Error fetching promo status: $e'};
+    }
+  }
+
   Future<Map<String, dynamic>> getDriverRides() async {
     debugPrint(
       '🔵 ------------------------------------------------------------------',

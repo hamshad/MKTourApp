@@ -24,6 +24,7 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
   double get _fare => (widget.rideData['fare'] ?? 0.0).toDouble();
   double get _distance => (widget.rideData['distance'] ?? widget.rideData['actualDistance'] ?? 0.0).toDouble();
   double get _originalFare => (widget.rideData['originalFare'] ?? 0.0).toDouble();
+  bool get _isPromoRide => widget.rideData['isPromoRide'] == true;
   bool get _isEarlyCompletion => 
       widget.rideData['status'] == 'early_completed' || 
       widget.rideData['earlyCompleted'] == true;
@@ -46,10 +47,17 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
   }
 
   void _checkInitialPaymentStatus() {
+     // Fully free promo ride — no cash to collect
+     if (widget.rideData['isPromoRide'] == true &&
+         (widget.rideData['fare'] ?? 0) == 0) {
+       _isCashConfirmed = true;
+       return;
+     }
      // If it's card, it's already paid. If cash, check if already confirmed (logic could vary)
      if (widget.rideData['paymentMethod'] != 'cash') {
        _isCashConfirmed = true;
-     } else if (widget.rideData['paymentStatus'] == 'completed') {
+     } else if (widget.rideData['paymentStatus'] == 'completed' ||
+         widget.rideData['paymentStatus'] == 'succeeded') {
        _isCashConfirmed = true;
      }
   }
@@ -215,12 +223,62 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
 
                     Center(
                       child: Text(
-                        'Trip completed!',
+                        _isPromoRide ? '🎁 Free Ride Complete!' : 'Trip completed!',
                         style: Theme.of(context).textTheme.displayMedium,
                       ),
                     ),
 
                     const SizedBox(height: 32),
+
+                    // Promo ribbon (shown only for promo rides)
+                    if (_isPromoRide)
+                      Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(bottom: 20),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 14),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [
+                              Color(0xFF22C55E),
+                              Color(0xFF16A34A),
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Row(
+                          children: [
+                            const Text('🎁',
+                                style: TextStyle(fontSize: 24)),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Free Ride Applied!',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                  Text(
+                                    _fare == 0
+                                        ? 'This ride was completely free — on us!'
+                                        : 'You saved £4.45 on this ride',
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
 
                     // Payment Method Section
                     Container(
@@ -333,6 +391,18 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                               '£${_originalFare.toStringAsFixed(2)}',
                             ),
                           ],
+                          // Promo fare breakdown rows
+                          if (_isPromoRide && _originalFare > 0) ...[
+                            _buildFareRow(
+                              'Original Fare',
+                              '£${_originalFare.toStringAsFixed(2)}',
+                            ),
+                            _buildFareRow(
+                              'Promo Discount',
+                              '- £${(_originalFare - _fare).clamp(0, 4.45).toStringAsFixed(2)}',
+                              valueColor: const Color(0xFF22C55E),
+                            ),
+                          ],
 
                           Divider(color: AppTheme.borderColor),
                           const SizedBox(height: 16),
@@ -351,28 +421,56 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                               Column(
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
+                                  // Show strikethrough original fare for promo rides
+                                  if (_isPromoRide && _originalFare > 0)
+                                    Text(
+                                      '£${_originalFare.toStringAsFixed(2)}',
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        color: Colors.grey,
+                                        decoration:
+                                            TextDecoration.lineThrough,
+                                        decorationColor: Colors.grey,
+                                      ),
+                                    ),
                                   Text(
-                                    '£${_fare.toStringAsFixed(2)}',
-                                    style: const TextStyle(
+                                    _fare == 0 && _isPromoRide
+                                        ? '£0.00 🎁'
+                                        : '£${_fare.toStringAsFixed(2)}',
+                                    style: TextStyle(
                                       fontSize: 24,
                                       fontWeight: FontWeight.bold,
-                                      color: AppTheme.textPrimary,
+                                      color: _fare == 0 && _isPromoRide
+                                          ? const Color(0xFF22C55E)
+                                          : AppTheme.textPrimary,
                                     ),
                                   ),
                                   const SizedBox(height: 4),
                                   Row(
                                     children: [
                                       Icon(
-                                        _isCashConfirmed ? Icons.check_circle : Icons.pending,
+                                        _isCashConfirmed
+                                            ? Icons.check_circle
+                                            : Icons.pending,
                                         size: 14,
-                                        color: _isCashConfirmed ? Colors.green[600] : Colors.orange[600],
+                                        color: _isCashConfirmed
+                                            ? Colors.green[600]
+                                            : Colors.orange[600],
                                       ),
                                       const SizedBox(width: 4),
                                       Text(
-                                        _isCashConfirmed ? 'Paid' : 'Pay Cash to Driver',
+                                        _fare == 0 && _isPromoRide
+                                            ? 'Free'
+                                            : _isCashConfirmed
+                                                ? 'Paid'
+                                                : 'Pay Cash to Driver',
                                         style: TextStyle(
                                           fontSize: 12,
-                                          color: _isCashConfirmed ? Colors.green[600] : Colors.orange[600],
+                                          color: _fare == 0 && _isPromoRide
+                                              ? const Color(0xFF22C55E)
+                                              : _isCashConfirmed
+                                                  ? Colors.green[600]
+                                                  : Colors.orange[600],
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),
@@ -516,7 +614,7 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
     );
   }
  
-  Widget _buildFareRow(String label, String value) {
+  Widget _buildFareRow(String label, String value, {Color? valueColor}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
@@ -531,10 +629,10 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
           ),
           Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
-              color: AppTheme.textPrimary,
+              color: valueColor ?? AppTheme.textPrimary,
             ),
           ),
         ],

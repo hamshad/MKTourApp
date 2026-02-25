@@ -108,7 +108,11 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     final vehicle = (driver != null && driver['vehicle'] is Map) ? driver['vehicle'] : null;
     final dateStr = _rideData?['createdAt'];
     final status = _rideData?['status']?.toString().toUpperCase() ?? 'UNKNOWN';
-    final price = _rideData?['fare'] != null ? '£${_rideData!['fare']}' : '£0.00';
+    final bool isPromoRide = _rideData?['isPromoRide'] == true;
+    final double rawFare = (_rideData?['fare'] as num?)?.toDouble() ?? 0.0;
+    final double originalFare = (_rideData?['originalFare'] as num?)?.toDouble() ?? 0.0;
+    // For display: show actual fare; if promo, also show original fare
+    final price = '\u00a3${rawFare.toStringAsFixed(2)}';
     final destination = _rideData?['dropoffLocation'] is Map ? _rideData!['dropoffLocation']['address'] ?? 'Unknown Destination' : 'Unknown Destination';
     final pickupAddress = _rideData?['pickupLocation'] is Map ? _rideData!['pickupLocation']['address'] ?? 'Unknown Pickup' : 'Unknown Pickup';
 
@@ -292,9 +296,62 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                                 ),
                               ),
                             ],
+                            if (isPromoRide) ...[    
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF22C55E).withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                      color: const Color(0xFF22C55E).withOpacity(0.4)),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text('🎁', style: TextStyle(fontSize: 11)),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      'Free Ride',
+                                      style: TextStyle(
+                                        color: Color(0xFF16A34A),
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                         const SizedBox(height: 16),
+                        // Original fare row (promo rides only)
+                        if (isPromoRide && originalFare > 0)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text(
+                                  'Original Fare',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    color: AppTheme.textSecondary,
+                                  ),
+                                ),
+                                Text(
+                                  '£${originalFare.toStringAsFixed(2)}',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    color: Colors.grey,
+                                    decoration: TextDecoration.lineThrough,
+                                    decorationColor: Colors.grey,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -306,39 +363,16 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                               ),
                             ),
                             Text(
-                              price,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: AppTheme.textPrimary,
-                              ),
-                            ),
-                          ],
-                        ),
-                        
-                        const SizedBox(height: 32),
-                        
-                        // Help Button
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton(
-                            onPressed: () {},
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              side: BorderSide(color: AppTheme.borderColor),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: const Text(
-                              'Get Help with this Ride',
+                              isPromoRide && rawFare == 0 ? '£0.00 (Free!)' : price,
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w600,
-                                color: AppTheme.textPrimary,
+                                color: isPromoRide && rawFare == 0
+                                    ? const Color(0xFF22C55E)
+                                    : AppTheme.textPrimary,
                               ),
                             ),
-                          ),
+                          ],
                         ),
                       ],
                     ),

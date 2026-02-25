@@ -14,10 +14,10 @@ import 'package:latlong2/latlong.dart' as lat_lng;
 import 'dart:async';
 import '../../core/services/socket_service.dart';
 import '../../core/api_service.dart';
-import '../../core/widgets/connection_status_banner.dart';
 import '../ride/ride_assigned_screen.dart';
 import '../booking/ride_confirmation_screen.dart';
 import 'airport_selection_screen.dart';
+import '../promo/promo_status_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -50,6 +50,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Map<String, dynamic>? _lastRideConfirmationData; // To support ride restart
   bool _isLoading = false;
 
+  // Promo status
+  Map<String, dynamic>? _promoStatusData;
+
   // Connection status subscription
   StreamSubscription<bool>? _connectionSubscription;
   bool _socketListenersInitialized = false;
@@ -60,6 +63,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _initLocation();
     _fetchRideHistory();
+    _fetchPromoStatus();
     _startBannerTimer();
     _setupSocketListeners();
     _setupConnectionListener();
@@ -259,6 +263,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _fetchRideHistory() async {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     await auth.fetchRideHistory();
+  }
+
+  Future<void> _fetchPromoStatus() async {
+    try {
+      final response = await _apiService.getPromoStatus();
+      if (response['success'] == true && mounted) {
+        setState(() {
+          _promoStatusData = response['data'] as Map<String, dynamic>?;
+        });
+      }
+    } catch (_) {
+      // Silently ignore — promo banner is non-critical
+    }
   }
 
   /// Setup connection listener to re-emit user online on reconnection
@@ -1170,6 +1187,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       // ),
                       // const SizedBox(height: 32),
 
+                      // Promo Status Banner
+                      if (_promoStatusData != null)
+                        _buildPromoBanner(_promoStatusData!),
+
                       // Recent Activity
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1233,10 +1254,116 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               );
             },
           ),
-
-        // Connection status banner — shows when socket is disconnected
-        const ConnectionStatusBanner(),
       ],
+    );
+  }
+
+  Widget _buildPromoBanner(Map<String, dynamic> promoData) {
+    final String status = promoData['promoStatus']?.toString() ?? 'none';
+    final int completedRides =
+        (promoData['completedRides'] as num?)?.toInt() ?? 0;
+    final int ridesUntilEligible =
+        (promoData['ridesUntilEligible'] as num?)?.toInt() ?? 0;
+    const int requiredRides = 5;
+
+    // Don't show banner if promo already claimed
+    if (status == 'claimed') return const SizedBox.shrink();
+
+    final bool isEligible = status == 'eligible';
+    final Color bgColor = isEligible
+        ? const Color(0xFF1B5E20)
+        : const Color(0xFFE8F5E9);
+    final Color textColor = isEligible ? Colors.white : const Color(0xFF2E7D32);
+    final Color subTextColor = isEligible
+        ? Colors.white70
+        : const Color(0xFF4CAF50);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: GestureDetector(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const PromoStatusScreen()),
+          );
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.green.withOpacity(0.15),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Text('🎁', style: const TextStyle(fontSize: 28)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isEligible ? 'Free Ride Ready!' : 'Free Ride Progress',
+                      style: GoogleFonts.outfit(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: textColor,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    if (isEligible)
+                      Text(
+                        'Your next ride is on us — up to £4.45 off!',
+                        style: GoogleFonts.outfit(
+                          fontSize: 12,
+                          color: subTextColor,
+                        ),
+                      )
+                    else ...[
+                      // Progress dots row
+                      Row(
+                        children: List.generate(requiredRides, (i) {
+                          final filled = i < completedRides;
+                          return Container(
+                            margin: const EdgeInsets.only(right: 5),
+                            width: 10,
+                            height: 10,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: filled
+                                  ? const Color(0xFF4CAF50)
+                                  : const Color(0xFFBBDEFB),
+                            ),
+                          );
+                        }),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '$ridesUntilEligible more ride${ridesUntilEligible == 1 ? '' : 's'} until your free ride',
+                        style: GoogleFonts.outfit(
+                          fontSize: 12,
+                          color: subTextColor,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.arrow_forward_ios,
+                color: isEligible ? Colors.white54 : const Color(0xFF81C784),
+                size: 16,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

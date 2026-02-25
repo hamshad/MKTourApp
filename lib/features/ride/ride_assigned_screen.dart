@@ -15,7 +15,6 @@ import '../../core/services/marker_interpolation_service.dart';
 import '../../core/services/payment_service.dart';
 import '../../core/services/stripe_service.dart';
 import '../../core/widgets/platform_map.dart';
-import '../../core/widgets/connection_status_banner.dart';
 import 'ride_complete_screen.dart';
 import 'payment_webview_screen.dart';
 
@@ -125,6 +124,12 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
   // CRITICAL: Prevent duplicate listener setup
   bool _socketListenersInitialized = false;
+
+  // Promo (Free Ride) state
+  bool _isPromoRide = false;
+  double _promoOriginalFare = 0.0;
+  double? _completedFare; // actual fare captured from ride:completed event
+  Map<String, dynamic>? _completedRideData; // full ride:completed payload
 
   @override
   void initState() {
@@ -526,6 +531,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     _socketService.off('payment:failed');
     _socketService.off('ride:longRunning');
     _socketService.off('user:status');
+    _socketService.off('ride:promoApplied');
 
     // Ensure we are joined to the driver room after socket init
     if (_currentDriverId != null) {
@@ -801,8 +807,17 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       final bool isPayLater = timing == 'pay_later';
       final completedFare = (data['fare'] as num?)?.toDouble() ?? widget.fare;
       final completedDistance = (data['distance'] as num?)?.toDouble();
+      final bool promoRide = data['isPromoRide'] == true;
+      final double? promoOriginalFare = (data['originalFare'] as num?)
+          ?.toDouble();
 
       if (isPayLater) {
+        setState(() {
+          _isPromoRide = promoRide;
+          if (promoOriginalFare != null) _promoOriginalFare = promoOriginalFare;
+          _completedFare = completedFare;
+          _completedRideData = data is Map<String, dynamic> ? data : null;
+        });
         _handlePayLaterCompletion(
           fare: completedFare,
           distance: completedDistance,
@@ -812,8 +827,65 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       }
 
       setState(() {
+        _isPromoRide = promoRide;
+        if (promoOriginalFare != null) _promoOriginalFare = promoOriginalFare;
+        _completedFare = completedFare;
+        _completedRideData = data is Map<String, dynamic> ? data : null;
         _rideStatus = 'completed';
       });
+    });
+
+    // Listen for promo applied event (user's 6th ride within Milton Keynes)
+    _socketService.on('ride:promoApplied', (data) {
+      if (!mounted) return;
+      debugPrint('🎁 [RideAssignedScreen] Promo Applied: $data');
+      final originalFare = (data['originalFare'] as num?)?.toDouble() ?? 0.0;
+      final newFare = (data['fare'] as num?)?.toDouble() ?? 0.0;
+      final promoMessage =
+          data['message']?.toString() ??
+          'Your free MK ride has been applied! This ride is on us.';
+
+      if (mounted) {
+        setState(() {
+          _isPromoRide = true;
+          _promoOriginalFare = originalFare;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Text('🎁  ', style: TextStyle(fontSize: 18)),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Free Ride Applied!',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      Text(
+                        promoMessage,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: const Color(0xFF22C55E),
+            duration: const Duration(seconds: 6),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     });
 
     // New listener for Payment Link Authorization (happens when user pays via link)
@@ -1520,6 +1592,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     _socketService.off('payment:authorized');
     _socketService.off('payment:failed');
     _socketService.off('ride:longRunning');
+    _socketService.off('ride:promoApplied');
 
     // Clean up navigation
     _navigationService.dispose();
@@ -1796,13 +1869,16 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   @override
   Widget build(BuildContext context) {
     if (_rideStatus == 'completed') {
-      return RideCompleteScreen(
-        rideData: {
-          'bookingId': widget.rideId,
-          'driver': _driver,
-          'fare': widget.fare,
-        },
-      );
+      final Map<String, dynamic> completedData = {
+        'bookingId': widget.rideId,
+        'driver': _driver,
+        'fare': _completedFare ?? widget.fare,
+        if (_isPromoRide) 'isPromoRide': true,
+        if (_isPromoRide && _promoOriginalFare > 0)
+          'originalFare': _promoOriginalFare,
+        if (_completedRideData != null) ..._completedRideData!,
+      };
+      return RideCompleteScreen(rideData: completedData);
     }
 
     return Scaffold(
@@ -1818,9 +1894,6 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
           // Status Panel
           Positioned(bottom: 0, left: 0, right: 0, child: _buildStatusPanel()),
-
-          // Connection status banner — shows when socket is disconnected
-          const ConnectionStatusBanner(),
         ],
       ),
     );
@@ -1943,11 +2016,60 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                   : (widget.dropoff?['address'] ?? 'Destination'),
             ),
             const SizedBox(height: 24),
+            // Promo banner — shown once ride:promoApplied is received
+            if (_isPromoRide)
+              Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF22C55E).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: const Color(0xFF22C55E).withOpacity(0.4),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Text('🎁', style: TextStyle(fontSize: 18)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Free Ride Applied!',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              color: Color(0xFF16A34A),
+                            ),
+                          ),
+                          Text(
+                            _promoOriginalFare > 0
+                                ? 'Original fare £${_promoOriginalFare.toStringAsFixed(2)} — discounted by £4.45'
+                                : 'Up to £4.45 discount applied',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF16A34A),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Estimated Fare: £${widget.fare.toStringAsFixed(2)}',
+                  _isPromoRide && _promoOriginalFare > 0
+                      ? 'Original Fare: £${_promoOriginalFare.toStringAsFixed(2)}'
+                      : 'Estimated Fare: £${widget.fare.toStringAsFixed(2)}',
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 // Text('Distance: 5.2 mi'), // Mock distance for now
