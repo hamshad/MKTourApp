@@ -4,6 +4,7 @@ import '../../core/theme.dart';
 import '../../core/auth_provider.dart';
 import '../../core/constants/privacy_policy.dart';
 import '../auth/role_selection_screen.dart';
+import 'pdf_viewer_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -146,6 +147,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
         children: [
           _buildSectionHeader('Privacy \u0026 Security'),
           _buildLinkItem('Privacy Policy', onTap: _showPrivacyPolicy),
+          _buildLinkItem(
+            'Customer Complaint Policy',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const PdfViewerScreen(
+                  title: 'Customer Complaint Policy',
+                  assetPath: 'assets/customer_complaint_policy.pdf',
+                ),
+              ),
+            ),
+          ),
+          /*
+          _buildLinkItem(
+            'Data Protection & Complaint Policy',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const PdfViewerScreen(
+                  title: 'Data Protection & Complaint Policy',
+                  assetPath: 'assets/data_protection_complaint_policy.pdf',
+                ),
+              ),
+            ),
+          ),
+          */
           _buildLinkItem(
             'Delete Account',
             isDestructive: true,

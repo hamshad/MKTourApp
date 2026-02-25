@@ -53,12 +53,12 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     super.initState();
     // Initialize route synchronously from passed polyline
     _initializeRouteSync();
-    // Only fetch fare asynchronously when not using fixed airport pricing
-    // Or if we already have valid fare estimates from the selection screen
+    // Skip the old fare API if we already have promo-aware data or a fixed fare
+    final hasPromoData = widget.fareData['promo_applied'] == true;
     final hasValidFare = widget.fareData['total_fare'] != null &&
         (widget.fareData['total_fare'] as num) > 0;
 
-    if (_isFixedFare || hasValidFare) {
+    if (_isFixedFare || hasPromoData || hasValidFare) {
       _isFetchingFare = false;
     } else {
       _fetchDirectionsAndFare();
@@ -918,7 +918,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                             if (_currentFareData['promo_applied'] == true &&
                                 _currentFareData['original_fare'] != null) ...[
                               Text(
-                                '£${_currentFareData['original_fare'].toStringAsFixed(2)}',
+                                '£${(_currentFareData['original_fare'] as num).toStringAsFixed(2)}',
                                 style: TextStyle(
                                   fontSize: 14,
                                   color: Colors.grey[500],
@@ -948,7 +948,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                                   ),
                                   const SizedBox(width: 4),
                                   Text(
-                                    '-£${(_currentFareData['discount'] ?? 0.0).toStringAsFixed(2)}',
+                                    '-£${(_currentFareData['discount'] as num? ?? 0).toStringAsFixed(2)}',
                                     style: const TextStyle(
                                       fontSize: 14,
                                       fontWeight: FontWeight.bold,

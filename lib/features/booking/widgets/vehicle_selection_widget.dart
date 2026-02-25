@@ -134,9 +134,18 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
       );
 
       if (mounted && promoData != null) {
+        // Extract shared distance/duration from API response top-level
+        final estimatedDistance = promoData['estimatedDistance'];
+        final duration = promoData['duration'];
+        final distanceText = estimatedDistance != null
+            ? '${(estimatedDistance as num).toStringAsFixed(2)} mi'
+            : (widget.distance != null ? '${widget.distance!.toStringAsFixed(1)} mi' : '');
+        final durationText = (duration is Map ? duration['text'] : null)
+            ?? widget.durationText
+            ?? '';
+
         setState(() {
           _promoResponse = promoData;
-          // Also update _fareEstimates map for backward compatibility
           final List<dynamic> categories = promoData['categories'] ?? [];
           for (var cat in categories) {
             _fareEstimates[cat['slug']] = {
@@ -145,8 +154,9 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
               'discount': cat['discount'],
               'is_free_ride': cat['isFreeRide'],
               'promo_applied': cat['promoApplied'],
-              'distance_text': '${widget.distance?.toStringAsFixed(1) ?? "0.0"} mi',
-              'duration_text': widget.durationText ?? 'Calculating...',
+              'distance_text': distanceText,
+              'duration_text': durationText,
+              'duration_seconds': duration is Map ? (duration['seconds'] ?? 0) : 0,
             };
           }
         });
@@ -227,7 +237,7 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'Your free MK ride discount is applied — save up to £${_promoResponse!['promoCapAmount']?.toStringAsFixed(2) ?? "0.00"}!',
+                    'Your free MK ride discount is applied — save up to £${(_promoResponse!['promoCapAmount'] as num?)?.toStringAsFixed(2) ?? "0.00"}!',
                     style: const TextStyle(
                       color: AppTheme.successColor,
                       fontWeight: FontWeight.bold,
@@ -259,8 +269,10 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
 
             // Get fare estimate
             final fareData = _fareEstimates[category.slug];
-            final price = fareData?['total_fare'] ?? 0.0;
-            final durationText = fareData?['duration_text'] ?? 'Calculating...';
+            final price = (fareData?['total_fare'] as num?)?.toDouble() ?? 0.0;
+            final durationText = fareData?['duration_text']?.toString().isNotEmpty == true
+                ? fareData!['duration_text'] as String
+                : 'Calculating...';
 
             return InkWell(
               onTap: () {
@@ -372,7 +384,7 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                                     if (fareData?['promo_applied'] == true &&
                                         fareData?['original_fare'] != null) ...[
                                       Text(
-                                        '£${fareData!['original_fare'].toStringAsFixed(2)}',
+                                        '£${(fareData!['original_fare'] as num).toStringAsFixed(2)}',
                                         style: TextStyle(
                                           fontSize: 14,
                                           fontWeight: FontWeight.normal,
@@ -407,7 +419,7 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                                           ),
                                           const SizedBox(width: 4),
                                           Text(
-                                            '-£${fareData!['discount'].toStringAsFixed(2)}',
+                                            '-£${(fareData!['discount'] as num).toStringAsFixed(2)}',
                                             style: const TextStyle(
                                               fontSize: 12,
                                               fontWeight: FontWeight.bold,

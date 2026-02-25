@@ -10,6 +10,7 @@ import 'edit_driver_profile_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/models/vehicle.dart';
 import '../../core/constants/api_constants.dart';
+import '../account/pdf_viewer_screen.dart';
 
 class DriverProfileScreen extends StatefulWidget {
   const DriverProfileScreen({super.key});
@@ -1025,6 +1026,38 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                       //   'Navigation, Sound',
                       //   showDivider: true,
                       // ),
+                      _buildMenuItem(
+                        Icons.description_outlined,
+                        'Customer Complaint Policy',
+                        'View our complaint policy',
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const PdfViewerScreen(
+                              title: 'Customer Complaint Policy',
+                              assetPath: 'assets/customer_complaint_policy.pdf',
+                            ),
+                          ),
+                        ),
+                        showDivider: true,
+                      ),
+                      /*
+                      _buildMenuItem(
+                        Icons.security_outlined,
+                        'Data Protection & Complaint Policy',
+                        'View our data protection policy',
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const PdfViewerScreen(
+                              title: 'Data Protection & Complaint Policy',
+                              assetPath: 'assets/data_protection_complaint_policy.pdf',
+                            ),
+                          ),
+                        ),
+                        showDivider: true,
+                      ),
+                      */
                       _buildMenuItem(
                         Icons.delete_forever,
                         'Delete Account',
