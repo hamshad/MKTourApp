@@ -260,12 +260,16 @@ class _PromoStatusScreenState extends State<PromoStatusScreen> {
                 children: const [
                   Icon(Icons.local_offer, color: Colors.white, size: 18),
                   SizedBox(width: 8),
-                  Text(
-                    'Up to £4.45 discount applied automatically',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
+                  Flexible(
+                    child: Text(
+                      'Up to £4.45 discount applied automatically',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 2,
                     ),
                   ),
                 ],

@@ -279,19 +279,20 @@ class AuthProvider with ChangeNotifier {
 
   /// Update vehicle information (required before going online)
   Future<Map<String, dynamic>> updateVehicleInformation({
-    required String categorySlug,
-    required String model,
-    required String number,
-    required String color,
+    String? categorySlug,
+    String? model,
+    String? number,
+    String? color,
   }) async {
     try {
+      final vehicleData = <String, dynamic>{};
+      if (categorySlug != null) vehicleData['categorySlug'] = categorySlug;
+      if (model != null) vehicleData['model'] = model;
+      if (number != null) vehicleData['number'] = number;
+      if (color != null) vehicleData['color'] = color;
+
       final response = await _apiService.updateDriverProfile({
-        'vehicle': {
-          'categorySlug': categorySlug,
-          'model': model,
-          'number': number,
-          'color': color,
-        }
+        'vehicle': vehicleData,
       });
       
       if (response['success'] == true && response['data'] != null) {

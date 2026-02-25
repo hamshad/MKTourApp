@@ -280,16 +280,18 @@ class _DriverRideDetailScreenState extends State<DriverRideDetailScreen> {
                           border: Border.all(
                               color: const Color(0xFF22C55E).withOpacity(0.3)),
                         ),
-                        child: const Row(
+                        child: Row(
                           mainAxisSize: MainAxisSize.min,
-                          children: [
+                          children: const [
                             Text('🎁', style: TextStyle(fontSize: 12)),
                             SizedBox(width: 6),
-                            Text(
-                              'Promo ride — passenger fare was discounted. Your earnings are unchanged.',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Color(0xFF16A34A),
+                            Expanded(
+                              child: Text(
+                                'Promo ride — passenger fare was discounted. Your earnings are unchanged.',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Color(0xFF16A34A),
+                                ),
                               ),
                             ),
                           ],

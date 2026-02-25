@@ -1848,7 +1848,7 @@ class ApiService {
       }
 
       final response = await http.patch(
-        Uri.parse('$baseUrl/drivers/fcm-token'),
+        Uri.parse(ApiConstants.updateDriver),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
