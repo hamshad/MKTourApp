@@ -14,6 +14,7 @@ import 'package:latlong2/latlong.dart' as lat_lng;
 import 'dart:async';
 import '../../core/services/socket_service.dart';
 import '../../core/api_service.dart';
+import '../../core/widgets/connection_status_banner.dart';
 import '../ride/ride_assigned_screen.dart';
 import '../booking/ride_confirmation_screen.dart';
 import 'airport_selection_screen.dart';
@@ -272,6 +273,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         // Re-setup socket listeners after reconnection
         _restoreSocketListeners();
         _emitUserOnline();
+
+        // Auto-sync ride status if we were disconnected and have an active ride or are searching
+        final gap = _socketService.disconnectionGap;
+        if (gap != null &&
+            gap.inSeconds > 3 &&
+            (_isSearching || _activeRide != null)) {
+          debugPrint(
+            '🔄 [HomeScreen] Disconnection gap: ${gap.inSeconds}s — auto-syncing ride status',
+          );
+          _syncRideStatus();
+        }
       }
     });
   }
@@ -1221,6 +1233,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               );
             },
           ),
+
+        // Connection status banner — shows when socket is disconnected
+        const ConnectionStatusBanner(),
       ],
     );
   }

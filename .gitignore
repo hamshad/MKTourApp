@@ -50,3 +50,8 @@ android/secrets.properties
 ios/Runner/Secrets.plist
 
 /ios/Flutter/Secrets.xcconfig
+
+# Opencode and GSD related
+.opencode/
+.planning/
+

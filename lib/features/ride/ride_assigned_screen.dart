@@ -15,6 +15,7 @@ import '../../core/services/marker_interpolation_service.dart';
 import '../../core/services/payment_service.dart';
 import '../../core/services/stripe_service.dart';
 import '../../core/widgets/platform_map.dart';
+import '../../core/widgets/connection_status_banner.dart';
 import 'ride_complete_screen.dart';
 import 'payment_webview_screen.dart';
 
@@ -183,21 +184,30 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   /// Called when app resumes after Chrome Custom Tab is closed.
   /// Checks backend for payment status and completes the Completer.
   Future<void> _checkPaymentLinkResult() async {
-    if (!_waitingForPaymentLink || _paymentLinkCompleter == null || _paymentLinkCompleter!.isCompleted) return;
+    if (!_waitingForPaymentLink ||
+        _paymentLinkCompleter == null ||
+        _paymentLinkCompleter!.isCompleted)
+      return;
 
     try {
       // Small delay to allow Stripe webhook to reach the backend
       await Future.delayed(const Duration(seconds: 2));
 
-      debugPrint('🔗 [Payment Link] Checking payment status after Chrome Custom Tab closed...');
+      debugPrint(
+        '🔗 [Payment Link] Checking payment status after Chrome Custom Tab closed...',
+      );
       final response = await _apiService.getRideDetails(widget.rideId);
 
       final data = response['data'] ?? response;
       final ride = data['ride'] ?? data;
-      final paymentStatus = ride['paymentStatus']?.toString().toLowerCase() ?? '';
-      final paymentMethod = ride['paymentMethod']?.toString().toLowerCase() ?? '';
+      final paymentStatus =
+          ride['paymentStatus']?.toString().toLowerCase() ?? '';
+      final paymentMethod =
+          ride['paymentMethod']?.toString().toLowerCase() ?? '';
 
-      debugPrint('🔗 [Payment Link] paymentStatus=$paymentStatus, paymentMethod=$paymentMethod');
+      debugPrint(
+        '🔗 [Payment Link] paymentStatus=$paymentStatus, paymentMethod=$paymentMethod',
+      );
 
       if (paymentStatus == 'paid' ||
           paymentStatus == 'succeeded' ||
@@ -357,14 +367,14 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
           interpolated.position.latitude,
           interpolated.position.longitude,
         );
-        
+
         // Check if position changed by more than ~1 meter
         final distance = const latlong2.Distance().as(
           latlong2.LengthUnit.Meter,
           _driverLocation ?? newLocation,
           newLocation,
         );
-        
+
         if (distance > 1.0 || _driverLocation == null) {
           setState(() {
             _driverLocation = newLocation;
@@ -381,11 +391,32 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     _connectionSubscription = _socketService.connectionStatus.listen((
       isConnected,
     ) {
-      if (isConnected && _currentDriverId != null) {
-        debugPrint(
-          '🔄 [RideAssignedScreen] Reconnected, rejoining driver room',
-        );
-        _socketService.joinDriverRoom(_currentDriverId!);
+      if (isConnected) {
+        if (_currentDriverId != null) {
+          debugPrint(
+            '🔄 [RideAssignedScreen] Reconnected, rejoining driver room',
+          );
+          _socketService.joinDriverRoom(_currentDriverId!);
+        }
+
+        // Re-emit user online
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        final user = authProvider.user;
+        if (user != null) {
+          final userId = user['_id'] ?? user['id'] ?? user['userId'];
+          if (userId != null) {
+            _socketService.emitUserOnline(userId);
+          }
+        }
+
+        // Auto-sync ride status after any disconnection gap > 3 seconds
+        final gap = _socketService.disconnectionGap;
+        if (gap != null && gap.inSeconds > 3) {
+          debugPrint(
+            '🔄 [RideAssignedScreen] Disconnection gap: ${gap.inSeconds}s — auto-syncing ride status',
+          );
+          _syncRideStatus();
+        }
       }
     });
   }
@@ -575,7 +606,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       }
 
       // Use scheduleMicrotask for reliable iOS execution
-      debugPrint('📍 [RideAssignedScreen] Scheduling ride:accepted state update...');
+      debugPrint(
+        '📍 [RideAssignedScreen] Scheduling ride:accepted state update...',
+      );
       scheduleMicrotask(() {
         if (!mounted || !context.mounted) return;
 
@@ -737,7 +770,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       _stopETAUpdates();
 
       // Use scheduleMicrotask for reliable iOS execution
-      debugPrint('📍 [RideAssignedScreen] Scheduling ride:started state update...');
+      debugPrint(
+        '📍 [RideAssignedScreen] Scheduling ride:started state update...',
+      );
       scheduleMicrotask(() {
         if (!mounted || !context.mounted) {
           debugPrint('⚠️ [RideAssignedScreen] Widget unmounted in microtask');
@@ -882,7 +917,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       // Play app custom notification sound
       AudioService.instance.playNotification();
 
-      debugPrint('📍 [RideAssignedScreen] Scheduling driver arrived state update...');
+      debugPrint(
+        '📍 [RideAssignedScreen] Scheduling driver arrived state update...',
+      );
       scheduleMicrotask(() {
         if (!mounted || !context.mounted) return;
 
@@ -905,7 +942,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
       if (!mounted || !context.mounted) return;
 
-      debugPrint('📍 [RideAssignedScreen] Scheduling OTP expired state update...');
+      debugPrint(
+        '📍 [RideAssignedScreen] Scheduling OTP expired state update...',
+      );
       scheduleMicrotask(() {
         if (!mounted || !context.mounted) return;
 
@@ -1745,10 +1784,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
           Flexible(
             child: Text(
               text,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -1782,6 +1818,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
           // Status Panel
           Positioned(bottom: 0, left: 0, right: 0, child: _buildStatusPanel()),
+
+          // Connection status banner — shows when socket is disconnected
+          const ConnectionStatusBanner(),
         ],
       ),
     );
@@ -2423,10 +2462,12 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
   Future<void> _handlePaymentSelection(String method) async {
     debugPrint('═══════════════════════════════════════════════════════════');
-    debugPrint('💸 [Payment] ============ PAYMENT SELECTION START ============');
+    debugPrint(
+      '💸 [Payment] ============ PAYMENT SELECTION START ============',
+    );
     debugPrint('💸 [Payment] Method selected: $method');
     debugPrint('💸 [Payment] Ride ID: ${widget.rideId}');
-    
+
     Navigator.pop(context); // Close selection modal
     debugPrint('💸 [Payment] ✅ Closed payment modal');
 
@@ -2459,7 +2500,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         // Handle nested ride structure (data.ride) or flat structure (data)
         final rideData = data['ride'] ?? data;
         debugPrint('💸 [Payment] Ride data: $rideData');
-        
+
         final paymentMethod = rideData['paymentMethod'];
         debugPrint('💸 [Payment] Method from response: $paymentMethod');
 
@@ -2488,7 +2529,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
               );
               setState(() {
                 _isPaymentMethodSelected = true;
-                _selectedPaymentMethodDisplay = Platform.isAndroid ? 'Paid Online' : 'Card';
+                _selectedPaymentMethodDisplay = Platform.isAndroid
+                    ? 'Paid Online'
+                    : 'Card';
               });
             } catch (e) {
               debugPrint('❌ [Stripe] Payment failed: $e');
@@ -2501,7 +2544,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
               if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('Payment failed: ${StripeService.getErrorMessage(e)}'),
+                  content: Text(
+                    'Payment failed: ${StripeService.getErrorMessage(e)}',
+                  ),
                   backgroundColor: Colors.red,
                 ),
               );
@@ -2513,7 +2558,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
             if (Navigator.canPop(context)) {
               Navigator.pop(context);
             }
-            
+
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text('Payment setup failed. Please try again.'),
@@ -2538,7 +2583,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
           if (paymentUrl != null) {
             if (Platform.isAndroid) {
               // ── Android: Chrome Custom Tab ──────────────────────────
-              debugPrint('✅ [Payment Link] Opening in Chrome Custom Tab (Android)');
+              debugPrint(
+                '✅ [Payment Link] Opening in Chrome Custom Tab (Android)',
+              );
 
               _paymentLinkCompleter = Completer<bool>();
               _waitingForPaymentLink = true;
@@ -2555,7 +2602,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                 if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('Could not open payment page. Please try again.'),
+                    content: Text(
+                      'Could not open payment page. Please try again.',
+                    ),
                     backgroundColor: Colors.red,
                   ),
                 );
@@ -2568,7 +2617,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
               if (!mounted) return;
               if (success) {
-                debugPrint('✅ [Payment Link] Payment completed (Chrome Custom Tab)');
+                debugPrint(
+                  '✅ [Payment Link] Payment completed (Chrome Custom Tab)',
+                );
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('Payment successful! Share OTP with driver.'),
@@ -2580,10 +2631,14 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                   _selectedPaymentMethodDisplay = 'Payment Link';
                 });
               } else {
-                debugPrint('❌ [Payment Link] Payment not completed (Chrome Custom Tab)');
+                debugPrint(
+                  '❌ [Payment Link] Payment not completed (Chrome Custom Tab)',
+                );
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('Payment was not completed. Please try again.'),
+                    content: Text(
+                      'Payment was not completed. Please try again.',
+                    ),
                     backgroundColor: Colors.orange,
                   ),
                 );
@@ -2619,7 +2674,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                 debugPrint('❌ [Payment Link] Payment cancelled or failed');
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('Payment was not completed. Please try again.'),
+                    content: Text(
+                      'Payment was not completed. Please try again.',
+                    ),
                     backgroundColor: Colors.orange,
                   ),
                 );
@@ -2640,7 +2697,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
           if (Navigator.canPop(context)) {
             Navigator.pop(context);
           }
-          
+
           debugPrint('💵 [Cash] Payment method selected');
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -2656,12 +2713,12 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       } else {
         debugPrint('❌ [Payment] Response success = false');
         debugPrint('💸 [Payment] Error message: ${response['message']}');
-        
+
         // Close loading dialog on API failure
         if (Navigator.canPop(context)) {
           Navigator.pop(context);
         }
-        
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -2674,13 +2731,13 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     } catch (e) {
       debugPrint('❌ [Payment] EXCEPTION CAUGHT: $e');
       debugPrint('💸 [Payment] Stack trace: $e');
-      
+
       // Close loading dialog on exception
       if (Navigator.canPop(context)) {
         Navigator.pop(context);
         debugPrint('💸 [Payment] ✅ Closed loading dialog after error');
       }
-      
+
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Error: $e')));

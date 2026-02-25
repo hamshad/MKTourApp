@@ -14,6 +14,7 @@ import '../../core/widgets/custom_snackbar.dart';
 import '../../core/services/socket_service.dart';
 import '../../core/services/location_service.dart';
 import '../../core/services/navigation_service.dart';
+import '../../core/widgets/connection_status_banner.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -26,7 +27,8 @@ class DriverHomeScreen extends StatefulWidget {
   State<DriverHomeScreen> createState() => _DriverHomeScreenState();
 }
 
-class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBindingObserver {
+class _DriverHomeScreenState extends State<DriverHomeScreen>
+    with WidgetsBindingObserver {
   // Status: offline, online, request, pickup, arrived, in_progress, complete
   String _status = 'offline';
   final PanelController _panelController = PanelController();
@@ -65,7 +67,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
   // Last emitted location timestamp to throttle updates
   DateTime? _lastEmitTime;
   static const int _minEmitIntervalMs = 3000; // Minimum 3 seconds between emits
-  
+
   // Track if socket listeners are set up to re-register after reconnection
   bool _socketListenersSetup = false;
 
@@ -94,18 +96,20 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
       debugPrint('🔄 [DriverHomeScreen] App resumed, syncing state...');
-      
+
       // 1. Force check socket connection
       if (!_socketService.isConnected) {
-        debugPrint('🔌 [DriverHomeScreen] Socket disconnected, reconnecting...');
+        debugPrint(
+          '🔌 [DriverHomeScreen] Socket disconnected, reconnecting...',
+        );
         _socketService.initSocket(forceReconnect: true);
       }
-      
+
       // 2. Re-emit online status if driver is not offline
       if (_status != 'offline') {
         _emitDriverOnline();
       }
-      
+
       // 3. Resume location updates if driver is online
       if (_status == 'online' && _positionStreamSubscription == null) {
         _startLocationUpdates();
@@ -128,15 +132,79 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
         );
         // Re-setup socket listeners after reconnection
         _setupSocketListeners();
-        
+
         if (_status != 'offline') {
-          debugPrint(
-            '🔄 [DriverHomeScreen] Re-emitting driver status',
-          );
+          debugPrint('🔄 [DriverHomeScreen] Re-emitting driver status');
           _emitDriverOnline();
+        }
+
+        // Auto-sync ride status if we had a disconnection gap and have an active ride
+        final gap = _socketService.disconnectionGap;
+        if (gap != null && gap.inSeconds > 3 && _currentRideId != null) {
+          debugPrint(
+            '🔄 [DriverHomeScreen] Disconnection gap: ${gap.inSeconds}s — auto-syncing ride status',
+          );
+          _syncRideStatus();
         }
       }
     });
+  }
+
+  /// Sync ride status with backend after reconnection gap
+  Future<void> _syncRideStatus() async {
+    if (_currentRideId == null) return;
+
+    try {
+      debugPrint(
+        '🔄 [DriverHomeScreen] Syncing ride status for ride: $_currentRideId',
+      );
+      final response = await _apiService.getRideDetails(_currentRideId!);
+
+      if (response['success'] == true && response['data'] != null) {
+        final rideData = response['data'];
+        final ride = rideData['ride'] ?? rideData;
+        final status = ride['status']?.toString() ?? '';
+
+        debugPrint(
+          '🔄 [DriverHomeScreen] Synced ride status: $status, current UI state: $_status',
+        );
+
+        if (!mounted) return;
+
+        // Check for terminal states — ride may have ended while disconnected
+        if (status == 'cancelled' ||
+            status == 'cancelled_by_user' ||
+            status == 'cancelled_by_driver' ||
+            status == 'expired') {
+          setState(() {
+            _status = 'online';
+            _currentRideId = null;
+            _rideData = null;
+          });
+          debugPrint(
+            '⚠️ [DriverHomeScreen] Ride ended while disconnected ($status), returning to online',
+          );
+        } else if (status == 'completed') {
+          setState(() {
+            _status = 'online';
+            _currentRideId = null;
+            _rideData = null;
+          });
+          debugPrint(
+            '✅ [DriverHomeScreen] Ride completed while disconnected, returning to online',
+          );
+        }
+        // For active states (accepted, in_progress, etc.), the UI should already
+        // reflect the correct state. Just update ride data to sync any changes.
+        else if (ride != null) {
+          setState(() {
+            _rideData = ride is Map<String, dynamic> ? ride : null;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ [DriverHomeScreen] Error syncing ride status: $e');
+    }
   }
 
   void _initLocation() async {
@@ -190,7 +258,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    
+
     // Clean up socket listeners
     _socketService.off('ride:newRequest');
     _socketService.off('ride:reminder');
@@ -344,7 +412,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
       if (!mounted) return;
 
       final bool isNavigationMode =
-          _status == 'pickup' || _status == 'arrived' || _status == 'in_progress';
+          _status == 'pickup' ||
+          _status == 'arrived' ||
+          _status == 'in_progress';
 
       // If the ride has ended (or driver is not navigating), ignore late route updates
       // and ensure the map is cleared.
@@ -456,10 +526,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
 
   void _setupSocketListeners() {
     debugPrint('👂 [DriverHomeScreen] Setting up socket listeners...');
-    
+
     // Clean up existing listeners before re-registering to prevent duplicates
     if (_socketListenersSetup) {
-      debugPrint('🧹 [DriverHomeScreen] Cleaning up old socket listeners before re-setup...');
+      debugPrint(
+        '🧹 [DriverHomeScreen] Cleaning up old socket listeners before re-setup...',
+      );
       _socketService.off('ride:newRequest');
       _socketService.off('ride:reminder');
       _socketService.off('ride:longRunning');
@@ -475,7 +547,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
       _socketService.off('payment:cancelled');
       _socketService.off('ride:paymentSelected');
     }
-    
+
     _socketListenersSetup = true;
 
     // Listen for driver status confirmation
@@ -509,7 +581,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
       debugPrint('💳 [DriverHomeScreen] Payment succeeded: $data');
       if (!mounted) return;
 
-      final rideId = data['bookingId']?.toString() ?? data['rideId']?.toString();
+      final rideId =
+          data['bookingId']?.toString() ?? data['rideId']?.toString();
       if (rideId == _currentRideId) {
         CustomSnackbar.show(
           context,
@@ -534,7 +607,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
       debugPrint('💳 [DriverHomeScreen] Payment authorized: $data');
       if (!mounted) return;
 
-      final rideId = data['bookingId']?.toString() ?? data['rideId']?.toString();
+      final rideId =
+          data['bookingId']?.toString() ?? data['rideId']?.toString();
       if (rideId == _currentRideId) {
         CustomSnackbar.show(
           context,
@@ -548,7 +622,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
       debugPrint('💳 [DriverHomeScreen] Payment captured: $data');
       if (!mounted) return;
 
-      final rideId = data['bookingId']?.toString() ?? data['rideId']?.toString();
+      final rideId =
+          data['bookingId']?.toString() ?? data['rideId']?.toString();
       if (rideId == _currentRideId) {
         CustomSnackbar.show(
           context,
@@ -562,7 +637,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
       debugPrint('💳 [DriverHomeScreen] Payment failed: $data');
       if (!mounted) return;
 
-      final rideId = data['bookingId']?.toString() ?? data['rideId']?.toString();
+      final rideId =
+          data['bookingId']?.toString() ?? data['rideId']?.toString();
       if (rideId == _currentRideId) {
         CustomSnackbar.show(
           context,
@@ -576,7 +652,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
       debugPrint('💳 [DriverHomeScreen] Payment cancelled: $data');
       if (!mounted) return;
 
-      final rideId = data['bookingId']?.toString() ?? data['rideId']?.toString();
+      final rideId =
+          data['bookingId']?.toString() ?? data['rideId']?.toString();
       if (rideId == _currentRideId) {
         CustomSnackbar.show(
           context,
@@ -597,7 +674,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
         debugPrint('🔔 [DriverHomeScreen] Triggering _handleNewRideRequest');
         _handleNewRideRequest(data);
       } else {
-        debugPrint('🔔 [DriverHomeScreen] Received request but widget not mounted');
+        debugPrint(
+          '🔔 [DriverHomeScreen] Received request but widget not mounted',
+        );
       }
     });
 
@@ -691,7 +770,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
   }
 
   void _handleNewRideRequest(dynamic data) {
-    debugPrint('🔔 [DriverHomeScreen] Handling request. Current status: $_status');
+    debugPrint(
+      '🔔 [DriverHomeScreen] Handling request. Current status: $_status',
+    );
     // Only show request if driver is online and available
     if (_status == 'online') {
       debugPrint('🔔 [DriverHomeScreen] Starting ringtone sound...');
@@ -771,13 +852,15 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
         // Handle error responses, including 403 validation errors
         // Check for error code in both locations: root level or nested in 'errors' object
         final errors = response['errors'] as Map<String, dynamic>?;
-        final errorCode = errors?['code']?.toString() ?? response['code']?.toString() ?? '';
-        final errorMessage = response['message']?.toString() ?? 'Failed to update status';
-        
+        final errorCode =
+            errors?['code']?.toString() ?? response['code']?.toString() ?? '';
+        final errorMessage =
+            response['message']?.toString() ?? 'Failed to update status';
+
         debugPrint('🔴 [DriverHomeScreen] Failed to update status');
         debugPrint('🔴 [DriverHomeScreen] Error Code: $errorCode');
         debugPrint('🔴 [DriverHomeScreen] Error Message: $errorMessage');
-        
+
         if (mounted) {
           // Check for specific error codes
           if (errorCode == 'PROFILE_INCOMPLETE') {
@@ -796,7 +879,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
     } catch (e) {
       // This should rarely happen now since API service returns errors instead of throwing
       debugPrint('🔴 [DriverHomeScreen] Unexpected error updating status: $e');
-      
+
       if (mounted) {
         CustomSnackbar.show(
           context,
@@ -828,7 +911,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
           ],
         ),
         content: Text(
-          message.isEmpty 
+          message.isEmpty
               ? 'Please complete your profile by uploading all required documents before going online.'
               : message,
         ),
@@ -910,12 +993,15 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
           if (status == 'completed' || status == 'early_completed') {
             // Get duration in minutes
             double durationMin = (ride['duration'] as num?)?.toDouble() ?? 0;
-            
+
             // If duration is 0/null, calculate from timestamps
             if (durationMin == 0 && ride['acceptedAt'] != null) {
               try {
                 final start = DateTime.parse(ride['acceptedAt']);
-                final endInput = ride['completedAt'] ?? ride['updatedAt'] ?? ride['createdAt'];
+                final endInput =
+                    ride['completedAt'] ??
+                    ride['updatedAt'] ??
+                    ride['createdAt'];
                 if (endInput != null) {
                   final end = DateTime.parse(endInput);
                   durationMin = end.difference(start).inMinutes.toDouble();
@@ -970,10 +1056,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
             _status = 'pickup';
             if (response['data'] != null) {
               final newData = response['data'] as Map<String, dynamic>;
-              _rideData = {
-                ...?_rideData,
-                ...newData,
-              };
+              _rideData = {...?_rideData, ...newData};
               _currentRideId = newData['_id']?.toString() ?? _currentRideId;
             }
           });
@@ -1007,10 +1090,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
             _status = 'arrived';
             if (response['data'] != null) {
               final newData = response['data'] as Map<String, dynamic>;
-              _rideData = {
-                ...?_rideData,
-                ...newData,
-              };
+              _rideData = {...?_rideData, ...newData};
             }
           });
           CustomSnackbar.show(
@@ -1043,9 +1123,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
         );
         if (response['success'] == true) {
           final paymentMethod = _rideData?['paymentMethod'];
-          
+
           if (paymentMethod == 'cash') {
-             setState(() {
+            setState(() {
               _status = 'awaiting_cash_confirmation';
             });
             CustomSnackbar.show(
@@ -1054,7 +1134,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
               type: SnackbarType.warning,
             );
           } else {
-             setState(() {
+            setState(() {
               _status = 'online';
               _currentRideId = null;
               _rideData = null;
@@ -1075,29 +1155,31 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
           );
         }
       } else if (_status == 'awaiting_cash_confirmation') {
-         // Confirm Cash Collection
-         final response = await _apiService.confirmCashCollection(_currentRideId!);
-         if (response['success'] == true) {
-            CustomSnackbar.show(
-              context,
-              message: 'Cash collected. Ride finalized.',
-              type: SnackbarType.success,
-            );
-            // Reset to online
-            setState(() {
-              _status = 'online';
-              _currentRideId = null;
-              _rideData = null;
-              _clearNavigationUi();
-            });
-            _fetchRideHistory();
-         } else {
-            CustomSnackbar.show(
-              context,
-              message: 'Failed to confirm cash: ${response['message']}',
-              type: SnackbarType.error,
-            );
-         }
+        // Confirm Cash Collection
+        final response = await _apiService.confirmCashCollection(
+          _currentRideId!,
+        );
+        if (response['success'] == true) {
+          CustomSnackbar.show(
+            context,
+            message: 'Cash collected. Ride finalized.',
+            type: SnackbarType.success,
+          );
+          // Reset to online
+          setState(() {
+            _status = 'online';
+            _currentRideId = null;
+            _rideData = null;
+            _clearNavigationUi();
+          });
+          _fetchRideHistory();
+        } else {
+          CustomSnackbar.show(
+            context,
+            message: 'Failed to confirm cash: ${response['message']}',
+            type: SnackbarType.error,
+          );
+        }
       }
     } catch (e) {
       CustomSnackbar.show(
@@ -1114,7 +1196,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
     if (_currentRideId == null) return;
 
     AudioService.instance.stop();
-    
+
     // Just reset to online state without calling API
     setState(() {
       _status = 'online';
@@ -1360,27 +1442,29 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
         final adjustedFare = response['data']?['adjustedFare'] ?? 0.0;
 
         final paymentMethod = _rideData?['paymentMethod'];
-        
+
         if (paymentMethod == 'cash') {
           setState(() {
             _status = 'awaiting_cash_confirmation';
           });
           CustomSnackbar.show(
             context,
-            message: 'Ride ended early (£${adjustedFare.toStringAsFixed(2)}). Collect cash from passenger.',
+            message:
+                'Ride ended early (£${adjustedFare.toStringAsFixed(2)}). Collect cash from passenger.',
             type: SnackbarType.warning,
           );
         } else {
           setState(() {
-             _status = 'online';
-             _currentRideId = null;
-             _rideData = null;
-             _clearNavigationUi();
+            _status = 'online';
+            _currentRideId = null;
+            _rideData = null;
+            _clearNavigationUi();
           });
           _fetchRideHistory();
           CustomSnackbar.show(
             context,
-            message: 'Ride completed successfully (£${adjustedFare.toStringAsFixed(2)}).',
+            message:
+                'Ride completed successfully (£${adjustedFare.toStringAsFixed(2)}).',
             type: SnackbarType.success,
           );
           // payment:succeeded socket will finalize
@@ -1479,10 +1563,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
           _status = 'in_progress';
           if (response['data'] != null) {
             final newData = response['data'] as Map<String, dynamic>;
-            _rideData = {
-              ...?_rideData,
-              ...newData,
-            };
+            _rideData = {...?_rideData, ...newData};
           }
         });
         CustomSnackbar.show(
@@ -1513,17 +1594,24 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SlidingUpPanel(
-        controller: _panelController,
-        minHeight: _getPanelMinHeight(),
-        maxHeight: _getPanelMaxHeight(),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        parallaxEnabled: true,
-        parallaxOffset: 0.5,
-        body: _buildMapBackground(),
-        panel: _buildPanelContent(),
-        boxShadow: [
-          BoxShadow(blurRadius: 20.0, color: Colors.black.withOpacity(0.1)),
+      body: Stack(
+        children: [
+          SlidingUpPanel(
+            controller: _panelController,
+            minHeight: _getPanelMinHeight(),
+            maxHeight: _getPanelMaxHeight(),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            parallaxEnabled: true,
+            parallaxOffset: 0.5,
+            body: _buildMapBackground(),
+            panel: _buildPanelContent(),
+            boxShadow: [
+              BoxShadow(blurRadius: 20.0, color: Colors.black.withOpacity(0.1)),
+            ],
+          ),
+
+          // Connection status banner — shows when socket is disconnected
+          const ConnectionStatusBanner(),
         ],
       ),
     );
@@ -1747,7 +1835,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
     } else if (_status == 'pickup' ||
         _status == 'arrived' ||
         _status == 'in_progress' ||
-        _status == 'awaiting_payment' || 
+        _status == 'awaiting_payment' ||
         _status == 'awaiting_cash_confirmation') {
       return DriverNavigationPanel(
         status: _status,
@@ -1997,11 +2085,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
 
     return GestureDetector(
       onTap: () {
-        Navigator.pushNamed(
-          context,
-          '/driver-ride-detail',
-          arguments: ride,
-        );
+        Navigator.pushNamed(context, '/driver-ride-detail', arguments: ride);
       },
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
@@ -2018,72 +2102,72 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
           ],
         ),
         child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: isCancelled
-                  ? Colors.red.withOpacity(0.1)
-                  : AppTheme.primaryColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(16),
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isCancelled
+                    ? Colors.red.withOpacity(0.1)
+                    : AppTheme.primaryColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(
+                Icons.history,
+                color: isCancelled ? Colors.red : AppTheme.primaryColor,
+                size: 24,
+              ),
             ),
-            child: Icon(
-              Icons.history,
-              color: isCancelled ? Colors.red : AppTheme.primaryColor,
-              size: 24,
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    pickupAddr,
+                    style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: AppTheme.textPrimary,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    timeStr,
+                    style: GoogleFonts.outfit(
+                      color: AppTheme.textSecondary,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  pickupAddr,
+                  '£${(ride['fare'] ?? 0.0).toStringAsFixed(2)}',
                   style: GoogleFonts.outfit(
                     fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                    color: AppTheme.textPrimary,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  timeStr,
-                  style: GoogleFonts.outfit(
-                    color: AppTheme.textSecondary,
-                    fontSize: 13,
+                    fontSize: 18,
+                    color: isCancelled ? Colors.red : AppTheme.primaryColor,
                   ),
                 ),
+                if (isCancelled)
+                  Text(
+                    'Cancelled',
+                    style: GoogleFonts.outfit(
+                      color: Colors.red,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
               ],
             ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                '£${(ride['fare'] ?? 0.0).toStringAsFixed(2)}',
-                style: GoogleFonts.outfit(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                  color: isCancelled ? Colors.red : AppTheme.primaryColor,
-                ),
-              ),
-              if (isCancelled)
-                Text(
-                  'Cancelled',
-                  style: GoogleFonts.outfit(
-                    color: Colors.red,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-            ],
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
     );
   }
 }
