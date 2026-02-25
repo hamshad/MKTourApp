@@ -17,6 +17,8 @@ class VehicleSelectionWidget extends StatefulWidget {
   final double? pickupLng;
   final double? dropoffLat;
   final double? dropoffLng;
+  final double? distance;
+  final String? durationText;
   final Map<String, double>? fixedFareByCategory;
 
   const VehicleSelectionWidget({
@@ -28,6 +30,8 @@ class VehicleSelectionWidget extends StatefulWidget {
     this.pickupLng,
     this.dropoffLat,
     this.dropoffLng,
+    this.distance,
+    this.durationText,
     this.fixedFareByCategory,
   });
 
@@ -42,6 +46,7 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
   List<VehicleCategory> _categories = [];
   bool _isLoadingCategories = true;
   Map<String, Map<String, dynamic>> _fareEstimates = {};
+  Map<String, dynamic>? _promoResponse;
   bool _isFetchingFares = false;
 
   @override
@@ -118,29 +123,61 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
 
     setState(() => _isFetchingFares = true);
 
-    for (final category in _categories) {
-      try {
-        final result = await _placesService.getDistanceAndFare(
-          originLat: widget.pickupLat!,
-          originLng: widget.pickupLng!,
-          destLat: widget.dropoffLat!,
-          destLng: widget.dropoffLng!,
-          categorySlug: category.slug,
-        );
+    try {
+      // Use new fare-estimate endpoint which handles promo logically
+      final promoData = await _placesService.getFareEstimate(
+        pickupLat: widget.pickupLat!,
+        pickupLon: widget.pickupLng!,
+        dropoffLat: widget.dropoffLat!,
+        dropoffLon: widget.dropoffLng!,
+        distance: widget.distance ?? 0.0,
+      );
 
-        if (mounted && result != null) {
-          setState(() {
-            _fareEstimates[category.slug] = result;
-          });
-          debugPrint(
-            '✅ VehicleSelectionWidget: Got fare for ${category.slug}: £${result['total_fare']}',
-          );
+      if (mounted && promoData != null) {
+        setState(() {
+          _promoResponse = promoData;
+          // Also update _fareEstimates map for backward compatibility
+          final List<dynamic> categories = promoData['categories'] ?? [];
+          for (var cat in categories) {
+            _fareEstimates[cat['slug']] = {
+              'total_fare': cat['estimatedFare'],
+              'original_fare': cat['originalFare'],
+              'discount': cat['discount'],
+              'is_free_ride': cat['isFreeRide'],
+              'promo_applied': cat['promoApplied'],
+              'distance_text': '${widget.distance?.toStringAsFixed(1) ?? "0.0"} mi',
+              'duration_text': widget.durationText ?? 'Calculating...',
+            };
+          }
+        });
+        debugPrint('✅ VehicleSelectionWidget: Got promo-aware fare estimates');
+      } else {
+        // Fallback to old sequential calls if new API fails
+        debugPrint('⚠️ Falling back to sequential fare estimates');
+        for (final category in _categories) {
+          try {
+            final result = await _placesService.getDistanceAndFare(
+              originLat: widget.pickupLat!,
+              originLng: widget.pickupLng!,
+              destLat: widget.dropoffLat!,
+              destLng: widget.dropoffLng!,
+              categorySlug: category.slug,
+            );
+
+            if (mounted && result != null) {
+              setState(() {
+                _fareEstimates[category.slug] = result;
+              });
+            }
+          } catch (e) {
+            debugPrint(
+              '❌ VehicleSelectionWidget: Error getting fare for ${category.slug}: $e',
+            );
+          }
         }
-      } catch (e) {
-        debugPrint(
-          '❌ VehicleSelectionWidget: Error getting fare for ${category.slug}: $e',
-        );
       }
+    } catch (e) {
+      debugPrint('❌ VehicleSelectionWidget: Error fetching fare estimates: $e');
     }
 
     if (mounted) {
@@ -170,6 +207,38 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (_promoResponse != null && _promoResponse!['promoApplies'] == true)
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppTheme.successColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppTheme.successColor.withOpacity(0.3)),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.card_giftcard,
+                  color: AppTheme.successColor,
+                  size: 24,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Your free MK ride discount is applied — save up to £${_promoResponse!['promoCapAmount']?.toStringAsFixed(2) ?? "0.00"}!',
+                    style: const TextStyle(
+                      color: AppTheme.successColor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
         const Padding(
           padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Text(
@@ -297,15 +366,71 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                                     strokeWidth: 2,
                                   ),
                                 )
-                              : Text(
-                                  price > 0 ? '£${price.toStringAsFixed(2)}' : 'N/A',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: isSelected
-                                        ? AppTheme.primaryColor
-                                        : AppTheme.textPrimary,
-                                  ),
+                              : Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    if (fareData?['promo_applied'] == true &&
+                                        fareData?['original_fare'] != null) ...[
+                                      Text(
+                                        '£${fareData!['original_fare'].toStringAsFixed(2)}',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.normal,
+                                          color: Colors.grey[500],
+                                          decoration:
+                                              TextDecoration.lineThrough,
+                                        ),
+                                      ),
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            fareData?['is_free_ride'] == true
+                                                ? 'FREE'
+                                                : '£${price.toStringAsFixed(2)}',
+                                            style: TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
+                                              color: fareData?['is_free_ride'] ==
+                                                      true
+                                                  ? AppTheme.successColor
+                                                  : (isSelected
+                                                      ? AppTheme.primaryColor
+                                                      : AppTheme.textPrimary),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          const Icon(
+                                            Icons.card_giftcard,
+                                            size: 16,
+                                            color: AppTheme.successColor,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            '-£${fareData!['discount'].toStringAsFixed(2)}',
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold,
+                                              color: AppTheme.successColor,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ] else ...[
+                                      Text(
+                                        price > 0
+                                            ? '£${price.toStringAsFixed(2)}'
+                                            : 'N/A',
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                          color: isSelected
+                                              ? AppTheme.primaryColor
+                                              : AppTheme.textPrimary,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ),
                           if (fareData != null)
                             Text(

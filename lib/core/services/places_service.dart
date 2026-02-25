@@ -455,6 +455,49 @@ class PlacesService {
     }
   }
 
+  /// Get fare estimates for all vehicle categories
+  Future<Map<String, dynamic>?> getFareEstimate({
+    required double pickupLat,
+    required double pickupLon,
+    required double dropoffLat,
+    required double dropoffLon,
+    required double distance,
+  }) async {
+    try {
+      final headers = await ApiConfig.getAuthHeaders();
+      final url = Uri.parse(
+        '${ApiConstants.fareEstimate}?pickupLat=$pickupLat&pickupLon=$pickupLon&dropoffLat=$dropoffLat&dropoffLon=$dropoffLon&distance=$distance',
+      );
+
+      debugPrint('💷 ─────────────────────────────────────────────');
+      debugPrint('💷 PlacesService.getFareEstimate()');
+      debugPrint('💷 [Request] URL: $url');
+
+      final response = await http.get(url, headers: headers);
+      debugPrint('💷 [Response] Status Code: ${response.statusCode}');
+      
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
+
+      if (response.statusCode == 200) {
+        final body = json.decode(response.body);
+        debugPrint('💷 [Response] Body: ${response.body}');
+        // Unwrap the `data` envelope if present
+        if (body['success'] == true && body['data'] != null) {
+          return body['data'] as Map<String, dynamic>;
+        }
+        return body;
+      } else {
+        debugPrint('🔴 PlacesService.getFareEstimate() Failed: HTTP ${response.statusCode}');
+        debugPrint('🔴 [Response] Body: ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('🔴 PlacesService.getFareEstimate() Error: $e');
+      return null;
+    }
+  }
+
   /// Get distance, duration and fare using backend Distance Matrix API
   /// This returns the actual fare calculated by the backend (secure pricing)
   /// vehicleType: 'sedan', 'suv', 'hatchback', 'van'

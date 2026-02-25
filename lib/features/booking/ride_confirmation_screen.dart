@@ -54,7 +54,11 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     // Initialize route synchronously from passed polyline
     _initializeRouteSync();
     // Only fetch fare asynchronously when not using fixed airport pricing
-    if (_isFixedFare) {
+    // Or if we already have valid fare estimates from the selection screen
+    final hasValidFare = widget.fareData['total_fare'] != null &&
+        (widget.fareData['total_fare'] as num) > 0;
+
+    if (_isFixedFare || hasValidFare) {
       _isFetchingFare = false;
     } else {
       _fetchDirectionsAndFare();
@@ -908,13 +912,62 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                             color: AppTheme.primaryColor,
                           ),
                         )
-                      : Text(
-                          '£${_fare.toStringAsFixed(2)}',
-                          style: const TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.primaryColor,
-                          ),
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            if (_currentFareData['promo_applied'] == true &&
+                                _currentFareData['original_fare'] != null) ...[
+                              Text(
+                                '£${_currentFareData['original_fare'].toStringAsFixed(2)}',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey[500],
+                                  decoration: TextDecoration.lineThrough,
+                                ),
+                              ),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    _fare == 0
+                                        ? 'FREE'
+                                        : '£${_fare.toStringAsFixed(2)}',
+                                    style: TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.bold,
+                                      color: _fare == 0
+                                          ? AppTheme.successColor
+                                          : AppTheme.primaryColor,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  const Icon(
+                                    Icons.card_giftcard,
+                                    size: 20,
+                                    color: AppTheme.successColor,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '-£${(_currentFareData['discount'] ?? 0.0).toStringAsFixed(2)}',
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppTheme.successColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ] else ...[
+                              Text(
+                                '£${_fare.toStringAsFixed(2)}',
+                                style: const TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppTheme.primaryColor,
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                 ],
               ),

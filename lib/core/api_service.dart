@@ -25,18 +25,20 @@ class ApiService {
       try {
         final responseData = jsonDecode(response.body);
         final message = responseData['message']?.toString() ?? '';
-        
+
         if (message.toLowerCase().contains('invalid token') ||
             message.toLowerCase().contains('authorization denied') ||
             message.toLowerCase().contains('expired token')) {
           debugPrint('🔴 [ApiService] 401 Unauthorized detected: $message');
-          debugPrint('🔴 [ApiService] Triggering logout and FCM token cleanup...');
-          
+          debugPrint(
+            '🔴 [ApiService] Triggering logout and FCM token cleanup...',
+          );
+
           // Trigger logout callback (which will clear FCM token)
           if (onUnauthorized != null) {
             onUnauthorized!();
           }
-          
+
           return true;
         }
       } catch (e) {
@@ -135,7 +137,7 @@ class ApiService {
 
       debugPrint('🟣 [ApiService] Response Status: ${response.statusCode}');
       debugPrint('🟣 [ApiService] Response Body: ${response.body}');
-      
+
       // Check for 401 unauthorized
       await _checkUnauthorized(response);
 
@@ -188,7 +190,7 @@ class ApiService {
 
       debugPrint('🟣 [ApiService] Response Status: ${response.statusCode}');
       debugPrint('🟣 [ApiService] Response Body: ${response.body}');
-      
+
       // Check for 401 unauthorized
       await _checkUnauthorized(response);
 
@@ -452,7 +454,7 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
-      
+
       // Check for 401 unauthorized
       await _checkUnauthorized(response);
 
@@ -523,8 +525,11 @@ class ApiService {
       );
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
-      debugPrint('🟣 [Response] Body: ${response.body}');
-      
+      final prettyString = const JsonEncoder.withIndent(
+        '  ',
+      ).convert(jsonDecode(response.body));
+      debugPrint('🟣 [Response] Body:\n$prettyString');
+
       // Check for 401 unauthorized
       await _checkUnauthorized(response);
 
@@ -597,7 +602,7 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
-      
+
       // Check for 401 unauthorized
       await _checkUnauthorized(response);
 
@@ -648,7 +653,7 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
-      
+
       // Check for 401 unauthorized
       await _checkUnauthorized(response);
 
@@ -743,7 +748,7 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
-      
+
       // Check for 401 unauthorized
       await _checkUnauthorized(response);
 
@@ -816,7 +821,7 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
-      
+
       // Check for 401 unauthorized
       await _checkUnauthorized(response);
 
@@ -894,7 +899,7 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
-      
+
       // Check for 401 unauthorized
       await _checkUnauthorized(response);
 
@@ -983,7 +988,7 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
-      
+
       // Check for 401 unauthorized
       await _checkUnauthorized(response);
 
@@ -1034,7 +1039,7 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
-      
+
       // Check for 401 unauthorized
       await _checkUnauthorized(response);
 
@@ -1089,7 +1094,7 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
-      
+
       // Check for 401 unauthorized
       await _checkUnauthorized(response);
 
@@ -1149,7 +1154,7 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
-      
+
       // Check for 401 unauthorized
       await _checkUnauthorized(response);
 
@@ -1207,7 +1212,7 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
-      
+
       // Check for 401 unauthorized
       await _checkUnauthorized(response);
 
@@ -1297,7 +1302,7 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
-      
+
       // Check for 401 unauthorized
       await _checkUnauthorized(response);
 
@@ -1387,7 +1392,7 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
-      
+
       // Check for 401 unauthorized
       await _checkUnauthorized(response);
 
@@ -1440,7 +1445,7 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
-      
+
       // Check for 401 unauthorized
       await _checkUnauthorized(response);
 
@@ -1480,7 +1485,9 @@ class ApiService {
     );
     debugPrint('🔵 [ApiService] uploadDocument called');
     debugPrint('🔵 [Request] Document Type: $documentType');
-    debugPrint('🔵 [Request] URL: ${ApiConstants.uploadDocument(documentType)}');
+    debugPrint(
+      '🔵 [Request] URL: ${ApiConstants.uploadDocument(documentType)}',
+    );
     debugPrint('🔵 [Request] File: ${document.path}');
 
     try {
@@ -1547,7 +1554,7 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
-      
+
       // Check for 401 unauthorized
       await _checkUnauthorized(response);
 
@@ -1558,9 +1565,7 @@ class ApiService {
         );
         return jsonDecode(response.body);
       } else {
-        debugPrint(
-          '🔴 [ApiService] uploadDocument Failed: ${response.body}',
-        );
+        debugPrint('🔴 [ApiService] uploadDocument Failed: ${response.body}');
         debugPrint(
           '🔵 ------------------------------------------------------------------',
         );
@@ -1583,7 +1588,9 @@ class ApiService {
     );
     debugPrint('🔵 [ApiService] deleteDocument called');
     debugPrint('🔵 [Request] Document Type: $documentType');
-    debugPrint('🔵 [Request] URL: ${ApiConstants.deleteDocument(documentType)}');
+    debugPrint(
+      '🔵 [Request] URL: ${ApiConstants.deleteDocument(documentType)}',
+    );
 
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -1603,7 +1610,7 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
-      
+
       // Check for 401 unauthorized
       await _checkUnauthorized(response);
 
@@ -1614,9 +1621,7 @@ class ApiService {
         );
         return jsonDecode(response.body);
       } else {
-        debugPrint(
-          '🔴 [ApiService] deleteDocument Failed: ${response.body}',
-        );
+        debugPrint('🔴 [ApiService] deleteDocument Failed: ${response.body}');
         debugPrint(
           '🔵 ------------------------------------------------------------------',
         );
@@ -1668,7 +1673,7 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
-      
+
       // Check for 401 unauthorized
       await _checkUnauthorized(response);
 
@@ -1727,7 +1732,7 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
-      
+
       // Check for 401 unauthorized
       await _checkUnauthorized(response);
 
@@ -1763,10 +1768,7 @@ class ApiService {
         '🔵 ------------------------------------------------------------------',
       );
       // Return error instead of throwing for better error handling
-      return {
-        'success': false,
-        'message': 'Error updating driver status: $e',
-      };
+      return {'success': false, 'message': 'Error updating driver status: $e'};
     }
   }
 
@@ -1801,7 +1803,7 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
-      
+
       // Check for 401 unauthorized
       await _checkUnauthorized(response);
 
@@ -1858,7 +1860,7 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
-      
+
       // Check for 401 unauthorized
       await _checkUnauthorized(response);
 
@@ -1915,7 +1917,7 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
-      
+
       // Check for 401 unauthorized
       await _checkUnauthorized(response);
 
@@ -2020,7 +2022,7 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
-      
+
       // Check for 401 unauthorized
       await _checkUnauthorized(response);
 
@@ -2053,7 +2055,7 @@ class ApiService {
     );
     debugPrint('🔵 [ApiService] updateUserFcmToken called');
     debugPrint('🔵 [Request] URL: $baseUrl/users/fcm-token');
-    
+
     if (fcmToken == null) {
       debugPrint('🔵 [Request] FCM Token: null (clearing token)');
     } else {
@@ -2081,7 +2083,7 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
-      
+
       // NOTE: No 401 check here - this is called during logout, don't trigger another logout
 
       if (response.statusCode == 200) {
@@ -2115,7 +2117,7 @@ class ApiService {
     );
     debugPrint('🔵 [ApiService] updateDriverFcmToken called');
     debugPrint('🔵 [Request] URL: $baseUrl/drivers/fcm-token');
-    
+
     if (fcmToken == null) {
       debugPrint('🔵 [Request] FCM Token: null (clearing token)');
     } else {
@@ -2143,7 +2145,7 @@ class ApiService {
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
-      
+
       // NOTE: No 401 check here - this is called during logout, don't trigger another logout
 
       if (response.statusCode == 200) {

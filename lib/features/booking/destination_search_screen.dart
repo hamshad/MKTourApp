@@ -47,6 +47,7 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
 
   // Route Info
   String? _routeDistance;
+  double? _routeDistanceValue;
   String? _routeDuration;
 
   // Search Focus
@@ -420,6 +421,9 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
 
         // Store route info for display
         _routeDistance = directions['distance_text'];
+        _routeDistanceValue = directions['distance_miles'] is num
+            ? (directions['distance_miles'] as num).toDouble()
+            : 0.0;
         _routeDuration = directions['duration_text'];
         debugPrint('✅ Route loaded: $_routeDistance, ETA: $_routeDuration');
       });
@@ -655,6 +659,8 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
         pickupLng: _pickupLocation?.longitude ?? _center.longitude,
         dropoffLat: _markers.length > 1 ? _markers[1].lat : null,
         dropoffLng: _markers.length > 1 ? _markers[1].lng : null,
+        distance: _routeDistanceValue,
+        durationText: _routeDuration,
       );
     }
 
