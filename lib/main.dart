@@ -1,6 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:upgrader/upgrader.dart';
 import 'core/theme.dart';
 import 'core/auth_provider.dart';
 import 'core/api_service.dart';
@@ -73,6 +75,15 @@ class RideEaseApp extends StatelessWidget {
   // Global navigator key for navigation from anywhere
   static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
+  bool get _isMobileStorePlatform {
+    if (kIsWeb) {
+      return false;
+    }
+
+    return defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+  }
+
   @override
   Widget build(BuildContext context) {
     // Set up 401 unauthorized handler to trigger logout
@@ -100,7 +111,7 @@ class RideEaseApp extends StatelessWidget {
       debugPrint('🔴 [RideEaseApp] Navigated to role selection after 401');
     };
     
-    return MaterialApp(
+    final app = MaterialApp(
       navigatorKey: navigatorKey,
       title: 'RideEase',
       debugShowCheckedModeBanner: false,
@@ -159,6 +170,18 @@ class RideEaseApp extends StatelessWidget {
         }
         return null;
       },
+    );
+
+    if (!_isMobileStorePlatform) {
+      return app;
+    }
+
+    return UpgradeAlert(
+      upgrader: Upgrader(
+        debugLogging: false,
+        durationUntilAlertAgain: const Duration(hours: 12),
+      ),
+      child: app,
     );
   }
 }
