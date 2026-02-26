@@ -1041,23 +1041,51 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                         ),
                         showDivider: true,
                       ),
-                      /*
                       _buildMenuItem(
                         Icons.security_outlined,
-                        'Data Protection & Complaint Policy',
+                        'Data Protection Policy',
                         'View our data protection policy',
                         onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (_) => const PdfViewerScreen(
-                              title: 'Data Protection & Complaint Policy',
+                              title: 'Data Protection Policy',
                               assetPath: 'assets/data_protection_complaint_policy.pdf',
                             ),
                           ),
                         ),
                         showDivider: true,
                       ),
-                      */
+                      _buildMenuItem(
+                        Icons.payment_outlined,
+                        'Payment Security',
+                        'PCI Compliance & standards',
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const PdfViewerScreen(
+                              title: 'Payment Security & PCI Compliance',
+                              assetPath: 'assets/payment_security_pci_compliance.pdf',
+                            ),
+                          ),
+                        ),
+                        showDivider: true,
+                      ),
+                      _buildMenuItem(
+                        Icons.gavel_outlined,
+                        'Terms & Conditions',
+                        'View terms of service',
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const PdfViewerScreen(
+                              title: 'Terms & Conditions',
+                              assetPath: 'assets/terms_and_conditions.pdf',
+                            ),
+                          ),
+                        ),
+                        showDivider: true,
+                      ),
                       _buildMenuItem(
                         Icons.delete_forever,
                         'Delete Account',

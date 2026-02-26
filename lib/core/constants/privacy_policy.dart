@@ -1,6 +1,6 @@
 String privacyPolicy = '''
 Privacy Policy
-This privacy policy is applicable to the MK Tours app (hereinafter referred to as "Application") for mobile devices, which was developed by MK Tours (hereinafter referred to as "Service Provider") as a a Free service. This service is provided "AS IS".
+This privacy policy is applicable to the MK Tours app (hereinafter referred to as "Application") for mobile devices, which was developed by Milton Keynes Tours Ltd. (hereinafter referred to as "Service Provider") as a a Free service. This service is provided "AS IS".
 
 What information does the Application obtain and how is it used?
 What information do users provide to the Application?
@@ -45,7 +45,7 @@ The Service Provider are concerned about safeguarding the confidentiality of you
 How will you be informed of changes to this Privacy Policy?
 This Privacy Policy may be updated from time to time for any reason. The Service Provider will notify you of any changes to the Privacy Policy by updating this page with the new Privacy Policy. You are advised to consult this Privacy Policy regularly for any changes, as continued use is deemed approval of all changes.
 
-This privacy policy is effective as of 2026-01-29
+This privacy policy is effective as of 2026-02-26
 
 How do you give your consent?
 By using the Application, you are giving your consent to the Service Provider processing of your information as set forth in this Privacy Policy now and as amended by us. "Processing," means using cookies on a computer/hand held device or using or touching information in any way, including, but not limited to, collecting, storing, deleting, using, combining and disclosing information.

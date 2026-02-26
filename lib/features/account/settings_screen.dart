@@ -159,20 +159,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
-          /*
           _buildLinkItem(
-            'Data Protection & Complaint Policy',
+            'Data Protection Policy',
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (_) => const PdfViewerScreen(
-                  title: 'Data Protection & Complaint Policy',
+                  title: 'Data Protection Policy',
                   assetPath: 'assets/data_protection_complaint_policy.pdf',
                 ),
               ),
             ),
           ),
-          */
+          _buildLinkItem(
+            'Payment Security & PCI Compliance',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const PdfViewerScreen(
+                  title: 'Payment Security & PCI Compliance',
+                  assetPath: 'assets/payment_security_pci_compliance.pdf',
+                ),
+              ),
+            ),
+          ),
+          _buildLinkItem(
+            'Terms & Conditions',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const PdfViewerScreen(
+                  title: 'Terms & Conditions',
+                  assetPath: 'assets/terms_and_conditions.pdf',
+                ),
+              ),
+            ),
+          ),
           _buildLinkItem(
             'Delete Account',
             isDestructive: true,
