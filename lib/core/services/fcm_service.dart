@@ -8,6 +8,8 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'audio_service.dart';
+import 'socket_service.dart';
+import 'location_service.dart';
 
 /// Background message handler - must be a top-level function
 @pragma('vm:entry-point')
@@ -42,6 +44,9 @@ class NotificationType {
   static const String rideCancelledByUser = 'ride_cancelled_by_user';
   static const String paymentSelected = 'payment_selected';
   static const String rideReminder = 'ride_reminder';
+
+  // System Notifications
+  static const String healthCheck = 'health_check';
 
   // Promo Notifications (User)
   static const String promoUnlocked = 'promo_unlocked';
@@ -302,6 +307,13 @@ class FcmService {
 
     final data = FcmNotificationData.fromMap(message.data);
 
+    // Silent Nudge (health_check): No UI, just logic
+    if (data.type == NotificationType.healthCheck) {
+      debugPrint('🛡️ [FCM] Health Check (Silent Nudge) received in foreground');
+      _performHealthCheck();
+      return;
+    }
+
     // Play notification sound for important notifications
     _playNotificationSound(data.type);
 
@@ -318,14 +330,74 @@ class FcmService {
     debugPrint('🔔 [FCM] Data: ${message.data}');
 
     final data = FcmNotificationData.fromMap(message.data);
+
+    // Filter out health_check from triggering navigation or UI streams
+    if (data.type == NotificationType.healthCheck) {
+      debugPrint('🛡️ [FCM] Ignoring health_check tap (should not happen)');
+      return;
+    }
+
     _notificationTapController.add(data);
   }
 
   /// Handle background message (static method for background handler)
   Future<void> handleBackgroundMessage(RemoteMessage message) async {
     debugPrint('🔔 [FCM] Processing background message: ${message.data}');
+
+    final data = FcmNotificationData.fromMap(message.data);
+
+    // Silent Nudge (health_check): No tray notification, just logic
+    if (data.type == NotificationType.healthCheck) {
+      debugPrint('🛡️ [FCM] Health Check (Silent Nudge) received in background');
+      await _performHealthCheck();
+      return;
+    }
+
     // Background messages are handled by the system notification tray
     // The app will handle navigation when user taps the notification
+  }
+
+  /// Perform automated connection health check
+  Future<void> _performHealthCheck() async {
+    try {
+      debugPrint('🛡️ [HealthCheck] Starting automated line check...');
+
+      // 1. Socket Reconnection Check
+      final socketService = SocketService();
+      if (!socketService.isConnected) {
+        debugPrint('🛡️ [HealthCheck] Socket disconnected, initiating recovery...');
+        await socketService.initSocket(forceReconnect: true);
+      } else {
+        debugPrint('🛡️ [HealthCheck] Socket connection is alive.');
+      }
+
+      // 2. Immediate Location Update
+      final prefs = await SharedPreferences.getInstance();
+      final isDriver = prefs.getString('user_role') == 'driver';
+      final userId = prefs.getString('user_id');
+
+      if (isDriver && userId != null) {
+        final locationService = LocationService();
+        final position = await locationService.getCurrentLocation();
+        if (position != null) {
+          debugPrint(
+            '🛡️ [HealthCheck] Sending refresh GPS: ${position.latitude}, ${position.longitude}',
+          );
+          socketService.emitDriverLocationUpdate(
+            driverId: userId,
+            latitude: position.latitude,
+            longitude: position.longitude,
+          );
+          debugPrint('🛡️ [HealthCheck] Health check completed successfully.');
+        } else {
+          debugPrint('🛡️ [HealthCheck] Failed to get fresh location.');
+        }
+      } else {
+        debugPrint('🛡️ [HealthCheck] Skipping location update (not a driver or missing ID).');
+      }
+    } catch (e) {
+      debugPrint('🛡️ [HealthCheck] Error during health check: $e');
+    }
   }
 
   /// Local notification tap handler

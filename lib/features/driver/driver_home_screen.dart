@@ -1124,16 +1124,18 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         if (response['success'] == true) {
           final paymentMethod = _rideData?['paymentMethod'];
           final rideResult = response['data'] as Map<String, dynamic>? ?? {};
-          final bool isPromoFreeRide = rideResult['isPromoRide'] == true &&
+          final bool isPromoFreeRide =
+              rideResult['isPromoRide'] == true &&
               (rideResult['fare'] is num
-                  ? (rideResult['fare'] as num).toDouble()
-                  : 0.0) ==
+                      ? (rideResult['fare'] as num).toDouble()
+                      : 0.0) ==
                   0.0;
 
           if (paymentMethod == 'cash' && isPromoFreeRide) {
             // Fully discounted promo ride — no cash to collect, auto-finalize
-            final confirmResponse =
-                await _apiService.confirmCashCollection(_currentRideId!);
+            final confirmResponse = await _apiService.confirmCashCollection(
+              _currentRideId!,
+            );
             if (confirmResponse['success'] == true) {
               setState(() {
                 _status = 'online';
@@ -1144,15 +1146,13 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
               _fetchRideHistory();
               CustomSnackbar.show(
                 context,
-                message:
-                    'Promotional ride complete — no cash to collect.',
+                message: 'Promotional ride complete — no cash to collect.',
                 type: SnackbarType.success,
               );
             } else {
               CustomSnackbar.show(
                 context,
-                message:
-                    'Failed to finalize: ${confirmResponse['message']}',
+                message: 'Failed to finalize: ${confirmResponse['message']}',
                 type: SnackbarType.error,
               );
             }
@@ -1643,7 +1643,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           ),
 
           // Connection status banner — shows when socket is disconnected
-          const ConnectionStatusBanner(),
+          // const ConnectionStatusBanner(),
         ],
       ),
     );
