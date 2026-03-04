@@ -76,6 +76,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     }
 
     List<MapMarker> markers = [];
+    List<MapPolyline> polylines = [];
     fmap.LatLngBounds? bounds;
 
     if (pickupLat != null && pickupLng != null) {
@@ -95,6 +96,22 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
         lng: dropoffLng,
         title: 'Dropoff',
         child: const Icon(Icons.location_on, color: Colors.red, size: 40),
+      ));
+    }
+
+    if (pickupLat != null && pickupLng != null && dropoffLat != null && dropoffLng != null) {
+      // Create a curved polyline between pickup and dropoff
+      final start = latlong.LatLng(pickupLat, pickupLng);
+      final end = latlong.LatLng(dropoffLat, dropoffLng);
+
+      // Generate curved points
+      final curvedPoints = _generateCurvedPoints(start, end);
+
+      polylines.add(MapPolyline(
+        id: 'route',
+        points: curvedPoints,
+        color: AppTheme.primaryColor,
+        width: 4,
       ));
     }
 
@@ -141,6 +158,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                       initialLat: pickupLat ?? 37.7749,
                       initialLng: pickupLng ?? -122.4194,
                       markers: markers,
+                      polylines: polylines,
                       bounds: bounds,
                       onTap: (lat, lng) {
                         debugPrint('Map tapped at: $lat, $lng');
@@ -429,5 +447,43 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
         borderRadius: BorderRadius.circular(1),
       ),
     );
+  }
+
+  /// Generates points for a curved polyline between two LatLng points.
+  List<latlong.LatLng> _generateCurvedPoints(
+      latlong.LatLng start, latlong.LatLng end) {
+    const int segments = 20;
+    final List<latlong.LatLng> points = [];
+
+    // Midpoint calculation
+    final double midLat = (start.latitude + end.latitude) / 2;
+    final double midLng = (start.longitude + end.longitude) / 2;
+
+    // Calculate perpendicular offset for curves
+    // A simple heuristic: offset based on a fraction of the distance between points
+    final double diffLat = end.latitude - start.latitude;
+    final double diffLng = end.longitude - start.longitude;
+
+    // Control point for a simple quadratic Bezier curve
+    // Adding an offset perpendicular to the line start-end
+    const double curveIntensity = 0.25;
+    final double controlLat = midLat + (diffLng * curveIntensity);
+    final double controlLng = midLng - (diffLat * curveIntensity);
+
+    for (int i = 0; i <= segments; i++) {
+      final double t = i / segments;
+
+      // Quadratic Bezier formula: B(t) = (1-t)^2*P0 + 2(1-t)*t*P1 + t^2*P2
+      final double lat = (1 - t) * (1 - t) * start.latitude +
+          2 * (1 - t) * t * controlLat +
+          t * t * end.latitude;
+      final double lng = (1 - t) * (1 - t) * start.longitude +
+          2 * (1 - t) * t * controlLng +
+          t * t * end.longitude;
+
+      points.add(latlong.LatLng(lat, lng));
+    }
+
+    return points;
   }
 }
