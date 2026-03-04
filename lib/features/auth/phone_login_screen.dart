@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:mktours/core/constants/api_constants.dart';
 import 'package:mktours/features/auth/user_registration_screen.dart';
 
 import '../../core/api_service.dart';
@@ -18,8 +19,10 @@ class PhoneLoginScreen extends StatefulWidget {
 
 class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
   final TextEditingController _phoneController = TextEditingController();
-  String _selectedCountryCode = '+91';
-  final List<String> _countryCodes = ['+91', '+1', '+44', '+971'];
+  String _selectedCountryCode = '+44';
+  final List<String> _countryCodes = ApiConstants.baseUrl.contains('mktours')
+      ? ['+44']
+      : ['+91', '+1', '+44'];
   final ApiService _apiService = ApiService();
   bool _isLoading = false;
 
@@ -67,9 +70,7 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
 
         if (isNewUser) {
           // Case A: New User -> Send OTP and go directly to registration screen
-          debugPrint(
-            '🆕 [PhoneLoginScreen] New User detected. Sending OTP...',
-          );
+          debugPrint('🆕 [PhoneLoginScreen] New User detected. Sending OTP...');
 
           // Send OTP
           final otpResponse = await _apiService.sendOtp(fullPhoneNumber);
@@ -334,7 +335,9 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
 
               // Continue Button
               Padding(
-                padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).padding.bottom,
+                ),
                 child: SizedBox(
                   width: double.infinity,
                   height: 56,
