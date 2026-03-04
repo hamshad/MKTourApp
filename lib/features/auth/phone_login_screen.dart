@@ -21,7 +21,7 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
   final TextEditingController _phoneController = TextEditingController();
   String _selectedCountryCode = '+44';
   final List<String> _countryCodes = ApiConstants.baseUrl.contains('mktours')
-      ? ['+44']
+      ? ['+91', '+44', '+971']
       : ['+91', '+1', '+44'];
   final ApiService _apiService = ApiService();
   bool _isLoading = false;
