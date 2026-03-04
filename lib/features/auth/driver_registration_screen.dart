@@ -312,6 +312,21 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
                 textAlign: TextAlign.center,
               ),
             ),
+            // Resend OTP text link (UX improvement)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: _isLoading ? null : _resendOtp,
+                child: Text(
+                  'Resend OTP',
+                  style: GoogleFonts.outfit(
+                    fontSize: 14,
+                    color: AppTheme.primaryColor,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
 
             if (widget.isNewUser) ...[
               const SizedBox(height: 32),

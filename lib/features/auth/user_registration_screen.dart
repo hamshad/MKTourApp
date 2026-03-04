@@ -180,22 +180,6 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
                 ),
               ),
               const SizedBox(height: 40),
-              // Resend OTP button (critical UI addition)
-              Container(
-                margin: const EdgeInsets.only(top: 12),
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _resendOtp,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: const Text('Resend OTP'),
-                ),
-              ),
               // OTP input field
               Container(
                 decoration: BoxDecoration(
@@ -229,6 +213,21 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
                     }
                   },
                   textAlign: TextAlign.center,
+                ),
+              ),
+              // Resend OTP text link (UX improvement)
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: _isLoading ? null : _resendOtp,
+                  child: Text(
+                    'Resend OTP',
+                    style: GoogleFonts.outfit(
+                      fontSize: 14,
+                      color: AppTheme.primaryColor,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
                 ),
               ),
               if (widget.isNewUser) ...[
