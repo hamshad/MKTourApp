@@ -354,7 +354,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                                   ),
                                   const SizedBox(width: 4),
                                   Text(
-                                    '${_rideDetails!['driver']['rating'] ?? 5.0}',
+                                    '${_rideDetails!['driver']['rating'] ?? '-'}',
                                     style: TextStyle(
                                       color: Colors.grey[600],
                                       fontSize: 12,

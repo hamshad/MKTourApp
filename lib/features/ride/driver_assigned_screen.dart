@@ -7,7 +7,7 @@ import '../../core/widgets/custom_snackbar.dart';
 
 class DriverAssignedScreen extends StatefulWidget {
   final Map<String, dynamic> bookingData;
-  
+
   const DriverAssignedScreen({super.key, required this.bookingData});
 
   @override
@@ -17,7 +17,7 @@ class DriverAssignedScreen extends StatefulWidget {
 class _DriverAssignedScreenState extends State<DriverAssignedScreen> {
   Timer? _statusTimer;
   String _currentStatus = 'driver_assigned';
-   String _statusText = 'Driver is on the way';
+  String _statusText = 'Driver is on the way';
   int _eta = 5;
   final SocketService _socketService = SocketService();
 
@@ -26,7 +26,9 @@ class _DriverAssignedScreenState extends State<DriverAssignedScreen> {
     super.initState();
     print('🚕 DRIVER ASSIGNED: Screen loaded');
     print('🚕 DRIVER ASSIGNED: OTP = ${widget.bookingData['otp']}');
-    print('🚕 DRIVER ASSIGNED: Driver = ${widget.bookingData['driver']?['name']}');
+    print(
+      '🚕 DRIVER ASSIGNED: Driver = ${widget.bookingData['driver']?['name']}',
+    );
     _initSocketAndListeners();
     _startStatusPolling();
   }
@@ -105,7 +107,11 @@ class _DriverAssignedScreenState extends State<DriverAssignedScreen> {
           TextButton(
             onPressed: () {
               Navigator.pop(context); // Close dialog
-              Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+              Navigator.pushNamedAndRemoveUntil(
+                context,
+                '/home',
+                (route) => false,
+              );
             },
             child: const Text('Return Home'),
           ),
@@ -121,7 +127,7 @@ class _DriverAssignedScreenState extends State<DriverAssignedScreen> {
       message: 'Ride ended early. Fare adjusted based on distance.',
       type: SnackbarType.info,
     );
-    
+
     Navigator.pushReplacementNamed(
       context,
       '/ride-complete',
@@ -148,7 +154,9 @@ class _DriverAssignedScreenState extends State<DriverAssignedScreen> {
     final apiService = ApiService();
     _statusTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
       try {
-        final status = await apiService.getRideStatus(widget.bookingData['bookingId'] ?? 'unknown');
+        final status = await apiService.getRideStatus(
+          widget.bookingData['bookingId'] ?? 'unknown',
+        );
         if (mounted) {
           _updateStatus(status['status'] ?? 'driver_assigned');
           if (_currentStatus == 'completed') {
@@ -202,7 +210,7 @@ class _DriverAssignedScreenState extends State<DriverAssignedScreen> {
                 ],
               ),
             ),
-            
+
             // Map placeholder (would show driver location)
             Expanded(
               child: Container(
@@ -229,12 +237,14 @@ class _DriverAssignedScreenState extends State<DriverAssignedScreen> {
                 ),
               ),
             ),
-            
+
             // Bottom section with driver info and OTP
             Container(
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(20),
+                ),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.1),
@@ -247,7 +257,7 @@ class _DriverAssignedScreenState extends State<DriverAssignedScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const SizedBox(height: 20),
-                  
+
                   // Handle
                   Container(
                     width: 40,
@@ -257,9 +267,9 @@ class _DriverAssignedScreenState extends State<DriverAssignedScreen> {
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
-                  
+
                   const SizedBox(height: 24),
-                  
+
                   // OTP Display (PROMINENT - Uber-style)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -336,9 +346,9 @@ class _DriverAssignedScreenState extends State<DriverAssignedScreen> {
                       ),
                     ),
                   ),
-                  
+
                   const SizedBox(height: 24),
-                  
+
                   // Driver Card
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -362,7 +372,7 @@ class _DriverAssignedScreenState extends State<DriverAssignedScreen> {
                             ),
                           ),
                           const SizedBox(width: 16),
-                          
+
                           // Driver details
                           Expanded(
                             child: Column(
@@ -386,7 +396,7 @@ class _DriverAssignedScreenState extends State<DriverAssignedScreen> {
                                     ),
                                     const SizedBox(width: 4),
                                     Text(
-                                      (driver['rating'] ?? 4.8).toString(),
+                                      (driver['rating'] ?? '-').toString(),
                                       style: TextStyle(
                                         fontSize: 14,
                                         color: AppTheme.textSecondary,
@@ -398,7 +408,7 @@ class _DriverAssignedScreenState extends State<DriverAssignedScreen> {
                               ],
                             ),
                           ),
-                          
+
                           // Vehicle details
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.end,
@@ -425,9 +435,9 @@ class _DriverAssignedScreenState extends State<DriverAssignedScreen> {
                       ),
                     ),
                   ),
-                  
+
                   const SizedBox(height: 20),
-                  
+
                   // ETA Display
                   if (_eta > 0)
                     Padding(
@@ -452,9 +462,9 @@ class _DriverAssignedScreenState extends State<DriverAssignedScreen> {
                         ],
                       ),
                     ),
-                  
+
                   const SizedBox(height: 24),
-                  
+
                   // Action buttons
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -484,9 +494,9 @@ class _DriverAssignedScreenState extends State<DriverAssignedScreen> {
                       ],
                     ),
                   ),
-                  
+
                   const SizedBox(height: 16),
-                  
+
                   // Cancel ride
                   TextButton(
                     onPressed: () {
@@ -494,7 +504,9 @@ class _DriverAssignedScreenState extends State<DriverAssignedScreen> {
                         context: context,
                         builder: (context) => AlertDialog(
                           title: const Text('Cancel ride?'),
-                          content: const Text('Are you sure you want to cancel this ride?'),
+                          content: const Text(
+                            'Are you sure you want to cancel this ride?',
+                          ),
                           actions: [
                             TextButton(
                               onPressed: () => Navigator.pop(context),
@@ -528,7 +540,7 @@ class _DriverAssignedScreenState extends State<DriverAssignedScreen> {
                       ),
                     ),
                   ),
-                  
+
                   const SizedBox(height: 20),
                 ],
               ),

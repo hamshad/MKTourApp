@@ -35,18 +35,20 @@ class _DriverRideDetailScreenState extends State<DriverRideDetailScreen> {
     final bounds = LatLngBounds(
       southwest: LatLng(
         pickup.latitude < dropoff.latitude ? pickup.latitude : dropoff.latitude,
-        pickup.longitude < dropoff.longitude ? pickup.longitude : dropoff.longitude,
+        pickup.longitude < dropoff.longitude
+            ? pickup.longitude
+            : dropoff.longitude,
       ),
       northeast: LatLng(
         pickup.latitude > dropoff.latitude ? pickup.latitude : dropoff.latitude,
-        pickup.longitude > dropoff.longitude ? pickup.longitude : dropoff.longitude,
+        pickup.longitude > dropoff.longitude
+            ? pickup.longitude
+            : dropoff.longitude,
       ),
     );
 
     // Fit the map to show both markers with padding
-    _mapController!.animateCamera(
-      CameraUpdate.newLatLngBounds(bounds, 80),
-    );
+    _mapController!.animateCamera(CameraUpdate.newLatLngBounds(bounds, 80));
   }
 
   @override
@@ -58,16 +60,18 @@ class _DriverRideDetailScreenState extends State<DriverRideDetailScreen> {
     final double originalFare = _toDouble(widget.rideData['originalFare']);
     // Drivers always see the original fare (the amount they earn),
     // not the discounted fare the passenger pays.
-    final double displayFare = isPromoRide && originalFare > 0 ? originalFare : fare;
+    final double displayFare = isPromoRide && originalFare > 0
+        ? originalFare
+        : fare;
     final total = displayFare + tip + surge;
     final status = (widget.rideData['status'] ?? 'completed').toString();
     final passenger = widget.rideData['user'] is Map
         ? widget.rideData['user'] as Map<String, dynamic>
         : widget.rideData['passenger'] is Map
-            ? widget.rideData['passenger'] as Map<String, dynamic>
-            : widget.rideData['userData'] is Map
-                ? widget.rideData['userData'] as Map<String, dynamic>
-                : null;
+        ? widget.rideData['passenger'] as Map<String, dynamic>
+        : widget.rideData['userData'] is Map
+        ? widget.rideData['userData'] as Map<String, dynamic>
+        : null;
 
     return Scaffold(
       body: CustomScrollView(
@@ -176,19 +180,17 @@ class _DriverRideDetailScreenState extends State<DriverRideDetailScreen> {
                             children: [
                               Icon(Icons.star, size: 14, color: Colors.amber),
                               SizedBox(width: 4),
-                              Text(
-                                '${passenger?['rating'] ?? '5.0'}',
-                              ),
+                              Text('${passenger?['rating'] ?? '-'}'),
                             ],
                           ),
                         ],
                       ),
-                      const Spacer(),
-                      IconButton(
-                        icon: const Icon(Icons.help_outline),
-                        onPressed: () {},
-                        tooltip: 'Report Issue',
-                      ),
+                      // const Spacer(),
+                      // IconButton(
+                      //   icon: const Icon(Icons.help_outline),
+                      //   onPressed: () {},
+                      //   tooltip: 'Report Issue',
+                      // ),
                     ],
                   ),
 
@@ -210,7 +212,10 @@ class _DriverRideDetailScreenState extends State<DriverRideDetailScreen> {
                     Icons.my_location,
                     Colors.green,
                     'Pickup',
-                    _formatTime(widget.rideData['pickupTime'] ?? widget.rideData['acceptedAt']),
+                    _formatTime(
+                      widget.rideData['pickupTime'] ??
+                          widget.rideData['acceptedAt'],
+                    ),
                     widget.rideData['pickupLocation']?['address'] ??
                         'Unknown Location',
                   ),
@@ -219,7 +224,10 @@ class _DriverRideDetailScreenState extends State<DriverRideDetailScreen> {
                     Icons.location_on,
                     Colors.red,
                     'Drop-off',
-                    _formatTime(widget.rideData['dropoffTime'] ?? widget.rideData['completedAt']),
+                    _formatTime(
+                      widget.rideData['dropoffTime'] ??
+                          widget.rideData['completedAt'],
+                    ),
                     widget.rideData['dropoffLocation']?['address'] ??
                         'Unknown Destination',
                   ),
@@ -242,11 +250,16 @@ class _DriverRideDetailScreenState extends State<DriverRideDetailScreen> {
                       if (widget.rideData['isAirportTransfer'] == true) ...[
                         const SizedBox(width: 12),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.blue.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                            border: Border.all(
+                              color: Colors.blue.withOpacity(0.3),
+                            ),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -273,12 +286,15 @@ class _DriverRideDetailScreenState extends State<DriverRideDetailScreen> {
                       padding: const EdgeInsets.only(bottom: 12),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 6),
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xFF22C55E).withOpacity(0.1),
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
-                              color: const Color(0xFF22C55E).withOpacity(0.3)),
+                            color: const Color(0xFF22C55E).withOpacity(0.3),
+                          ),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -305,7 +321,11 @@ class _DriverRideDetailScreenState extends State<DriverRideDetailScreen> {
                     padding: EdgeInsets.symmetric(vertical: 8),
                     child: Divider(),
                   ),
-                  _buildFareRow('Total Earnings', _formatCurrency(total), isTotal: true),
+                  _buildFareRow(
+                    'Total Earnings',
+                    _formatCurrency(total),
+                    isTotal: true,
+                  ),
                 ],
               ),
             ),
@@ -498,10 +518,7 @@ class _DriverRideDetailScreenState extends State<DriverRideDetailScreen> {
     };
 
     return GoogleMap(
-      initialCameraPosition: CameraPosition(
-        target: center,
-        zoom: 13.0,
-      ),
+      initialCameraPosition: CameraPosition(target: center, zoom: 13.0),
       markers: markers,
       polylines: polylines,
       onMapCreated: (GoogleMapController controller) {
@@ -519,42 +536,44 @@ class _DriverRideDetailScreenState extends State<DriverRideDetailScreen> {
   /// Creates a curved polyline between two points using quadratic Bezier curve
   List<LatLng> _createCurvedPolyline(LatLng start, LatLng end) {
     final List<LatLng> points = [];
-    
+
     // Calculate midpoint
     final midLat = (start.latitude + end.latitude) / 2;
     final midLng = (start.longitude + end.longitude) / 2;
-    
+
     // Calculate perpendicular offset for the curve
     // The curve will bulge perpendicular to the line connecting start and end
     final latDiff = end.latitude - start.latitude;
     final lngDiff = end.longitude - start.longitude;
     final distance = (latDiff * latDiff + lngDiff * lngDiff);
-    
+
     // Create a control point offset perpendicular to the line
     // Reduce offset for very short distances
     final offsetFactor = distance > 0.0001 ? 0.15 : 0.05;
     final controlLat = midLat + (lngDiff * offsetFactor);
     final controlLng = midLng - (latDiff * offsetFactor);
-    
+
     final controlPoint = LatLng(controlLat, controlLng);
-    
+
     // Generate points along a quadratic bezier curve
     const int segments = 30; // Increased for smoother curve
     for (int i = 0; i <= segments; i++) {
       final t = i / segments;
       final nt = 1 - t;
-      
+
       // Quadratic bezier formula: B(t) = (1-t)²P0 + 2(1-t)tP1 + t²P2
-      final lat = nt * nt * start.latitude +
+      final lat =
+          nt * nt * start.latitude +
           2 * nt * t * controlPoint.latitude +
           t * t * end.latitude;
-      final lng = nt * nt * start.longitude +
+      final lng =
+          nt * nt * start.longitude +
           2 * nt * t * controlPoint.longitude +
           t * t * end.longitude;
-      
+
       points.add(LatLng(lat, lng));
     }
-    
+
     return points;
   }
 

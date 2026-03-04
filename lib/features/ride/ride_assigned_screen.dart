@@ -250,7 +250,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         final double? currentFare = rideData['fare'] != null
             ? (rideData['fare'] as num).toDouble()
             : null;
-        final bool fullyCovered = rideData['promoFullyCovered'] == true ||
+        final bool fullyCovered =
+            rideData['promoFullyCovered'] == true ||
             (isPromo && currentFare != null && currentFare == 0.0);
         final double? originalFare = rideData['originalFare'] != null
             ? (rideData['originalFare'] as num).toDouble()
@@ -1042,16 +1043,21 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
       // Only call the API if fare info wasn't already captured from ride:accepted.
       if (_currentFare == null) {
-        debugPrint('🚖 [RideAssignedScreen] Fare unknown — fetching ride details before dialog...');
+        debugPrint(
+          '🚖 [RideAssignedScreen] Fare unknown — fetching ride details before dialog...',
+        );
         try {
           final response = await _apiService.getRideDetails(widget.rideId);
-          if (mounted && response['success'] == true && response['data'] != null) {
+          if (mounted &&
+              response['success'] == true &&
+              response['data'] != null) {
             final rideData = response['data'];
             final bool isPromo = rideData['isPromoRide'] == true;
             final double? fare = rideData['fare'] != null
                 ? (rideData['fare'] as num).toDouble()
                 : null;
-            final bool fullyCovered = rideData['promoFullyCovered'] == true ||
+            final bool fullyCovered =
+                rideData['promoFullyCovered'] == true ||
                 (isPromo && fare != null && fare == 0.0);
             final double? originalFare = rideData['originalFare'] != null
                 ? (rideData['originalFare'] as num).toDouble()
@@ -1814,7 +1820,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                                   ),
                                   const SizedBox(width: 4),
                                   Text(
-                                    '${_driver['rating'] ?? 5.0}',
+                                    '${_driver['rating'] ?? '-'}',
                                     style: const TextStyle(fontSize: 13),
                                   ),
                                 ],
@@ -2586,7 +2592,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   void _showPaymentSelectionModal() {
     // Skip the modal entirely if the ride is fully covered by a promo.
     // Also infer it at call-time: if it's a promo ride and fare is 0, treat as fully covered.
-    final bool effectivelyFree = _promoFullyCovered ||
+    final bool effectivelyFree =
+        _promoFullyCovered ||
         (_isPromoRide && _currentFare != null && _currentFare == 0.0);
     if (effectivelyFree) {
       if (!_promoFullyCovered) {
@@ -2742,8 +2749,10 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     );
   }
 
-  Future<void> _handlePaymentSelection(String method,
-      {bool fromAutoSelect = false}) async {
+  Future<void> _handlePaymentSelection(
+    String method, {
+    bool fromAutoSelect = false,
+  }) async {
     debugPrint('═══════════════════════════════════════════════════════════');
     debugPrint(
       '💸 [Payment] ============ PAYMENT SELECTION START ============',
@@ -2798,7 +2807,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
             : null;
 
         // Infer fully-covered from amount==0 when backend omits promoFullyCovered
-        final bool effectiveFullyCovered = promoFullyCovered ||
+        final bool effectiveFullyCovered =
+            promoFullyCovered ||
             (isPromoRide &&
                 rideData['amount'] != null &&
                 (rideData['amount'] as num) == 0);
