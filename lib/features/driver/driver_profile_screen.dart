@@ -1014,18 +1014,57 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                         ),
                         showDivider: true,
                       ),
-                      // _buildMenuItem(
-                      //   Icons.account_balance_wallet_outlined,
-                      //   'Payout Settings',
-                      //   'Bank Account',
-                      //   showDivider: true,
-                      // ),
-                      // _buildMenuItem(
-                      //   Icons.settings_outlined,
-                      //   'App Settings',
-                      //   'Navigation, Sound',
-                      //   showDivider: true,
-                      // ),
+                      _buildMenuItem(
+                        Icons.account_balance_outlined,
+                        'Bank Details',
+                        'Payout & bank information',
+                        onTap: () {
+                          Navigator.pushNamed(context, '/driver/bank-details');
+                        },
+                        trailing: Consumer<AuthProvider>(
+                          builder: (context, auth, _) {
+                            final statusData = auth.driverProfileStatus;
+                            if (statusData == null) {
+                              return const Icon(
+                                Icons.arrow_forward_ios,
+                                color: Colors.grey,
+                                size: 16,
+                              );
+                            }
+                            
+                            final missingItems = statusData['missingItems'] as Map<String, dynamic>?;
+                            final isBankMissing = missingItems?['bankDetails'] == true;
+                            
+                            if (isBankMissing) {
+                              return Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: const Text(
+                                  'Missing',
+                                  style: TextStyle(
+                                    color: Colors.red,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              );
+                            }
+                            
+                            return const Icon(
+                              Icons.check_circle,
+                              color: Colors.green,
+                              size: 20,
+                            );
+                          },
+                        ),
+                        showDivider: true,
+                      ),
                       _buildMenuItem(
                         Icons.description_outlined,
                         'Customer Complaint Policy',

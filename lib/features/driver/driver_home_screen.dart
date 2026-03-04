@@ -14,7 +14,6 @@ import '../../core/widgets/custom_snackbar.dart';
 import '../../core/services/socket_service.dart';
 import '../../core/services/location_service.dart';
 import '../../core/services/navigation_service.dart';
-import '../../core/widgets/connection_status_banner.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -1641,9 +1640,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
               BoxShadow(blurRadius: 20.0, color: Colors.black.withOpacity(0.1)),
             ],
           ),
-
-          // Connection status banner — shows when socket is disconnected
-          // const ConnectionStatusBanner(),
         ],
       ),
     );

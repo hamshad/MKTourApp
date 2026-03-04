@@ -118,6 +118,9 @@ class DriverProfileStatus {
     return missingItems.values.where((isMissing) => isMissing == true).length;
   }
 
+  /// Check if bank details are missing
+  bool get isBankDetailsMissing => missingItems['bankDetails'] == true;
+
   /// Get list of missing document types
   List<DocumentType> getMissingDocumentTypes() {
     final missing = <DocumentType>[];

@@ -42,6 +42,7 @@ class ApiConstants {
   static const String updateDriverLocation = '$baseUrl/drivers/location';
   static const String driverProfileStatus = '$baseUrl/drivers/profile-status';
   static const String driverRides = '$baseUrl/drivers/rides';
+  static const String driverBankDetails = '$baseUrl/drivers/bank-details';
 
   // Generic Document Endpoints (Section 1 & 2)
   static String uploadDocument(String type) =>

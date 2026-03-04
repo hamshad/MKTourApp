@@ -2171,4 +2171,65 @@ class ApiService {
       throw Exception('Failed to update FCM token: $e');
     }
   }
+
+  /// Get driver bank details from backend
+  Future<Map<String, dynamic>> getDriverBankDetails() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString(_prefsAuthTokenKey);
+
+      if (token == null) throw Exception('No auth token found');
+
+      final response = await http.get(
+        Uri.parse(ApiConstants.driverBankDetails),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      await _checkUnauthorized(response);
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception('Failed to fetch bank details: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('🔴 API Error (getDriverBankDetails): $e');
+      rethrow;
+    }
+  }
+
+  /// Update driver bank details on backend
+  Future<Map<String, dynamic>> updateDriverBankDetails(
+    Map<String, dynamic> bankDetails,
+  ) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString(_prefsAuthTokenKey);
+
+      if (token == null) throw Exception('No auth token found');
+
+      final response = await http.put(
+        Uri.parse(ApiConstants.driverBankDetails),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(bankDetails),
+      );
+
+      await _checkUnauthorized(response);
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception('Failed to update bank details: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('🔴 API Error (updateDriverBankDetails): $e');
+      rethrow;
+    }
+  }
 }

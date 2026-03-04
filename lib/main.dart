@@ -29,6 +29,7 @@ import 'features/driver/driver_ride_detail_screen.dart';
 import 'features/driver/driver_ride_history_screen.dart';
 import 'features/driver/document_checklist_screen.dart';
 import 'features/driver/vehicle_information_screen.dart';
+import 'features/driver/bank_details_screen.dart';
 import 'features/auth/role_selection_screen.dart';
 
 import 'core/services/socket_service.dart';
@@ -133,6 +134,7 @@ class RideEaseApp extends StatelessWidget {
         '/driver-ride-history': (context) => const DriverRideHistoryScreen(),
         '/driver/vehicle-info': (context) => const VehicleInformationScreen(),
         '/driver/documents': (context) => const DocumentChecklistScreen(),
+        '/driver/bank-details': (context) => const BankDetailsScreen(),
       },
       onGenerateRoute: (settings) {
         // Handle routes with arguments dynamically

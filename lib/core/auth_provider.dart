@@ -309,6 +309,33 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  /// Get driver bank details
+  Future<Map<String, dynamic>?> getDriverBankDetails() async {
+    try {
+      final response = await _apiService.getDriverBankDetails();
+      return response;
+    } catch (e) {
+      print('Error getting bank details: $e');
+      return null;
+    }
+  }
+
+  /// Update driver bank details
+  Future<bool> updateDriverBankDetails(Map<String, dynamic> bankDetails) async {
+    try {
+      final response = await _apiService.updateDriverBankDetails(bankDetails);
+      if (response['success'] == true) {
+        // Refresh profile status after update
+        await fetchDriverProfileStatus();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      print('Error updating bank details: $e');
+      return false;
+    }
+  }
+
   Future<bool> checkAuth() async {
     try {
       await fetchUserProfile();
