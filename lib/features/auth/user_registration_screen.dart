@@ -12,7 +12,7 @@ class UserRegistrationScreen extends StatefulWidget {
   final String? name;
 
   const UserRegistrationScreen({
-    super.key, 
+    super.key,
     required this.phoneNumber,
     this.isNewUser = false,
     this.name,
@@ -36,6 +36,40 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
     }
   }
 
+  // -----------------------------------
+  // Resend OTP implementation (Rule 2 – critical functionality)
+  // -----------------------------------
+  Future<void> _resendOtp() async {
+    setState(() => _isLoading = true);
+    try {
+      final response = await _apiService.sendOtp(widget.phoneNumber);
+      if (response['success'] == true) {
+        CustomSnackbar.show(
+          context,
+          message: 'OTP Resent successfully',
+          type: SnackbarType.success,
+        );
+      } else {
+        CustomSnackbar.show(
+          context,
+          message: response['message'] ?? 'Failed to resend OTP',
+          type: SnackbarType.error,
+        );
+      }
+    } catch (e) {
+      CustomSnackbar.show(
+        context,
+        message: 'Error: $e',
+        type: SnackbarType.error,
+      );
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  // -----------------------------------
+  // Complete registration / login (original logic)
+  // -----------------------------------
   Future<void> _completeRegistration() async {
     if (_otpController.text.length != 6) {
       CustomSnackbar.show(
@@ -46,7 +80,6 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
       return;
     }
 
-    // For new users, validate name field
     if (widget.isNewUser && _nameController.text.trim().isEmpty) {
       CustomSnackbar.show(
         context,
@@ -56,27 +89,20 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
-
+    setState(() => _isLoading = true);
     try {
-      // Get FCM token
       final fcmToken = FcmService.instance.fcmToken;
-      
       final response = await _apiService.verifyOtp(
         phone: widget.phoneNumber,
         otp: _otpController.text,
         role: 'user',
         name: widget.isNewUser ? _nameController.text.trim() : widget.name,
-        fcmToken: fcmToken, // Send FCM token during login (Option 1)
+        fcmToken: fcmToken,
       );
 
       if (!mounted) return;
 
-      setState(() {
-        _isLoading = false;
-      });
+      setState(() => _isLoading = false);
 
       if (response['success'] == true) {
         CustomSnackbar.show(
@@ -84,10 +110,9 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
           message: 'Login Successful!',
           type: SnackbarType.success,
         );
-        
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (context) => const HomeScreen()),
+          MaterialPageRoute(builder: (_) => const HomeScreen()),
           (route) => false,
         );
       } else {
@@ -99,9 +124,7 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-      });
+      setState(() => _isLoading = false);
       CustomSnackbar.show(
         context,
         message: 'Error: $e',
@@ -156,17 +179,34 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
                   ],
                 ),
               ),
-              
               const SizedBox(height: 40),
-
-              // OTP Input Field
+              // Resend OTP button (critical UI addition)
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                child: ElevatedButton(
+                  onPressed: _isLoading ? null : _resendOtp,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryColor,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text('Resend OTP'),
+                ),
+              ),
+              // OTP input field
               Container(
                 decoration: BoxDecoration(
                   color: AppTheme.surfaceColor,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: AppTheme.borderColor),
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 4,
+                ),
                 child: TextField(
                   controller: _otpController,
                   keyboardType: TextInputType.number,
@@ -191,11 +231,8 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
                   textAlign: TextAlign.center,
                 ),
               ),
-
-              if (widget.isNewUser) ...[              
+              if (widget.isNewUser) ...[
                 const SizedBox(height: 32),
-                
-                // Name Input Section for new users
                 Text(
                   'Your Name',
                   style: GoogleFonts.outfit(
@@ -205,14 +242,16 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                
                 Container(
                   decoration: BoxDecoration(
                     color: AppTheme.surfaceColor,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: AppTheme.borderColor),
                   ),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 4,
+                  ),
                   child: TextField(
                     controller: _nameController,
                     style: GoogleFonts.outfit(
@@ -222,18 +261,20 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
                     ),
                     decoration: InputDecoration(
                       hintText: 'Full Name',
-                      hintStyle: GoogleFonts.outfit(color: AppTheme.textSecondary),
+                      hintStyle: GoogleFonts.outfit(
+                        color: AppTheme.textSecondary,
+                      ),
                       border: InputBorder.none,
-                      icon: const Icon(Icons.person_outline, color: AppTheme.textSecondary),
+                      icon: const Icon(
+                        Icons.person_outline,
+                        color: AppTheme.textSecondary,
+                      ),
                     ),
                     textCapitalization: TextCapitalization.words,
                   ),
                 ),
               ],
-              
               const Spacer(),
-              
-              // Action Button
               SizedBox(
                 width: double.infinity,
                 height: 56,
@@ -251,15 +292,16 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
                       ? const SizedBox(
                           height: 24,
                           width: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: Colors.white,
+                          ),
                         )
-                      : FittedBox(
+                      : const FittedBox(
                           fit: BoxFit.scaleDown,
                           child: Text(
                             'Verify & Continue',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.outfit(
+                            style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
                             ),

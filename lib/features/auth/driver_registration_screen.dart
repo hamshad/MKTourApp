@@ -72,7 +72,37 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
     }
   }
 
-  String _capitalize(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+  String _capitalize(String s) =>
+      s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+
+  // Resend OTP implementation (critical)
+  Future<void> _resendOtp() async {
+    setState(() => _isLoading = true);
+    try {
+      final response = await _apiService.sendOtp(widget.phoneNumber);
+      if (response['success'] == true) {
+        CustomSnackbar.show(
+          context,
+          message: 'OTP Resent successfully',
+          type: SnackbarType.success,
+        );
+      } else {
+        CustomSnackbar.show(
+          context,
+          message: response['message'] ?? 'Failed to resend OTP',
+          type: SnackbarType.error,
+        );
+      }
+    } catch (e) {
+      CustomSnackbar.show(
+        context,
+        message: 'Error: $e',
+        type: SnackbarType.error,
+      );
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
 
   Future<void> _completeRegistration() async {
     if (_otpController.text.length != 6) {
@@ -118,7 +148,7 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
 
       // Get FCM token
       final fcmToken = FcmService.instance.fcmToken;
-      
+
       final response = await _apiService.verifyOtp(
         phone: widget.phoneNumber,
         otp: _otpController.text,
@@ -302,67 +332,72 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
               const SizedBox(height: 16),
 
               // Vehicle Category Dropdown
-              _isLoadingCategories 
-                ? const Center(child: Padding(
-                    padding: EdgeInsets.all(8.0),
-                    child: CircularProgressIndicator(),
-                  ))
-                : Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppTheme.borderColor),
-                ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: _selectedCategorySlug,
-                    isExpanded: true,
-                    hint: Row(
-                      children: [
-                        const Icon(
-                          Icons.directions_car_outlined,
-                          color: AppTheme.textSecondary,
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          'Select Vehicle Category',
-                          style: GoogleFonts.outfit(
-                            color: AppTheme.textSecondary,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ],
-                    ),
-                    items: _categories.map((category) {
-                      return DropdownMenuItem(
-                        value: category.slug,
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.directions_car_outlined,
-                              color: AppTheme.textPrimary,
-                            ),
-                            const SizedBox(width: 12),
-                            Text(
-                              category.name != 'Unknown' && category.name != category.slug
-                                ? category.name
-                                : VehicleCategory.formatSlug(category.slug),
-                              style: GoogleFonts.outfit(
-                                color: AppTheme.textPrimary,
+              _isLoadingCategories
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: CircularProgressIndicator(),
+                      ),
+                    )
+                  : Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppTheme.borderColor),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: _selectedCategorySlug,
+                          isExpanded: true,
+                          hint: Row(
+                            children: [
+                              const Icon(
+                                Icons.directions_car_outlined,
+                                color: AppTheme.textSecondary,
                               ),
-                            ),
-                          ],
+                              const SizedBox(width: 12),
+                              Text(
+                                'Select Vehicle Category',
+                                style: GoogleFonts.outfit(
+                                  color: AppTheme.textSecondary,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ],
+                          ),
+                          items: _categories.map((category) {
+                            return DropdownMenuItem(
+                              value: category.slug,
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.directions_car_outlined,
+                                    color: AppTheme.textPrimary,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    category.name != 'Unknown' &&
+                                            category.name != category.slug
+                                        ? category.name
+                                        : VehicleCategory.formatSlug(
+                                            category.slug,
+                                          ),
+                                    style: GoogleFonts.outfit(
+                                      color: AppTheme.textPrimary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                          onChanged: (value) =>
+                              setState(() => _selectedCategorySlug = value),
                         ),
-                      );
-                    }).toList(),
-                    onChanged: (value) =>
-                        setState(() => _selectedCategorySlug = value),
-                  ),
-                ),
-              ),
+                      ),
+                    ),
               const SizedBox(height: 16),
 
               _buildTextField(
