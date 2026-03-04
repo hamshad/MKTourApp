@@ -587,6 +587,13 @@ class SocketService with WidgetsBindingObserver {
     debugPrint('\u{1f6d1} [SocketService] Stopped tracking driver: $driverId');
   }
 
+  /// Emit ride:accept to accept a ride request
+  void emitRideAccept(String rideId) {
+    if (rideId.isEmpty) return;
+    emitReliable('ride:accept', {'rideId': rideId});
+    debugPrint('\u{1f697} [SocketService] Ride accepted: $rideId');
+  }
+
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   void disconnect() {

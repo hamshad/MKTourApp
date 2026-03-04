@@ -190,7 +190,7 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                   children: [
                     // Display fare from backend (already calculated with surge/night/weekend)
                     Text(
-                      '£${(widget.rideData?['fare'] ?? 0.0).toStringAsFixed(2)}',
+                      '£${double.tryParse(widget.rideData?['fare']?.toString() ?? '0.0')?.toStringAsFixed(2) ?? '0.00'}',
                       style: const TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
@@ -284,7 +284,7 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                       ),
                     ),
                     Text(
-                      '${(widget.rideData?['distance'] ?? 0.0).toStringAsFixed(1)} mi trip',
+                      '${double.tryParse(widget.rideData?['distance']?.toString() ?? '0.0')?.toStringAsFixed(1) ?? '0.0'} mi trip',
                       style: TextStyle(
                         color: AppTheme.textSecondary,
                         fontSize: 13,

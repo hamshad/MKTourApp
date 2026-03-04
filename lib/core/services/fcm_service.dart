@@ -337,6 +337,16 @@ class FcmService {
       return;
     }
 
+    // Special handling for ride_request: ensure socket is connected
+    if (data.type == NotificationType.rideRequest) {
+      debugPrint('🔔 [FCM] Ride request notification tapped, ensuring socket connectivity...');
+      final socketService = SocketService();
+      if (!socketService.isConnected) {
+        debugPrint('🔌 [FCM] Socket disconnected during ride_request tap, initiating reconnection...');
+        socketService.initSocket(forceReconnect: true);
+      }
+    }
+
     _notificationTapController.add(data);
   }
 

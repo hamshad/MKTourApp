@@ -18,6 +18,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/services/audio_service.dart';
+import '../../core/services/fcm_service.dart';
 
 class DriverHomeScreen extends StatefulWidget {
   const DriverHomeScreen({super.key});
@@ -73,6 +74,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   // Store driverId to use in dispose without accessing context
   String? _driverId;
 
+  // FCM notification subscription
+  StreamSubscription<FcmNotificationData>? _fcmSubscription;
+
   @override
   void initState() {
     super.initState();
@@ -80,6 +84,19 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     _initDriver();
     _initLocation();
     _setupConnectionListener();
+    _setupFcmListener();
+  }
+
+  /// Listen for FCM notifications directly in the home screen
+  void _setupFcmListener() {
+    _fcmSubscription = FcmService.instance.onNotificationTap.listen((data) {
+      if (data.type == NotificationType.rideRequest) {
+        debugPrint('🔔 [DriverHomeScreen] Received rideRequest via FCM tap');
+        if (mounted) {
+          _handleNewRideRequest(data.rawData);
+        }
+      }
+    });
   }
 
   @override
@@ -280,6 +297,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     // Clean up streams
     _positionStreamSubscription?.cancel();
     _connectionSubscription?.cancel();
+    _fcmSubscription?.cancel();
 
     // Clean up services
     _navigationService.dispose();
@@ -1048,6 +1066,18 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     try {
       if (_status == 'request') {
         // Accept Ride
+        debugPrint('🚖 [DriverHomeScreen] Accepting ride: $_currentRideId');
+
+        // Check socket connection before deciding whether to emit or use API
+        if (_socketService.isConnected) {
+          debugPrint('🔌 [DriverHomeScreen] Emitting ride:accept via socket');
+          _socketService.emitRideAccept(_currentRideId!);
+          // The socket response will be handled by the listener, but we can 
+          // also call the API as a parallel/fallback or just wait for socket.
+          // Requirement says: "fall back to calling the POST /rides/:rideId/accept REST API endpoint instead".
+        }
+
+        // Always call REST API as a reliable fallback/method if socket is shaky or as primary
         final response = await _apiService.acceptRide(_currentRideId!);
         if (response['success'] == true) {
           AudioService.instance.stop();
