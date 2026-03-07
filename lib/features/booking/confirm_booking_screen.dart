@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../../core/theme.dart';
 import '../../core/services/payment_service.dart';
+import 'widgets/schedule_ride_sheet.dart';
 
 class ConfirmBookingScreen extends StatefulWidget {
   const ConfirmBookingScreen({super.key});
@@ -15,6 +16,125 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
   bool _isLoading = false;
   final TextEditingController _notesController = TextEditingController();
   PaymentTiming _paymentTiming = PaymentTiming.payLater;
+  DateTime? _scheduledTime;
+  String? _preBookingNote;
+
+  Future<void> _scheduleBooking(
+    Map<String, dynamic> vehicle,
+    Map<String, dynamic> destination,
+    Map<String, dynamic>? pickup,
+  ) async {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => ScheduleRideSheet(
+        initialDateTime: _scheduledTime ?? DateTime.now().add(const Duration(hours: 1)),
+        onSchedule: (selectedDateTime, notes) async {
+          setState(() {
+            _scheduledTime = selectedDateTime;
+            _preBookingNote = notes;
+            _isLoading = true;
+          });
+
+          try {
+            final pickupLocation = pickup != null
+                ? {
+                    'coordinates': [pickup['lng'] ?? -0.1278, pickup['lat'] ?? 51.5074],
+                    'address': pickup['name'] ?? pickup['address'] ?? 'Current Location',
+                    'placeId': pickup['placeId'],
+                  }
+                : {
+                    'coordinates': [-0.1278, 51.5074],
+                    'address': 'Current Location',
+                  };
+
+            final dropoffLocation = {
+              'coordinates': [destination['lng'] ?? -0.1240, destination['lat'] ?? 51.5100],
+              'address': destination['name'] ?? destination['address'] ?? 'Destination',
+              'placeId': destination['placeId'],
+            };
+
+            final result = await PaymentService.scheduleRide(
+              context: context,
+              pickupLocation: pickupLocation,
+              dropoffLocation: dropoffLocation,
+              vehicleCategorySlug: vehicle['categorySlug'] ?? 'sedan',
+              scheduledPickupTime: selectedDateTime,
+              distance: (vehicle['distance'] as num?)?.toDouble() ?? 5.0,
+              notes: notes,
+            );
+
+            setState(() => _isLoading = false);
+
+            if (result.success && mounted) {
+              _showScheduledSuccessDialog(result.message ?? 'Ride scheduled!', result.data);
+            } else if (!result.success && mounted) {
+              _showErrorDialog(result.error ?? 'Booking failed');
+            }
+          } catch (e) {
+            setState(() => _isLoading = false);
+            if (mounted) {
+              _showErrorDialog(e.toString());
+            }
+          }
+        },
+      ),
+    );
+  }
+
+  void _showScheduledSuccessDialog(String message, Map<String, dynamic>? rideData) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.event_available_outlined,
+                color: Colors.green,
+                size: 28,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Text('Ride Scheduled'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(message),
+            const SizedBox(height: 12),
+            const Text(
+              'Your ride is confirmed. You can see details in My Activity.',
+              style: TextStyle(fontSize: 13, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context); // Pop dialog
+              Navigator.pushNamedAndRemoveUntil(
+                context,
+                '/home',
+                (route) => false,
+              );
+            },
+            child: const Text('Go to Home'),
+          ),
+        ],
+      ),
+    );
+  }
 
   Future<void> _confirmBooking(
     Map<String, dynamic> vehicle,
@@ -383,55 +503,77 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
             ),
           ),
 
-          // Confirm Button
+          // Action Buttons
           Padding(
-            padding: EdgeInsets.only(
-              left: 24,
-              right: 24,
-              top: 24,
-              bottom: 24,
-            ),
+            padding: const EdgeInsets.all(24),
             child: SafeArea(
-              child: SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                onPressed: _isLoading
-                    ? null
-                    : () => _confirmBooking(
-                        vehicle,
-                        destination,
-                        args?['pickup'],
-                      ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryColor,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: _isLoading
-                    ? const SizedBox(
-                        height: 24,
-                        width: 24,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : const FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          'Confirm Booking',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_isLoading)
+                    const Center(child: CircularProgressIndicator())
+                  else ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          child: SizedBox(
+                            height: 56,
+                            child: OutlinedButton.icon(
+                              onPressed: () => _scheduleBooking(
+                                vehicle,
+                                destination,
+                                args?['pickup'],
+                              ),
+                              icon: const Icon(Icons.calendar_month, color: AppTheme.primaryColor),
+                              label: const Text(
+                                'Schedule',
+                                style: TextStyle(
+                                  color: AppTheme.primaryColor,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: AppTheme.primaryColor, width: 2),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          flex: 2,
+                          child: SizedBox(
+                            height: 56,
+                            child: ElevatedButton(
+                              onPressed: () => _confirmBooking(
+                                vehicle,
+                                destination,
+                                args?['pickup'],
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.primaryColor,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: const Text(
+                                'Book Now',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
               ),
             ),
           ),

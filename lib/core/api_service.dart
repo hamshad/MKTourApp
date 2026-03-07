@@ -2048,6 +2048,33 @@ class ApiService {
     }
   }
 
+  Future<Map<String, dynamic>> getDriverScheduledRides() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString(_prefsAuthTokenKey);
+      if (token == null) throw Exception('No auth token found');
+
+      final response = await http.get(
+        Uri.parse(ApiConstants.scheduledRides),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      await _checkUnauthorized(response);
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception('Failed to get scheduled rides: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('🔴 API Error (getDriverScheduledRides): $e');
+      rethrow;
+    }
+  }
+
   /// Update FCM token for user profile (Option 2 - dedicated endpoint)
   Future<Map<String, dynamic>> updateUserFcmToken(String? fcmToken) async {
     debugPrint(

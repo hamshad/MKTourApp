@@ -128,6 +128,7 @@ class PaymentService {
     required double fare,
     PaymentTiming paymentTiming = PaymentTiming.payLater,
     String? notes,
+    DateTime? scheduledAt,
   }) async {
     String? rideId;
     final bool shouldPresentPaymentSheet =
@@ -148,6 +149,13 @@ class PaymentService {
         'dropoffLocation': dropoffLocation,
         'vehicleCategorySlug': vehicleCategorySlug,
         'distance': distance,
+        'fare': fare,
+        'paymentTiming': paymentTiming == PaymentTiming.payNow
+            ? 'pay_now'
+            : 'pay_later',
+        if (notes != null && notes.isNotEmpty) 'notes': notes,
+        if (scheduledAt != null) 'scheduledAt': scheduledAt.toIso8601String(),
+        // Include Google Places IDs for airport detection if available
         'paymentTiming': paymentTiming == PaymentTiming.payNow
             ? 'pay_now'
             : 'pay_later',
@@ -288,10 +296,180 @@ class PaymentService {
         data: data,
       );
     } catch (e) {
-      debugPrint('❌ PaymentService: Cancel error - $e');
+      debugPrint('❌ PaymentService (cancelRideWithRefund): Error - $e');
       return PaymentResult.failure(
         error: e.toString().replaceAll('Exception: ', ''),
       );
+    }
+  }
+
+  /// Schedule a ride and collect deposit payment
+  static Future<PaymentResult> scheduleRide({
+    required BuildContext context,
+    required Map<String, dynamic> pickupLocation,
+    required Map<String, dynamic> dropoffLocation,
+    required String vehicleCategorySlug,
+    required DateTime scheduledPickupTime,
+    required double distance,
+    String? notes,
+  }) async {
+    String? rideId;
+    try {
+      final primaryColor = Theme.of(context).primaryColor;
+      debugPrint('📅 PaymentService: Scheduling ride for $scheduledPickupTime');
+
+      final headers = await ApiConfig.getAuthHeaders();
+
+      final requestBody = {
+        'pickupLocation': pickupLocation,
+        'pickupPlaceId': pickupLocation['placeId'],
+        'dropoffLocation': dropoffLocation,
+        'dropoffPlaceId': dropoffLocation['placeId'],
+        'vehicleCategorySlug': vehicleCategorySlug,
+        'scheduledPickupTime': scheduledPickupTime.toUtc().toIso8601String(),
+        'distance': distance,
+        if (notes != null && notes.isNotEmpty) 'preBookingNote': notes,
+      };
+
+      debugPrint('📅 PaymentService: Creating scheduled ride...');
+      final response = await http.post(
+        Uri.parse(ApiConstants.scheduleRide),
+        headers: headers,
+        body: jsonEncode(requestBody),
+      );
+
+      debugPrint('📅 PaymentService: Response status: ${response.statusCode}');
+      debugPrint('📅 PaymentService: Response body: ${response.body}');
+
+      if (response.statusCode != 201 && response.statusCode != 200) {
+        final errorData = jsonDecode(response.body);
+        throw Exception(errorData['message'] ?? 'Failed to schedule ride');
+      }
+
+      final responseData = jsonDecode(response.body);
+      final rideData = responseData['data']['ride'];
+      final paymentData = responseData['data']['payment'];
+
+      rideId = rideData['_id'];
+      final String clientSecret = paymentData['clientSecret'];
+
+      debugPrint('📅 PaymentService: Scheduled ride created: $rideId');
+      debugPrint('📅 PaymentService: Presenting deposit payment sheet...');
+
+      await _presentPaymentSheet(
+        primaryColor: primaryColor,
+        clientSecret: clientSecret,
+      );
+
+      debugPrint('✅ PaymentService: Deposit payment successful');
+
+      // Optional: Confirm deposit (webhook handles this, but we can call it for faster UI update)
+      try {
+        await http.post(
+          Uri.parse(ApiConstants.confirmDeposit(rideId!)),
+          headers: headers,
+        );
+      } catch (e) {
+        debugPrint('⚠️ PaymentService: Confirm deposit call failed (ignoring): $e');
+      }
+
+      return PaymentResult.success(
+        rideId: rideId!,
+        message: 'Ride scheduled! Your deposit has been paid.',
+        data: rideData,
+      );
+    } on StripeException catch (e) {
+      debugPrint('⚠️ PaymentService: Stripe error (deposit) - ${e.error.message}');
+      return PaymentResult.failure(error: StripeService.getErrorMessage(e));
+    } catch (e) {
+      debugPrint('❌ PaymentService: Error (scheduleRide) - $e');
+      return PaymentResult.failure(
+        error: e.toString().replaceAll('Exception: ', ''),
+      );
+    }
+  }
+
+  /// Get user's scheduled rides
+  static Future<List<dynamic>> getScheduledRides() async {
+    try {
+      final headers = await ApiConfig.getAuthHeaders();
+      final response = await http.get(
+        Uri.parse(ApiConstants.scheduledRides),
+        headers: headers,
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        return responseData['data'] ?? [];
+      } else {
+        throw Exception('Failed to fetch scheduled rides');
+      }
+    } catch (e) {
+      debugPrint('❌ PaymentService: Error (getScheduledRides) - $e');
+      rethrow;
+    }
+  }
+
+  /// Cancel a scheduled ride (user)
+  static Future<PaymentResult> cancelScheduledRideUser(String rideId) async {
+    try {
+      final headers = await ApiConfig.getAuthHeaders();
+      final response = await http.post(
+        Uri.parse(ApiConstants.cancelScheduledRideUser(rideId)),
+        headers: headers,
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        final data = responseData['data'];
+        final depositRefunded = data['depositRefunded'] ?? false;
+        
+        String message = 'Ride cancelled.';
+        if (!depositRefunded) {
+          message += ' Note: Your deposit was forfeited as a cancellation fee.';
+        } else {
+          message += ' Your deposit will be refunded.';
+        }
+
+        return PaymentResult.success(
+          rideId: rideId,
+          message: message,
+          data: data,
+        );
+      } else {
+        final errorData = jsonDecode(response.body);
+        throw Exception(errorData['message'] ?? 'Failed to cancel scheduled ride');
+      }
+    } catch (e) {
+      debugPrint('❌ PaymentService: Error (cancelScheduledRideUser) - $e');
+      return PaymentResult.failure(
+        error: e.toString().replaceAll('Exception: ', ''),
+      );
+    }
+  }
+
+  /// Cancel a scheduled ride (driver)
+  static Future<Map<String, dynamic>> cancelScheduledRideDriver(
+    String rideId,
+    String reason,
+  ) async {
+    try {
+      final headers = await ApiConfig.getAuthHeaders();
+      final response = await http.post(
+        Uri.parse(ApiConstants.cancelScheduledRideDriver(rideId)),
+        headers: headers,
+        body: jsonEncode({'reason': reason}),
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        final errorData = jsonDecode(response.body);
+        throw Exception(errorData['message'] ?? 'Failed to cancel scheduled ride');
+      }
+    } catch (e) {
+      debugPrint('❌ PaymentService: Error (cancelScheduledRideDriver) - $e');
+      rethrow;
     }
   }
 

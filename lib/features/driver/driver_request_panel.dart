@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme.dart';
 import '../../core/services/places_service.dart';
 import '../../core/models/vehicle.dart';
+import 'package:intl/intl.dart';
 
 class DriverRequestPanel extends StatefulWidget {
   final VoidCallback onAccept;
@@ -115,30 +116,81 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'New Ride Request',
-                style: TextStyle(
+                widget.rideData?['isScheduled'] == true
+                    ? 'Scheduled Ride Request'
+                    : 'New Ride Request',
+                style: const TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
                   color: AppTheme.textPrimary,
                 ),
               ),
-              // Container(
-              //   padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              //   decoration: BoxDecoration(
-              //     color: AppTheme.primaryColor,
-              //     borderRadius: BorderRadius.all(Radius.circular(20)),
-              //   ),
-              //   child: Text(
-              //     '2 mins away',
-              //     style: TextStyle(
-              //       color: Colors.white,
-              //       fontWeight: FontWeight.bold,
-              //       fontSize: 12,
-              //     ),
-              //   ),
-              // ),
+              if (widget.rideData?['isPriority'] == true)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.warning, color: Colors.white, size: 14),
+                      SizedBox(width: 4),
+                      Text(
+                        'PRIORITY',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
             ],
           ),
+          const SizedBox(height: 12),
+          if (widget.rideData?['isScheduled'] == true)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppTheme.primaryColor.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.calendar_month, color: AppTheme.primaryColor, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          '📅 Scheduled Pickup',
+                          style: TextStyle(
+                            color: AppTheme.primaryColor,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                        Text(
+                          DateFormat('EEEE, MMM d @ hh:mm a').format(
+                            DateTime.parse(widget.rideData!['scheduledPickupTime']).toLocal(),
+                          ),
+                          style: const TextStyle(
+                            color: Colors.black,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           const SizedBox(height: 24),
 
           // Passenger Info Card

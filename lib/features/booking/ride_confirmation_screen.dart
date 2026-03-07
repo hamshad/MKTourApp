@@ -9,6 +9,7 @@ import '../../core/widgets/platform_map.dart';
 import 'package:latlong2/latlong.dart' as lat_lng;
 import 'package:flutter_map/flutter_map.dart' as fmap;
 import '../../core/models/vehicle.dart';
+import 'widgets/schedule_ride_sheet.dart';
 
 /// Ride Confirmation Screen - Shows ride details before final booking
 /// Displays pickup, dropoff, vehicle type, distance, duration, and fare
@@ -197,6 +198,21 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     _fetchDirectionsAndFare();
   }
 
+  void _showScheduleSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => ScheduleRideSheet(
+        initialDateTime: DateTime.now().add(const Duration(hours: 1)),
+        onSchedule: (selectedDateTime, notes) {
+          _processBooking(PaymentTiming.payLater,
+              scheduledAt: selectedDateTime, notes: notes);
+        },
+      ),
+    );
+  }
+
   Map<String, dynamic> get _currentFareData =>
       _dynamicFareData ?? widget.fareData;
 
@@ -365,7 +381,8 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   }
   */
 
-  Future<void> _processBooking(PaymentTiming timing) async {
+  Future<void> _processBooking(PaymentTiming timing,
+      {DateTime? scheduledAt, String? notes}) async {
     debugPrint(
       '🚀 RideConfirmationScreen: Processing booking with timing: $timing',
     );
@@ -375,8 +392,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     });
 
     try {
-      final distanceMiles =
-          _currentFareData['distance_miles'] ??
+      final distanceMiles = _currentFareData['distance_miles'] ??
           ((_currentFareData['distance_meters'] ?? 0) * 0.000621371);
 
       // Use PaymentService to handle both API call and Stripe payment sheet
@@ -388,16 +404,25 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
         distance: (distanceMiles as num).toDouble(),
         fare: _fare,
         paymentTiming: timing,
+        scheduledAt: scheduledAt,
+        notes: notes,
       );
 
       if (mounted) {
         if (result.success && result.data != null) {
-          final rideId =
-              result.data!['_id']?.toString() ??
+          final rideId = result.data!['_id']?.toString() ??
               result.data!['rideId']?.toString() ??
               '';
 
           debugPrint('✅ [RideConfirmationScreen] Ride created: $rideId');
+
+          if (scheduledAt != null) {
+            // It's a pre-booking, show success dialog
+            _showPreBookingSuccess(rideId, scheduledAt);
+            setState(() => _isLoading = false);
+            return;
+          }
+
           debugPrint(
             '🚀 [RideConfirmationScreen] Navigating directly to RideAssignedScreen',
           );
@@ -412,9 +437,8 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                 pickup: widget.pickupLocation,
                 dropoff: widget.dropoffLocation,
                 fare: _fare,
-                paymentTiming: timing == PaymentTiming.payNow
-                    ? 'pay_now'
-                    : 'pay_later',
+                paymentTiming:
+                    timing == PaymentTiming.payNow ? 'pay_now' : 'pay_later',
                 clientSecret: result.data!['clientSecret']?.toString(),
               ),
             ),
@@ -434,10 +458,52 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
       if (mounted) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Error creating booking: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
+  }
+
+  void _showPreBookingSuccess(String rideId, DateTime scheduledAt) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Column(
+          children: [
+            Icon(Icons.check_circle, color: Colors.green, size: 64),
+            SizedBox(height: 16),
+            Text('Ride Scheduled!', textAlign: TextAlign.center),
+          ],
+        ),
+        content: Text(
+          'Your ride for ${DateFormat('MMM dd, h:mm a').format(scheduledAt)} has been confirmed. A driver will be assigned closer to the time.',
+          textAlign: TextAlign.center,
+        ),
+        actions: [
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () {
+                // Return to home or activities
+                Navigator.of(context).popUntil((route) => route.isFirst);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text('Back to Home',
+                  style: TextStyle(color: Colors.white)),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -1011,77 +1077,109 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
             ],
 
             // Button Row
-            SizedBox(
-              width: double.infinity,
-              height: 54,
-              child: hasError
-                  ? ElevatedButton.icon(
-                      onPressed: _isFetchingFare ? null : _retryFetchFare,
-                      icon: _isFetchingFare
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : const Icon(Icons.refresh),
-                      label: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          _isFetchingFare ? 'Retrying...' : 'Retry',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        elevation: 0,
-                      ),
-                    )
-                  : ElevatedButton(
-                      onPressed: (_isLoading || _isFetchingFare)
-                          ? null
-                          : _confirmRide,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primaryColor,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        elevation: 0,
-                      ),
-                      child: _isLoading
-                          ? const SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: const Text(
-                                'Confirm Ride',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: double.infinity,
+                  height: 54,
+                  child: hasError
+                      ? ElevatedButton.icon(
+                          onPressed: _isFetchingFare ? null : _retryFetchFare,
+                          icon: _isFetchingFare
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.refresh),
+                          label: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              _isFetchingFare ? 'Retrying...' : 'Retry',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.orange,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 0,
+                          ),
+                        )
+                      : ElevatedButton(
+                          onPressed: (_isLoading || _isFetchingFare)
+                              ? null
+                              : _confirmRide,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primaryColor,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 0,
+                          ),
+                          child: _isLoading
+                              ? const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: const Text(
+                                    'Confirm Ride',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                        ),
+                ),
+                if (!hasError) ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 54,
+                    child: OutlinedButton.icon(
+                      onPressed: (_isLoading || _isFetchingFare)
+                          ? null
+                          : _showScheduleSheet,
+                      icon: const Icon(Icons.calendar_month),
+                      label: const Text(
+                        'Schedule for Later',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.blue,
+                        side: const BorderSide(color: Colors.blue),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
                     ),
+                  ),
+                ],
+              ],
             ),
           ],
         ),

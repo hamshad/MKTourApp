@@ -18,6 +18,7 @@ import '../ride/ride_assigned_screen.dart';
 import '../booking/ride_confirmation_screen.dart';
 import 'airport_selection_screen.dart';
 import '../promo/promo_status_screen.dart';
+import '../../core/widgets/custom_snackbar.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -430,6 +431,52 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _isSearching = false;
           _activeRide = null;
         });
+      }
+    });
+
+    _socketService.on('ride:depositConfirmed', (data) {
+      debugPrint('💰 [HomeScreen] Deposit Confirmed: $data');
+      if (mounted) {
+        CustomSnackbar.show(
+          context,
+          message: data['message'] ?? 'Deposit confirmed! Your ride is scheduled.',
+          type: SnackbarType.success,
+        );
+      }
+    });
+
+    _socketService.on('ride:scheduledActivated', (data) {
+      debugPrint('🚀 [HomeScreen] Scheduled Ride Activated: $data');
+      if (mounted) {
+        // Find the ride in history or fetch update
+        _fetchRideHistory();
+        CustomSnackbar.show(
+          context,
+          message: data['message'] ?? 'A driver is now being found for your scheduled ride.',
+          type: SnackbarType.info,
+        );
+      }
+    });
+
+    _socketService.on('ride:scheduledDriverCancelled', (data) {
+      debugPrint('⚠️ [HomeScreen] Scheduled Driver Cancelled: $data');
+      if (mounted) {
+        CustomSnackbar.show(
+          context,
+          message: data['message'] ?? 'Your driver had to cancel. We are finding a new one.',
+          type: SnackbarType.warning,
+        );
+      }
+    });
+
+    _socketService.on('ride:reminder', (data) {
+      debugPrint('⏰ [HomeScreen] Ride Reminder: $data');
+      if (mounted) {
+        CustomSnackbar.show(
+          context,
+          message: data['message'] ?? 'Reminder: You have a scheduled ride soon!',
+          type: SnackbarType.warning,
+        );
       }
     });
 

@@ -19,6 +19,7 @@ import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/services/audio_service.dart';
 import '../../core/services/fcm_service.dart';
+import '../../core/services/payment_service.dart';
 
 class DriverHomeScreen extends StatefulWidget {
   const DriverHomeScreen({super.key});
@@ -697,6 +698,25 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       }
     });
 
+    _socketService.on('ride:scheduledCancelledByUser', (data) {
+      debugPrint('❌ [DriverHomeScreen] Scheduled Ride Cancelled By User: $data');
+      if (mounted) {
+        final rideId = data['rideId']?.toString();
+        if (_currentRideId == rideId) {
+          setState(() {
+            _status = 'online';
+            _currentRideId = null;
+            _rideData = null;
+          });
+        }
+        CustomSnackbar.show(
+          context,
+          message: data['message'] ?? 'A scheduled ride was cancelled by user',
+          type: SnackbarType.info,
+        );
+      }
+    });
+
     _socketService.on('ride:reminder', (data) {
       debugPrint('⏰ [DriverHomeScreen] Ride Reminder: $data');
       if (mounted) {
@@ -1365,12 +1385,22 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   Future<void> _cancelRideByDriver(String reason) async {
     if (_currentRideId == null) return;
 
+    final isScheduled = _rideData?['isScheduled'] == true;
+
     setState(() => _isLoading = true);
     try {
-      final response = await _apiService.cancelRideByDriver(
-        _currentRideId!,
-        reason: reason,
-      );
+      Map<String, dynamic> response;
+      if (isScheduled) {
+        response = await PaymentService.cancelScheduledRideDriver(
+          _currentRideId!,
+          reason,
+        );
+      } else {
+        response = await _apiService.cancelRideByDriver(
+          _currentRideId!,
+          reason: reason,
+        );
+      }
 
       setState(() {
         _status = 'online';
@@ -1379,9 +1409,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       });
 
       if (response['success'] == true) {
+        String message = 'Ride cancelled.';
+        if (isScheduled && response['data']?['driverPenaltyAmount'] != null) {
+          final penalty = response['data']['driverPenaltyAmount'];
+          message += ' A £${penalty.toStringAsFixed(2)} penalty was applied.';
+        }
         CustomSnackbar.show(
           context,
-          message: 'Ride cancelled. User will receive full refund.',
+          message: message,
           type: SnackbarType.success,
         );
       } else {
@@ -1395,7 +1430,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       debugPrint('Error cancelling ride: $e');
       CustomSnackbar.show(
         context,
-        message: 'Error cancelling ride',
+        message: 'Error cancelling ride: ${e.toString().replaceAll('Exception: ', '')}',
         type: SnackbarType.error,
       );
     } finally {

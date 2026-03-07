@@ -38,12 +38,22 @@ class NotificationType {
   static const String rideExpired = 'ride_expired';
   static const String rideLongRunning = 'ride_long_running';
 
+  // Scheduled Ride Notifications (User)
+  static const String scheduledReminder1hr = 'scheduled_reminder_1hr';
+  static const String scheduledReminder15min = 'scheduled_reminder_15min';
+  static const String scheduledRideActivated = 'scheduled_ride_activated';
+  static const String scheduledDriverCancelled = 'scheduled_driver_cancelled';
+  static const String depositTimeout = 'deposit_timeout';
+  static const String scheduledRideExpired = 'scheduled_ride_expired';
+  static const String scheduledNoShow = 'scheduled_no_show';
+
   // Driver App Notifications
   static const String rideRequest = 'ride_request';
   static const String rideCancelled = 'ride_cancelled';
   static const String rideCancelledByUser = 'ride_cancelled_by_user';
   static const String paymentSelected = 'payment_selected';
   static const String rideReminder = 'ride_reminder';
+  static const String scheduledRideCancelledByUser = 'scheduled_ride_cancelled_by_user';
 
   // System Notifications
   static const String healthCheck = 'health_check';
