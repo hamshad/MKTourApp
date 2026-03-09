@@ -37,6 +37,7 @@ const List<_StatusFilter> _statusFilters = [
   ),
   _StatusFilter(label: 'Terminated', statusKeys: ['terminated']),
   _StatusFilter(label: 'Expired', statusKeys: ['expired']),
+  _StatusFilter(label: 'Scheduled', statusKeys: ['scheduled']),
 ];
 
 const Set<String> _terminalStatuses = {
@@ -50,7 +51,6 @@ const Set<String> _terminalStatuses = {
 };
 
 const Map<String, String> _statusDisplayNames = {
-  'scheduled': 'Scheduled',
   'requested': 'Requested',
   'accepted': 'Accepted',
   'driver_arrived': 'Driver Arrived',
@@ -65,6 +65,7 @@ const Map<String, String> _statusDisplayNames = {
   'cancelled_by_driver': 'Cancelled (Driver)',
   'terminated': 'Terminated',
   'expired': 'Expired',
+  'scheduled': 'Scheduled',
 };
 
 String _formatStatusLabel(String status) {
@@ -147,7 +148,6 @@ class _ActivityScreenState extends State<ActivityScreen> {
             indicatorColor: AppTheme.primaryColor,
             tabs: [
               Tab(text: 'Ongoing'),
-              Tab(text: 'Scheduled'),
               Tab(text: 'All'),
             ],
           ),
@@ -155,7 +155,6 @@ class _ActivityScreenState extends State<ActivityScreen> {
         body: TabBarView(
           children: [
             _buildActivityList(context, filterType: 'ongoing'),
-            _buildActivityList(context, filterType: 'scheduled'),
             _buildActivityList(context, filterType: 'all'),
           ],
         ),
@@ -181,13 +180,8 @@ class _ActivityScreenState extends State<ActivityScreen> {
         if (filterType == 'ongoing') {
           rides = allRidesFromSource.where((ride) {
             final status = (ride['status'] as String?)?.toLowerCase() ?? '';
-            // Ongoing includes everything that is NOT terminal and NOT scheduled
-            return !_terminalStatuses.contains(status) && status != 'scheduled';
-          }).toList();
-        } else if (filterType == 'scheduled') {
-          rides = allRidesFromSource.where((ride) {
-            final status = (ride['status'] as String?)?.toLowerCase() ?? '';
-            return status == 'scheduled';
+            // Ongoing includes everything that is NOT terminal
+            return !_terminalStatuses.contains(status);
           }).toList();
         } else {
           // All Tab - apply chip filter
@@ -223,14 +217,14 @@ class _ActivityScreenState extends State<ActivityScreen> {
                               ? '£${ride['fare']}'
                               : '£0.00';
                           final status = ride['status'] ?? 'Unknown';
-                          final dateStr = ride['scheduledPickupTime'] ?? ride['createdAt'];
+                          final dateStr = ride['createdAt'];
                           String formattedDate = 'Unknown Date';
 
                           if (dateStr != null) {
                             try {
                               final date = DateTime.parse(dateStr).toLocal();
                               formattedDate = DateFormat(
-                                ride['isScheduled'] == true ? 'MMM d, h:mm a' : 'MMM d, h:mm a',
+                                'MMM d, h:mm a',
                               ).format(date);
                             } catch (e) {
                               formattedDate = dateStr;
@@ -305,9 +299,6 @@ class _ActivityScreenState extends State<ActivityScreen> {
     if (filterType == 'ongoing') {
       emptyIcon = Icons.directions_car;
       emptyMessage = 'No ongoing rides';
-    } else if (filterType == 'scheduled') {
-      emptyIcon = Icons.calendar_month;
-      emptyMessage = 'No scheduled rides';
     } else {
       emptyIcon = Icons.history;
       emptyMessage = _selectedFilter == 'All'

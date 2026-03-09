@@ -480,6 +480,8 @@ class FcmService {
       case NotificationType.driverArrived:
       case NotificationType.rideStarted:
       case NotificationType.rideCompleted:
+      case NotificationType.scheduledReminder1hr:
+      case NotificationType.scheduledReminder15min:
       case NotificationType.promoUnlocked:
       case NotificationType.promoApplied:
       case NotificationType.promoClaimed:
@@ -623,6 +625,29 @@ mixin FcmNotificationHandler<T extends StatefulWidget> on State<T> {
       case NotificationType.promoClaimed:
         onPromoClaimed(data);
         break;
+      // Scheduled ride notification handlers
+      case NotificationType.scheduledReminder1hr:
+      case NotificationType.scheduledReminder15min:
+        onScheduledReminder(data);
+        break;
+      case NotificationType.scheduledRideActivated:
+        onScheduledRideActivated(data);
+        break;
+      case NotificationType.scheduledDriverCancelled:
+        onScheduledDriverCancelled(data);
+        break;
+      case NotificationType.depositTimeout:
+        onDepositTimeout(data);
+        break;
+      case NotificationType.scheduledRideExpired:
+        onScheduledRideExpired(data);
+        break;
+      case NotificationType.scheduledNoShow:
+        onScheduledNoShow(data);
+        break;
+      case NotificationType.scheduledRideCancelledByUser:
+        onScheduledRideCancelledByUser(data);
+        break;
       default:
         debugPrint('🔔 [FCM Handler] Unknown notification type: ${data.type}');
     }
@@ -661,4 +686,13 @@ mixin FcmNotificationHandler<T extends StatefulWidget> on State<T> {
   void onPromoUnlocked(FcmNotificationData data) {}
   void onPromoApplied(FcmNotificationData data) {}
   void onPromoClaimed(FcmNotificationData data) {}
+
+  // Scheduled ride notification handlers
+  void onScheduledReminder(FcmNotificationData data) {}
+  void onScheduledRideActivated(FcmNotificationData data) {}
+  void onScheduledDriverCancelled(FcmNotificationData data) {}
+  void onDepositTimeout(FcmNotificationData data) {}
+  void onScheduledRideExpired(FcmNotificationData data) {}
+  void onScheduledNoShow(FcmNotificationData data) {}
+  void onScheduledRideCancelledByUser(FcmNotificationData data) {}
 }

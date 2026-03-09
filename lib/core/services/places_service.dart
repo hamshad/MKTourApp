@@ -235,7 +235,10 @@ class PlacesService {
         );
 
         if (data['success'] == true || data['status'] == 'OK') {
+          // Backend wraps the address in data.data.formatted_address
+          final innerData = data['data'] as Map<String, dynamic>?;
           final address =
+              innerData?['formatted_address'] ??
               data['formatted_address'] ??
               data['results']?[0]?['formatted_address'] ??
               data['address'];

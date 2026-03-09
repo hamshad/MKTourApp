@@ -824,9 +824,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       });
 
       // Show notification
+      final isScheduled = data['isScheduled'] == true;
       CustomSnackbar.show(
         context,
-        message: 'New Ride Request! 🚗',
+        message: isScheduled ? 'Scheduled Ride Request! 📅' : 'New Ride Request! 🚗',
         type: SnackbarType.success,
       );
     } else {

@@ -246,6 +246,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       '✅ [HomeScreen] Navigating to RideAssignedScreen with rideId: $rideId',
     );
 
+    final bool isScheduled = data['isScheduled'] == true;
+
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (context) => RideAssignedScreen(
@@ -256,6 +258,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           fare: fare,
           paymentTiming: paymentTiming,
           clientSecret: clientSecret,
+          isScheduled: isScheduled,
         ),
       ),
     );
@@ -336,6 +339,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _socketService.off('ride:expired');
     _socketService.off('ride:cancelled');
     _socketService.off('user:status');
+    _socketService.off('ride:depositConfirmed');
+    _socketService.off('ride:scheduledActivated');
+    _socketService.off('ride:scheduledDriverCancelled');
+    _socketService.off('ride:reminder');
+    _socketService.off('ride:depositTimeout');
+    _socketService.off('ride:scheduledExpired');
+    _socketService.off('ride:noShow');
 
     // Listen for ride accepted event
     _socketService.on('ride:accepted', (data) {
@@ -476,6 +486,52 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           context,
           message: data['message'] ?? 'Reminder: You have a scheduled ride soon!',
           type: SnackbarType.warning,
+        );
+      }
+    });
+
+    _socketService.on('ride:depositTimeout', (data) {
+      debugPrint('⏰ [HomeScreen] Deposit Timeout: $data');
+      if (mounted) {
+        _fetchRideHistory();
+        CustomSnackbar.show(
+          context,
+          message: data['message'] ?? 'Your booking expired because the deposit was not paid in time.',
+          type: SnackbarType.error,
+        );
+      }
+    });
+
+    _socketService.on('ride:scheduledExpired', (data) {
+      debugPrint('😞 [HomeScreen] Scheduled Ride Expired: $data');
+      if (mounted) {
+        _fetchRideHistory();
+        CustomSnackbar.show(
+          context,
+          message: data['message'] ?? 'No driver was found for your scheduled ride. Your deposit will be refunded.',
+          type: SnackbarType.error,
+        );
+      }
+    });
+
+    _socketService.on('ride:noShow', (data) {
+      debugPrint('❌ [HomeScreen] No Show: $data');
+      if (mounted) {
+        _fetchRideHistory();
+        // depositForfeited is a number (e.g. 0.53), not a boolean
+        final forfeitedRaw = data['depositForfeited'];
+        final depositForfeited = forfeitedRaw != null &&
+            forfeitedRaw != false &&
+            forfeitedRaw != 0;
+        final forfeitedAmount = (forfeitedRaw is num) ? forfeitedRaw.toDouble() : 0.0;
+        final forfeitedStr = forfeitedAmount > 0 ? ' £${forfeitedAmount.toStringAsFixed(2)} deposit forfeited.' : '';
+        CustomSnackbar.show(
+          context,
+          message: data['message'] ??
+              (depositForfeited
+                  ? 'Ride cancelled due to no-show.$forfeitedStr'
+                  : 'Ride cancelled due to no-show.'),
+          type: SnackbarType.error,
         );
       }
     });
@@ -741,6 +797,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _socketService.off('ride:expired');
     _socketService.off('ride:cancelled');
     _socketService.off('user:status');
+    _socketService.off('ride:depositConfirmed');
+    _socketService.off('ride:scheduledActivated');
+    _socketService.off('ride:scheduledDriverCancelled');
+    _socketService.off('ride:reminder');
+    _socketService.off('ride:depositTimeout');
+    _socketService.off('ride:scheduledExpired');
+    _socketService.off('ride:noShow');
 
     _pageController.dispose();
     _bannerTimer?.cancel();
@@ -1237,6 +1300,61 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       // Promo Status Banner
                       if (_promoStatusData != null)
                         _buildPromoBanner(_promoStatusData!),
+
+                      // Scheduled Rides Quick Action
+                      InkWell(
+                        onTap: () => Navigator.pushNamed(context, '/scheduled-rides'),
+                        borderRadius: BorderRadius.circular(14),
+                        child: Container(
+                          padding: const EdgeInsets.all(14),
+                          margin: const EdgeInsets.only(bottom: 20),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryColor.withValues(alpha: 0.06),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: AppTheme.primaryColor.withValues(alpha: 0.15),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primaryColor.withValues(alpha: 0.12),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.calendar_today,
+                                    color: AppTheme.primaryColor, size: 22),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'My Scheduled Rides',
+                                      style: GoogleFonts.outfit(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppTheme.textPrimary,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'View and manage your pre-booked rides',
+                                      style: GoogleFonts.outfit(
+                                        fontSize: 12,
+                                        color: Colors.grey[600],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Icon(Icons.chevron_right, color: Colors.grey[400]),
+                            ],
+                          ),
+                        ),
+                      ),
 
                       // Recent Activity
                       Row(

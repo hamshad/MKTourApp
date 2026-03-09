@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme.dart';
 import '../../core/services/navigation_service.dart';
@@ -71,6 +72,50 @@ class DriverNavigationPanel extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 20),
+
+          // Scheduled ride banner
+          if (rideData?['isScheduled'] == true) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              margin: const EdgeInsets.only(bottom: 14),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppTheme.primaryColor.withOpacity(0.4)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.calendar_month, color: AppTheme.primaryColor, size: 18),
+                  const SizedBox(width: 10),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '📅 Scheduled Ride',
+                        style: TextStyle(
+                          color: AppTheme.primaryColor,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                        ),
+                      ),
+                      if (rideData?['scheduledPickupTime'] != null)
+                        Text(
+                          DateFormat('EEE, MMM d @ hh:mm a').format(
+                            DateTime.parse(rideData!['scheduledPickupTime']).toLocal(),
+                          ),
+                          style: const TextStyle(
+                            color: Colors.black87,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
 
           // Navigation Instruction
           Row(

@@ -4,7 +4,10 @@ import '../../core/theme.dart';
 import '../../core/api_service.dart';
 import '../../core/services/places_service.dart';
 import '../../core/services/payment_service.dart';
+import '../../core/services/socket_service.dart';
+import '../ride/payment_webview_screen.dart';
 import '../ride/ride_assigned_screen.dart';
+import 'dart:async';
 import '../../core/widgets/platform_map.dart';
 import 'package:latlong2/latlong.dart' as lat_lng;
 import 'package:flutter_map/flutter_map.dart' as fmap;
@@ -417,9 +420,17 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
           debugPrint('✅ [RideConfirmationScreen] Ride created: $rideId');
 
           if (scheduledAt != null) {
-            // It's a pre-booking, show success dialog
-            _showPreBookingSuccess(rideId, scheduledAt);
             setState(() => _isLoading = false);
+            final paymentUrl = result.data!['paymentUrl']?.toString();
+            if (paymentUrl != null && paymentUrl.isNotEmpty) {
+              await _handleScheduledDepositPayment(
+                rideId: rideId,
+                paymentUrl: paymentUrl,
+                scheduledAt: scheduledAt,
+              );
+            } else {
+              _showPreBookingSuccess(rideId, scheduledAt);
+            }
             return;
           }
 
@@ -464,6 +475,58 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
           ),
         );
       }
+    }
+  }
+
+  Future<void> _handleScheduledDepositPayment({
+    required String rideId,
+    required String paymentUrl,
+    required DateTime scheduledAt,
+  }) async {
+    final socketService = SocketService();
+    final depositCompleter = Completer<bool>();
+
+    void onDepositConfirmed(dynamic data) {
+      final confirmedRideId =
+          data is Map ? (data['rideId'] ?? data['_id'])?.toString() : null;
+      if (confirmedRideId == rideId && !depositCompleter.isCompleted) {
+        depositCompleter.complete(true);
+      }
+    }
+
+    socketService.on('ride:depositConfirmed', onDepositConfirmed);
+
+    try {
+      final webViewResult = await Navigator.of(context).push<Map<String, dynamic>>(
+        MaterialPageRoute(
+          builder: (_) => PaymentWebViewScreen(
+            paymentUrl: paymentUrl,
+            rideId: rideId,
+          ),
+        ),
+      );
+
+      final success = webViewResult?['success'] == true;
+
+      if (success) {
+        // Wait briefly for socket confirmation (server may fire it after redirect)
+        await depositCompleter.future
+            .timeout(const Duration(seconds: 15), onTimeout: () => true);
+        if (mounted) _showPreBookingSuccess(rideId, scheduledAt);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Deposit payment was not completed. You can pay from your scheduled rides.',
+              ),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+      }
+    } finally {
+      socketService.off('ride:depositConfirmed');
     }
   }
 

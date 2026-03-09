@@ -26,6 +26,7 @@ class RideAssignedScreen extends StatefulWidget {
   final Map<String, dynamic>? driver; // Added initial driver data
   final String? paymentTiming; // 'pay_now' or 'pay_later'
   final String? clientSecret; // for pay_later (saved from createRide)
+  final bool isScheduled;
 
   const RideAssignedScreen({
     super.key,
@@ -36,6 +37,7 @@ class RideAssignedScreen extends StatefulWidget {
     this.driver,
     this.paymentTiming,
     this.clientSecret,
+    this.isScheduled = false,
   });
 
   @override
@@ -132,6 +134,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   double? _currentFare;
   double? _completedFare; // actual fare captured from ride:completed event
   Map<String, dynamic>? _completedRideData; // full ride:completed payload
+
+  // Scheduled ride flag — set from widget param and confirmed from live ride data
+  bool _isScheduled = false;
 
   @override
   void initState() {
@@ -328,6 +333,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   void _setupInitialState() {
     debugPrint('🚀 [RideAssignedScreen] Setting up initial state...');
     debugPrint('🚀 [RideAssignedScreen] widget.driver: ${widget.driver}');
+
+    // Initialise scheduled flag from widget param
+    _isScheduled = widget.isScheduled;
 
     final bool hasValidInitialDriver = _isValidDriver(widget.driver);
 
@@ -1067,6 +1075,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
               _promoFullyCovered = fullyCovered;
               if (originalFare != null) _promoOriginalFare = originalFare;
               if (fare != null) _currentFare = fare;
+              // Confirm scheduled flag from live data
+              if (rideData['isScheduled'] == true) _isScheduled = true;
             });
             debugPrint(
               '🚖 [RideAssignedScreen] Pre-dialog sync — isPromo: $isPromo, fullyCovered: $fullyCovered, fare: $fare',
@@ -2661,14 +2671,15 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                   ),
                 ],
                 const SizedBox(height: 24),
-                // Cash option - available for both iOS and Android
-                _buildPaymentOption(
-                  icon: Icons.money,
-                  title: 'Cash',
-                  subtitle: 'Pay directly to driver',
-                  onTap: () => _handlePaymentSelection('cash'),
-                ),
-                const SizedBox(height: 16),
+                // Cash option — not available for scheduled rides (deposit already paid)
+                if (!_isScheduled)
+                  _buildPaymentOption(
+                    icon: Icons.money,
+                    title: 'Cash',
+                    subtitle: 'Pay directly to driver',
+                    onTap: () => _handlePaymentSelection('cash'),
+                  ),
+                if (!_isScheduled) const SizedBox(height: 16),
                 // Payment Link option - available on both iOS and Android
                 _buildPaymentOption(
                   icon: Icons.link,

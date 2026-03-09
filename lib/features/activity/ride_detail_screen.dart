@@ -5,7 +5,6 @@ import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/platform_map.dart';
 import '../../core/auth_provider.dart';
-import '../../core/services/payment_service.dart';
 
 class RideDetailScreen extends StatefulWidget {
   final String rideId;
@@ -393,84 +392,6 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                             ),
                           ],
                         ),
-                        if (_rideData?['isScheduled'] == true) ...[
-                          const SizedBox(height: 12),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text(
-                                'Deposit Paid (10%)',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  color: AppTheme.textSecondary,
-                                ),
-                              ),
-                              Text(
-                                '- £${(_rideData!['depositAmount'] as num).toStringAsFixed(2)}',
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  color: Colors.green,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Divider(color: AppTheme.borderColor),
-                          const SizedBox(height: 8),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text(
-                                'Balance to Pay',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppTheme.textPrimary,
-                                ),
-                              ),
-                              Text(
-                                '£${(rawFare - (_rideData!['depositAmount'] as num)).toStringAsFixed(2)}',
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppTheme.primaryColor,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                        
-                        // Action Buttons
-                        if (_rideData?['status'] == 'scheduled' || 
-                            _rideData?['status'] == 'requested' || 
-                            _rideData?['status'] == 'accepted') 
-                          Padding(
-                            padding: const EdgeInsets.only(top: 32),
-                            child: SizedBox(
-                              width: double.infinity,
-                              height: 54,
-                              child: ElevatedButton(
-                                onPressed: _isLoading ? null : () => _confirmCancellation(),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.white,
-                                  foregroundColor: Colors.red,
-                                  side: const BorderSide(color: Colors.red),
-                                  elevation: 0,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                                child: const Text(
-                                  'Cancel Ride',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
                       ],
                     ),
                   ),
@@ -478,74 +399,6 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
               ),
             ),
     );
-  }
-
-  void _confirmCancellation() {
-    final isScheduled = _rideData?['isScheduled'] == true;
-    
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Cancel Ride?'),
-        content: Text(
-          isScheduled 
-            ? 'Are you sure you want to cancel this scheduled ride? Deposits are non-refundable if cancelled within 3 hours of pickup.'
-            : 'Are you sure you want to cancel this ride?'
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Keep Ride'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _cancelRide();
-            },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Confirm Cancel'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _cancelRide() async {
-    setState(() => _isLoading = true);
-    
-    try {
-      final isScheduled = _rideData?['isScheduled'] == true;
-      PaymentResult result;
-      
-      if (isScheduled) {
-        result = await PaymentService.cancelScheduledRideUser(widget.rideId);
-      } else {
-        result = await PaymentService.cancelRideWithRefund(widget.rideId);
-      }
-      
-      if (mounted) {
-        if (result.success) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(result.message ?? 'Ride cancelled')),
-          );
-          Navigator.pop(context); // Go back to activity list
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(result.error ?? 'Cancellation failed')),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
   }
 
   Widget _buildLocationRow({

@@ -1,7 +1,7 @@
 class ApiConstants {
   // Local development socket URL (commented when using live API)
-  // static const String socketUrl = 'http://192.168.1.13:5000';
-  static const String socketUrl = 'http://192.168.1.20:5001';
+  static const String socketUrl = 'http://192.168.1.12:5000';
+  // static const String socketUrl = 'http://192.168.1.22:5001';
   // Live API socket URL
   // static const String socketUrl = 'https://api.mktours.co.uk';
   static const String baseUrl = '$socketUrl/api/v1';
@@ -15,16 +15,6 @@ class ApiConstants {
   static String getActiveVehicles() => '$vehicles?active=true';
   static const String vehicleCategories = '$baseUrl/vehicle-categories';
   static String getActiveCategories() => '$vehicleCategories?active=true';
-
-  // Scheduled Ride Endpoints
-  static const String scheduleRide = '$baseUrl/rides/schedule';
-  static const String scheduledRides = '$baseUrl/rides/scheduled';
-  static String confirmDeposit(String id) =>
-      '$baseUrl/rides/$id/confirm-deposit';
-  static String cancelScheduledRideUser(String id) =>
-      '$baseUrl/rides/$id/cancel/scheduled/user';
-  static String cancelScheduledRideDriver(String id) =>
-      '$baseUrl/rides/$id/cancel/scheduled/driver';
 
   // User Endpoints
   static const String userRegister = '$baseUrl/user/register';
@@ -79,6 +69,16 @@ class ApiConstants {
 
   // End ride early endpoint (driver only, during ride)
   static String endRideEarly(String id) => '$baseUrl/rides/$id/end-early';
+
+  // Scheduled Ride Endpoints
+  static const String scheduleRide = '$baseUrl/rides/schedule';
+  static const String scheduledRides = '$baseUrl/rides/scheduled';
+  static String confirmDeposit(String id) =>
+      '$baseUrl/rides/$id/confirm-deposit';
+  static String cancelScheduledRideUser(String id) =>
+      '$baseUrl/rides/$id/cancel/scheduled/user';
+  static String cancelScheduledRideDriver(String id) =>
+      '$baseUrl/rides/$id/cancel/scheduled/driver';
 
   // Airport Endpoints
   static const String airports = '$baseUrl/airports';

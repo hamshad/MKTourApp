@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../core/theme.dart';
 
+/// Bottom sheet for selecting a scheduled ride date/time and optional note.
 class ScheduleRideSheet extends StatefulWidget {
   final DateTime initialDateTime;
-  final Function(DateTime selectedDateTime, String? notes) onSchedule;
+  final void Function(DateTime selectedDateTime, String? notes) onSchedule;
 
   const ScheduleRideSheet({
     super.key,
@@ -23,44 +24,35 @@ class _ScheduleRideSheetState extends State<ScheduleRideSheet> {
   @override
   void initState() {
     super.initState();
-    // Default to at least 1 hour from now as per requirement
-    final now = DateTime.now();
-    final defaultTime = now.add(const Duration(hours: 1));
-    _selectedDateTime = widget.initialDateTime.isBefore(defaultTime)
-        ? defaultTime
-        : widget.initialDateTime;
+    _selectedDateTime = widget.initialDateTime;
   }
 
-  Future<void> _selectDate() async {
+  @override
+  void dispose() {
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDate() async {
     final now = DateTime.now();
-    final firstDate = now.add(const Duration(minutes: 55)); // Approx 1 hour min
-    final lastDate = now.add(const Duration(days: 30)); // 30 days max
-
-    final DateTime? pickedDate = await showDatePicker(
+    final picked = await showDatePicker(
       context: context,
-      initialDate: _selectedDateTime.isBefore(firstDate) ? firstDate : _selectedDateTime,
+      initialDate: _selectedDateTime,
       firstDate: now,
-      lastDate: lastDate,
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: ColorScheme.light(
-              primary: AppTheme.primaryColor,
-              onPrimary: Colors.white,
-              onSurface: Colors.black,
-            ),
-          ),
-          child: child!,
-        );
-      },
+      lastDate: now.add(const Duration(days: 30)),
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: ColorScheme.light(primary: AppTheme.primaryColor),
+        ),
+        child: child!,
+      ),
     );
-
-    if (pickedDate != null) {
+    if (picked != null) {
       setState(() {
         _selectedDateTime = DateTime(
-          pickedDate.year,
-          pickedDate.month,
-          pickedDate.day,
+          picked.year,
+          picked.month,
+          picked.day,
           _selectedDateTime.hour,
           _selectedDateTime.minute,
         );
@@ -68,304 +60,218 @@ class _ScheduleRideSheetState extends State<ScheduleRideSheet> {
     }
   }
 
-  Future<void> _selectTime() async {
-    final TimeOfDay? pickedTime = await showTimePicker(
+  Future<void> _pickTime() async {
+    final picked = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(_selectedDateTime),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: ColorScheme.light(
-              primary: AppTheme.primaryColor,
-              onPrimary: Colors.white,
-              onSurface: Colors.black,
-            ),
-          ),
-          child: child!,
-        );
-      },
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: ColorScheme.light(primary: AppTheme.primaryColor),
+        ),
+        child: child!,
+      ),
     );
-
-    if (pickedTime != null) {
-      final now = DateTime.now();
-      final newDateTime = DateTime(
-        _selectedDateTime.year,
-        _selectedDateTime.month,
-        _selectedDateTime.day,
-        pickedTime.hour,
-        pickedTime.minute,
-      );
-
-      // Validation: Must be at least 1 hour from now
-      if (newDateTime.isBefore(now.add(const Duration(minutes: 55)))) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Scheduled time must be at least 1 hour from now'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-        return;
-      }
-
+    if (picked != null) {
       setState(() {
-        _selectedDateTime = newDateTime;
+        _selectedDateTime = DateTime(
+          _selectedDateTime.year,
+          _selectedDateTime.month,
+          _selectedDateTime.day,
+          picked.hour,
+          picked.minute,
+        );
       });
     }
   }
 
-  void _showPaymentSelection() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Select Payment Method',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'A 10% non-refundable deposit is required.',
-                style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
-              ),
-              const SizedBox(height: 24),
-              _buildPaymentOption(
-                icon: Icons.money,
-                title: 'Cash',
-                subtitle: 'Pay deposit later (if applicable)',
-                onTap: () {
-                  Navigator.pop(context); // Close selection
-                  widget.onSchedule(_selectedDateTime, _notesController.text);
-                  Navigator.pop(this.context); // Close sheet
-                },
-              ),
-              const SizedBox(height: 16),
-              _buildPaymentOption(
-                icon: Icons.payment,
-                title: 'Card / Online',
-                subtitle: 'Pay 10% deposit now via Stripe',
-                onTap: () {
-                  Navigator.pop(context); // Close selection
-                  widget.onSchedule(_selectedDateTime, _notesController.text);
-                  Navigator.pop(this.context); // Close sheet
-                },
-              ),
-              const SizedBox(height: 16),
-            ],
-          ),
-        ),
-      ),
-    );
+  bool get _isValid {
+    final minTime = DateTime.now().add(const Duration(hours: 1));
+    return _selectedDateTime.isAfter(minTime);
   }
 
-  Widget _buildPaymentOption({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.grey[300]!),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+      child: SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Handle
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Schedule for Later',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Choose a pickup time at least 1 hour from now',
+              style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+            ),
+            const SizedBox(height: 24),
+
+            // Date picker row
+            _buildPickerTile(
+              icon: Icons.calendar_today,
+              label: DateFormat('EEE, MMM dd yyyy').format(_selectedDateTime),
+              onTap: _pickDate,
+            ),
+            const SizedBox(height: 12),
+
+            // Time picker row
+            _buildPickerTile(
+              icon: Icons.access_time,
+              label: DateFormat('h:mm a').format(_selectedDateTime),
+              onTap: _pickTime,
+            ),
+            const SizedBox(height: 20),
+
+            // Note field
+            TextField(
+              controller: _notesController,
+              maxLines: 2,
+              decoration: InputDecoration(
+                hintText: 'Add a note for your driver (optional)',
+                hintStyle: TextStyle(color: Colors.grey[400]),
+                filled: true,
+                fillColor: Colors.grey[50],
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[200]!),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[200]!),
+                ),
+                contentPadding: const EdgeInsets.all(14),
+              ),
+            ),
+            const SizedBox(height: 8),
+
+            if (!_isValid)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  'Pickup must be at least 1 hour from now',
+                  style: TextStyle(fontSize: 12, color: Colors.red[600]),
+                ),
+              ),
+
+            // Info banner
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
+                color: Colors.blue[50],
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(icon, color: AppTheme.primaryColor),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
                 children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.textPrimary,
-                    ),
-                  ),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppTheme.textSecondary,
+                  Icon(Icons.info_outline, color: Colors.blue[700], size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'A 10% deposit will be charged to confirm your booking. The remaining 90% is paid at pickup.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.blue[800],
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right, color: Colors.grey),
+            const SizedBox(height: 20),
+
+            // Confirm button
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton(
+                onPressed: _isValid
+                    ? () {
+                        Navigator.pop(context);
+                        widget.onSchedule(
+                          _selectedDateTime,
+                          _notesController.text.isNotEmpty
+                              ? _notesController.text
+                              : null,
+                        );
+                      }
+                    : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColor,
+                  disabledBackgroundColor: Colors.grey[300],
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                child: const Text(
+                  'Schedule & Pay Deposit',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.only(
-        left: 24,
-        right: 24,
-        top: 24,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-      ),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildPickerTile({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey[200]!),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
           children: [
-            Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Schedule a Ride',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              IconButton(
-                onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.close),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          
-          // Date Selection
-          InkWell(
-            onTap: _selectDate,
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey[300]!),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.calendar_today, color: AppTheme.primaryColor),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Text(
-                      DateFormat('EEEE, MMM d, yyyy').format(_selectedDateTime),
-                      style: const TextStyle(fontSize: 16),
-                    ),
-                  ),
-                  const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          
-          // Time Selection
-          InkWell(
-            onTap: _selectTime,
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey[300]!),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.access_time, color: AppTheme.primaryColor),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Text(
-                      DateFormat('hh:mm a').format(_selectedDateTime),
-                      style: const TextStyle(fontSize: 16),
-                    ),
-                  ),
-                  const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          
-          // Notes/Special Instructions
-          TextField(
-            controller: _notesController,
-            maxLines: 2,
-            decoration: InputDecoration(
-              hintText: 'Notes for driver (optional)',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.grey[300]!),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.grey[300]!),
-              ),
-              prefixIcon: const Icon(Icons.note_alt_outlined),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Keep in mind: A 10% non-refundable deposit will be required to confirm your scheduled booking.',
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey[600],
-              fontStyle: FontStyle.italic,
-            ),
-          ),
-          const SizedBox(height: 24),
-          
-          // Confirm Button
-          SizedBox(
-            width: double.infinity,
-            height: 54,
-            child: ElevatedButton(
-              onPressed: _showPaymentSelection,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryColor,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: const Text(
-                'Confirm Schedule',
-                style: TextStyle(
-                  color: Colors.white,
+            Icon(icon, color: AppTheme.primaryColor, size: 22),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(
                   fontSize: 16,
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w500,
+                  color: AppTheme.textPrimary,
                 ),
               ),
             ),
-          ),
-        ],
+            Icon(Icons.chevron_right, color: Colors.grey[400]),
+          ],
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 }
