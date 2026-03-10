@@ -207,7 +207,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => ScheduleRideSheet(
-        initialDateTime: DateTime.now().add(const Duration(hours: 1)),
+        initialDateTime: DateTime.now().add(const Duration(minutes: 30)),
         onSchedule: (selectedDateTime, notes) {
           _processBooking(PaymentTiming.payLater,
               scheduledAt: selectedDateTime, notes: notes);

@@ -21,6 +21,9 @@ class _ScheduleRideSheetState extends State<ScheduleRideSheet> {
   late DateTime _selectedDateTime;
   final TextEditingController _notesController = TextEditingController();
 
+  DateTime get _minimumScheduleTime =>
+      DateTime.now().add(const Duration(minutes: 30));
+
   @override
   void initState() {
     super.initState();
@@ -85,23 +88,30 @@ class _ScheduleRideSheetState extends State<ScheduleRideSheet> {
   }
 
   bool get _isValid {
-    final minTime = DateTime.now().add(const Duration(hours: 1));
-    return _selectedDateTime.isAfter(minTime);
+    return !_selectedDateTime.isBefore(_minimumScheduleTime);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
-      child: SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+    final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
+
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOut,
+      padding: EdgeInsets.only(bottom: keyboardInset),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+        child: SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
             // Handle
             Center(
               child: Container(
@@ -124,7 +134,7 @@ class _ScheduleRideSheetState extends State<ScheduleRideSheet> {
             ),
             const SizedBox(height: 4),
             Text(
-              'Choose a pickup time at least 1 hour from now',
+              'Choose a pickup time at least 30 minutes from now',
               style: TextStyle(fontSize: 13, color: Colors.grey[600]),
             ),
             const SizedBox(height: 24),
@@ -171,7 +181,7 @@ class _ScheduleRideSheetState extends State<ScheduleRideSheet> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Text(
-                  'Pickup must be at least 1 hour from now',
+                  'Pickup must be at least 30 minutes from now',
                   style: TextStyle(fontSize: 12, color: Colors.red[600]),
                 ),
               ),
@@ -234,7 +244,9 @@ class _ScheduleRideSheetState extends State<ScheduleRideSheet> {
                 ),
               ),
             ),
-          ],
+              ],
+            ),
+          ),
         ),
       ),
     );
