@@ -109,6 +109,36 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
               ),
             ),
           ),
+          const SizedBox(height: 10),
+          // Fallback Alert Banner
+          if (widget.rideData?['isFallback']?.toString().toLowerCase() == 'true')
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.orange[200]!),
+              ),
+              child: Row(
+                children: [
+                   Icon(Icons.info_outline, color: Colors.orange[800], size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      widget.rideData?['fallbackNote'] ?? 
+                      widget.rideData?['message'] ?? 
+                      'No 5 Seaters available. Acceptance pays the 5 Seater fare.',
+                      style: TextStyle(
+                        color: Colors.orange[900],
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           const SizedBox(height: 20),
 
           // Header
@@ -125,28 +155,51 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                   color: AppTheme.textPrimary,
                 ),
               ),
-              if (widget.rideData?['isPriority'] == true)
+              if (widget.rideData?['isFallback']?.toString().toLowerCase() == 'true')
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.red,
-                    borderRadius: BorderRadius.circular(20),
+                    color: Colors.orange,
+                    borderRadius: BorderRadius.circular(6),
                   ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.warning, color: Colors.white, size: 14),
-                      SizedBox(width: 4),
-                      Text(
-                        'PRIORITY',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 10,
-                        ),
+                  child: const Text(
+                    'FALLBACK',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              if (widget.rideData?['isPriority'] == true)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (widget.rideData?['isFallback']?.toString().toLowerCase() == 'true')
+                      const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        borderRadius: BorderRadius.circular(20),
                       ),
-                    ],
-                  ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.warning, color: Colors.white, size: 14),
+                          SizedBox(width: 4),
+                          Text(
+                            'PRIORITY',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
             ],
           ),
@@ -197,19 +250,32 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.grey[50],
+              color: widget.rideData?['isFallback']?.toString().toLowerCase() == 'true' 
+                  ? Colors.orange[50]!.withOpacity(0.3) 
+                  : Colors.grey[50],
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.grey[200]!),
+              border: Border.all(
+                color: widget.rideData?['isFallback']?.toString().toLowerCase() == 'true'
+                    ? Colors.orange[200]!
+                    : Colors.grey[200]!,
+                width: widget.rideData?['isFallback']?.toString().toLowerCase() == 'true' ? 2 : 1,
+              ),
             ),
             child: Row(
               children: [
-                const CircleAvatar(
+                CircleAvatar(
                   radius: 28,
-                  backgroundColor: Colors.white,
+                  backgroundColor: widget.rideData?['isFallback']?.toString().toLowerCase() == 'true'
+                      ? Colors.orange[100]
+                      : Colors.white,
                   child: Icon(
-                    Icons.person,
+                    widget.rideData?['isFallback']?.toString().toLowerCase() == 'true'
+                        ? Icons.swap_calls
+                        : Icons.person,
                     size: 30,
-                    color: AppTheme.textSecondary,
+                    color: widget.rideData?['isFallback']?.toString().toLowerCase() == 'true'
+                        ? Colors.orange[800]
+                        : AppTheme.textSecondary,
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -261,10 +327,17 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                           const SizedBox(width: 4),
                         ],
                         Text(
-                          'Est. Fare',
+                          widget.rideData?['isFallback']?.toString().toLowerCase() == 'true'
+                              ? 'Standard 5-Seater Rate'
+                              : 'Est. Fare',
                           style: TextStyle(
                             fontSize: 12,
-                            color: Colors.grey[500],
+                            color: widget.rideData?['isFallback']?.toString().toLowerCase() == 'true'
+                                ? Colors.orange[800]
+                                : Colors.grey[500],
+                            fontWeight: widget.rideData?['isFallback']?.toString().toLowerCase() == 'true'
+                                ? FontWeight.bold
+                                : FontWeight.normal,
                           ),
                         ),
                       ],

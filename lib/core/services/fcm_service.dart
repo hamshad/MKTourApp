@@ -78,6 +78,8 @@ class FcmNotificationData {
   final String? paymentMethod;
   final String? driverName;
   final String? pickupAddress;
+  final bool isFallback;
+  final String? fallbackNote;
   final Map<String, dynamic> rawData;
 
   FcmNotificationData({
@@ -93,6 +95,8 @@ class FcmNotificationData {
     this.paymentMethod,
     this.driverName,
     this.pickupAddress,
+    this.isFallback = false,
+    this.fallbackNote,
     required this.rawData,
   });
 
@@ -110,6 +114,8 @@ class FcmNotificationData {
       paymentMethod: data['paymentMethod'],
       driverName: data['driverName'] ?? data['name'],
       pickupAddress: data['pickupAddress'] ?? data['pickup'],
+      isFallback: data['isFallback']?.toString().toLowerCase() == 'true',
+      fallbackNote: data['fallbackNote'] ?? data['message'],
       rawData: data,
     );
   }
@@ -439,7 +445,12 @@ class FcmService {
   /// Show local notification
   Future<void> _showLocalNotification(RemoteMessage message) async {
     final notification = message.notification;
-    if (notification == null) return;
+    
+    // Extract title and body from notification object or data payload
+    final String? title = notification?.title ?? message.data['title'];
+    final String? body = notification?.body ?? message.data['body'];
+
+    if (title == null && body == null) return;
 
     const androidDetails = AndroidNotificationDetails(
       'mktours_rides',
@@ -464,8 +475,8 @@ class FcmService {
 
     await _localNotifications.show(
       message.hashCode,
-      notification.title,
-      notification.body,
+      title,
+      body,
       details,
       payload: jsonEncode(message.data),
     );

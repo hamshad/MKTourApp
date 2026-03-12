@@ -825,9 +825,16 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
 
       // Show notification
       final isScheduled = data['isScheduled'] == true;
+      final isFallback = data['isFallback']?.toString().toLowerCase() == 'true';
+
+      String message = isScheduled ? 'Scheduled Ride Request! 📅' : 'New Ride Request! 🚗';
+      if (isFallback) {
+        message = 'Open Ride Request (5-Seater)! 🚗';
+      }
+
       CustomSnackbar.show(
         context,
-        message: isScheduled ? 'Scheduled Ride Request! 📅' : 'New Ride Request! 🚗',
+        message: message,
         type: SnackbarType.success,
       );
     } else {
