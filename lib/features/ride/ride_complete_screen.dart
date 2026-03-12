@@ -21,15 +21,71 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
 
 
   // Get actual fare from ride data
-  double get _fare => (widget.rideData['fare'] ?? 0.0).toDouble();
-  double get _distance => (widget.rideData['distance'] ?? widget.rideData['actualDistance'] ?? 0.0).toDouble();
-  double get _originalFare => (widget.rideData['originalFare'] ?? 0.0).toDouble();
+  double get _fare {
+    final rawFare = (widget.rideData['fare'] ?? 0.0).toDouble();
+
+    // For scheduled airport rides, we want to show the remaining balance
+    if (_isScheduled && _isAirportTransfer) {
+      // Look for explicit remaining payment fields from the API or socket response
+      if (widget.rideData.containsKey('remainingPayment')) {
+        debugPrint('🔍 [FARE_LOG] Found fare via: remainingPayment');
+        return (widget.rideData['remainingPayment'] as num).toDouble();
+      }
+      if (widget.rideData.containsKey('amount')) {
+        debugPrint('🔍 [FARE_LOG] Found fare via: amount');
+        return (widget.rideData['amount'] as num).toDouble();
+      }
+      if (widget.rideData.containsKey('totalFare')) {
+        final tf = (widget.rideData['totalFare'] as num).toDouble();
+        if (tf != _originalFare) {
+          debugPrint('🔍 [FARE_LOG] Found fare via: totalFare');
+          return tf;
+        }
+      }
+    }
+    debugPrint('🔍 [FARE_LOG] Found fare via: fare (default)');
+    return rawFare;
+  }
+
+  double get _distance =>
+      (widget.rideData['distance'] ?? widget.rideData['actualDistance'] ?? 0.0)
+          .toDouble();
+
+  double get _originalFare {
+    // Prefer the explicit original fare if already set by previous screens or API
+    final original = (widget.rideData['originalFare'] ?? 0.0).toDouble();
+    if (original > 0) {
+      debugPrint('🔍 [FARE_LOG] Found originalFare via: originalFare');
+      return original;
+    }
+
+    // Fallback: If it's a scheduled airport ride and we have two different numbers,
+    // the larger one is almost certainly the Original Fare.
+    if (_isScheduled && _isAirportTransfer) {
+      final rawFare = (widget.rideData['fare'] ?? 0.0).toDouble();
+      final alternate = (widget.rideData['amount'] ??
+              widget.rideData['remainingPayment'] ??
+              widget.rideData['totalFare'] ??
+              0.0)
+          .toDouble();
+
+      if (alternate > 0 && alternate != rawFare) {
+        final larger = rawFare > alternate ? rawFare : alternate;
+        debugPrint(
+            '🔍 [FARE_LOG] Found originalFare via: comparison (larger of fare/alternate)');
+        return larger;
+      }
+    }
+    return 0.0;
+  }
+
   bool get _isPromoRide => widget.rideData['isPromoRide'] == true;
   bool get _isEarlyCompletion => 
       widget.rideData['status'] == 'early_completed' || 
       widget.rideData['earlyCompleted'] == true;
   String get _reason => widget.rideData['reason'] ?? '';
   bool get _isAirportTransfer => widget.rideData['isAirportTransfer'] == true; // Check if it's an airport transfer
+  bool get _isScheduled => widget.rideData['isScheduled'] == true;
   String get _rideId =>
       widget.rideData['bookingId'] ??
       widget.rideData['_id'] ??
@@ -188,9 +244,12 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
   Widget build(BuildContext context) {
     final driver = widget.rideData['driver'] ?? {};
 
-    debugPrint('⭐ RIDE COMPLETE: Screen loaded');
-    debugPrint('⭐ RIDE COMPLETE: Driver = ${driver['name']}');
-    debugPrint('⭐ RIDE COMPLETE: Fare = $_fare');
+    debugPrint('⭐ ------------------------------------------------------------------');
+    debugPrint('⭐ [RIDE COMPLETE] Screen Loaded');
+    debugPrint('⭐ [RIDE COMPLETE] Driver: ${driver['name']}');
+    debugPrint('⭐ [RIDE COMPLETE] Original Fare: ${_originalFare > 0 ? "£${_originalFare.toStringAsFixed(2)}" : "N/A"}');
+    debugPrint('⭐ [RIDE COMPLETE] Total (Balance): £${_fare.toStringAsFixed(2)}');
+    debugPrint('⭐ ------------------------------------------------------------------');
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -391,6 +450,19 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                               '£${_originalFare.toStringAsFixed(2)}',
                             ),
                           ],
+                          // Scheduled Airport Rides fare logic
+                          if (_isScheduled && _isAirportTransfer && _originalFare > 0) ...[
+                             _buildFareRow(
+                              'Original Fare',
+                              '£${_originalFare.toStringAsFixed(2)}',
+                            ),
+                            if (_fare < _originalFare)
+                              _buildFareRow(
+                                'Scheduled Deposit',
+                                '- £${(_originalFare - _fare).toStringAsFixed(2)}',
+                                valueColor: const Color(0xFF22C55E),
+                              ),
+                          ],
                           // Promo fare breakdown rows
                           if (_isPromoRide && _originalFare > 0) ...[
                             _buildFareRow(
@@ -421,8 +493,8 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                               Column(
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
-                                  // Show strikethrough original fare for promo rides
-                                  if (_isPromoRide && _originalFare > 0)
+                                  // Show strikethrough original fare for promo rides or scheduled airport rides
+                                  if ((_isPromoRide || (_isScheduled && _isAirportTransfer)) && _originalFare > 0 && _fare < _originalFare)
                                     Text(
                                       '£${_originalFare.toStringAsFixed(2)}',
                                       style: const TextStyle(

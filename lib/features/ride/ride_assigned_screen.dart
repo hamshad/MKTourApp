@@ -137,6 +137,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
   // Scheduled ride flag — set from widget param and confirmed from live ride data
   bool _isScheduled = false;
+  
+  // Deferred payment data for scheduled airport rides (waiting for ride:earlyCompleted)
+  Map<String, dynamic>? _deferredPaymentSuccessData;
 
   @override
   void initState() {
@@ -851,6 +854,13 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       if (!mounted) return;
       debugPrint('🏁 [RideAssignedScreen] Ride Completed: $data');
 
+      // If this is an early completion that's also triggering ride:completed,
+      // we ignore it if we already have the adjusted fare data.
+      if (data['status'] == 'early_completed') {
+        debugPrint('ℹ️ [RideAssignedScreen] Ignoring ride:completed as it is marked as early_completed');
+        return;
+      }
+
       final timing = widget.paymentTiming ?? data['paymentTiming']?.toString();
       final bool isPayLater = timing == 'pay_later';
       final completedFare = (data['fare'] as num?)?.toDouble() ?? widget.fare;
@@ -1027,6 +1037,18 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         if (_pendingPaymentRideData != null) ..._pendingPaymentRideData!,
         if (data is Map<String, dynamic>) ...data,
       };
+
+      // For scheduled airport rides, defer showing the success screen until ride:earlyCompleted
+      // arrives (which contains the correct originalFare). Store the payment data temporarily.
+      if (_isScheduled) {
+        debugPrint(
+          '⏳ [RideAssignedScreen] Deferring success screen for scheduled ride; waiting for ride:earlyCompleted...',
+        );
+        setState(() {
+          _deferredPaymentSuccessData = mergedRideData;
+        });
+        return;
+      }
 
       _showPaymentSuccessScreen(mergedRideData);
     });
@@ -1210,6 +1232,33 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
           return;
         }
 
+        // If we have deferred payment data (from payment:succeeded for scheduled airport rides),
+        // use that with the early completion data to show the complete screen directly
+        if (_deferredPaymentSuccessData != null && _isScheduled) {
+          debugPrint(
+            '✅ [RideAssignedScreen] Using deferred payment data for scheduled airport ride early completion',
+          );
+          final completeRideData = {
+            ..._deferredPaymentSuccessData!,
+            'fare': fare,
+            'originalFare': originalFare,
+            'actualDistance': actualDistance,
+            'earlyCompleted': true,
+            'isScheduled': true,
+            'isAirportTransfer': data['isAirportTransfer'] ?? false,
+            'reason': reason,
+            'paymentMethod': data['paymentMethod'] ?? _deferredPaymentSuccessData!['paymentMethod'],
+          };
+          _deferredPaymentSuccessData = null;
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => RideCompleteScreen(rideData: completeRideData),
+            ),
+          );
+          return;
+        }
+
         showDialog(
           context: context,
           barrierDismissible: false,
@@ -1237,10 +1286,10 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                           'originalFare': originalFare,
                           'actualDistance': actualDistance,
                           'earlyCompleted': true,
-                          'paymentMethod':
-                              data['paymentMethod'], // Pass payment method
-                          'paymentStatus':
-                              'pending', // Assume pending if early complete + cash
+                          'isScheduled': _isScheduled || widget.isScheduled,
+                          'isAirportTransfer': data['isAirportTransfer'] ?? false,
+                          'paymentMethod': data['paymentMethod'],
+                          'paymentStatus': 'pending',
                         },
                       ),
                     ),
@@ -2023,10 +2072,18 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
     _isAwaitingPaymentConfirmation = false;
 
+    // Correctly identify fare and originalFare from data (supports early completion)
+    final double fareValue = (rideData['fare'] as num?)?.toDouble() ??
+        (rideData['amount'] as num?)?.toDouble() ??
+        widget.fare;
+    final double? originalFareValue = (rideData['originalFare'] as num?)?.toDouble();
+
     final Map<String, dynamic> finalRideData = {
       'bookingId': widget.rideId,
       'driver': _driver,
-      'fare': widget.fare,
+      'fare': fareValue,
+      if (originalFareValue != null) 'originalFare': originalFareValue,
+      'isScheduled': _isScheduled || widget.isScheduled,
       ...rideData,
       'paymentMethod': rideData['paymentMethod'] ?? 'Cash',
     };
