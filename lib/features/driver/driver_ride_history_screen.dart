@@ -11,33 +11,25 @@ class DriverRideHistoryScreen extends StatefulWidget {
   State<DriverRideHistoryScreen> createState() => _DriverRideHistoryScreenState();
 }
 
-class _DriverRideHistoryScreenState extends State<DriverRideHistoryScreen>
-    with SingleTickerProviderStateMixin {
+class _DriverRideHistoryScreenState extends State<DriverRideHistoryScreen> {
   final ApiService _apiService = ApiService();
-  late TabController _tabController;
   bool _isLoading = true;
   List<dynamic> _rides = [];
-  List<dynamic> _scheduledRides = [];
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
     _fetchAllRides();
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
     super.dispose();
   }
 
   Future<void> _fetchAllRides() async {
     setState(() => _isLoading = true);
-    await Future.wait([
-      _fetchRideHistory(),
-      _fetchScheduledRides(),
-    ]);
+    await _fetchRideHistory();
     if (mounted) setState(() => _isLoading = false);
   }
 
@@ -50,14 +42,6 @@ class _DriverRideHistoryScreenState extends State<DriverRideHistoryScreen>
     } catch (_) {}
   }
 
-  Future<void> _fetchScheduledRides() async {
-    try {
-      final response = await _apiService.getDriverScheduledRides();
-      if (response['success'] == true) {
-        _scheduledRides = response['data'] as List<dynamic>;
-      }
-    } catch (_) {}
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -67,34 +51,18 @@ class _DriverRideHistoryScreenState extends State<DriverRideHistoryScreen>
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
         elevation: 0,
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: AppTheme.primaryColor,
-          unselectedLabelColor: Colors.grey,
-          indicatorColor: AppTheme.primaryColor,
-          tabs: const [
-            Tab(text: 'History'),
-            Tab(text: 'Scheduled'),
-          ],
-        ),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : TabBarView(
-              controller: _tabController,
-              children: [
-                _buildRideList(_rides, false),
-                _buildRideList(_scheduledRides, true),
-              ],
-            ),
+          : _buildRideList(_rides),
     );
   }
 
-  Widget _buildRideList(List<dynamic> rides, bool isScheduled) {
+  Widget _buildRideList(List<dynamic> rides) {
     if (rides.isEmpty) {
       return Center(
         child: Text(
-          isScheduled ? 'No scheduled rides' : 'No previous rides',
+          'No previous rides',
           style: GoogleFonts.outfit(color: Colors.grey),
         ),
       );
@@ -112,10 +80,7 @@ class _DriverRideHistoryScreenState extends State<DriverRideHistoryScreen>
           final pickupAddr =
               ride['pickupLocation']?['address'] ?? 'Unknown Pickup';
           final createdAt = ride['createdAt']?.toString();
-          final pickupTime = ride['pickupTime']?.toString();
-          final timeStr = isScheduled
-              ? _formatDateTime(pickupTime)
-              : _formatDateTime(createdAt);
+          final timeStr = _formatDateTime(createdAt);
 
           return GestureDetector(
             onTap: () {
@@ -144,18 +109,14 @@ class _DriverRideHistoryScreenState extends State<DriverRideHistoryScreen>
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: isScheduled
-                          ? Colors.blue.withOpacity(0.1)
-                          : (isCancelled
-                              ? Colors.red.withOpacity(0.1)
-                              : AppTheme.primaryColor.withOpacity(0.1)),
+                      color: isCancelled
+                          ? Colors.red.withOpacity(0.1)
+                          : AppTheme.primaryColor.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Icon(
-                      isScheduled ? Icons.calendar_today : Icons.history,
-                      color: isScheduled
-                          ? Colors.blue
-                          : (isCancelled ? Colors.red : AppTheme.primaryColor),
+                      Icons.history,
+                      color: isCancelled ? Colors.red : AppTheme.primaryColor,
                       size: 24,
                     ),
                   ),
@@ -176,7 +137,7 @@ class _DriverRideHistoryScreenState extends State<DriverRideHistoryScreen>
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          isScheduled ? 'Pickup: $timeStr' : timeStr,
+                          timeStr,
                           style: GoogleFonts.outfit(
                             color: AppTheme.textSecondary,
                             fontSize: 13,
@@ -193,9 +154,7 @@ class _DriverRideHistoryScreenState extends State<DriverRideHistoryScreen>
                         style: GoogleFonts.outfit(
                           fontWeight: FontWeight.bold,
                           fontSize: 18,
-                          color: isScheduled
-                              ? Colors.blue
-                              : (isCancelled ? Colors.red : AppTheme.primaryColor),
+                          color: isCancelled ? Colors.red : AppTheme.primaryColor,
                         ),
                       ),
                       Text(
