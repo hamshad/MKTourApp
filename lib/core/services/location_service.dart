@@ -131,12 +131,6 @@ class LocationService {
         intervalDuration: Duration(
           seconds: intervalSeconds,
         ), // Also update at intervals
-        foregroundNotificationConfig: const ForegroundNotificationConfig(
-          notificationText:
-              "MK Tours is tracking your location for the current ride",
-          notificationTitle: "Active Ride",
-          enableWakeLock: true, // Keep device awake during ride
-        ),
       ),
     );
   }
