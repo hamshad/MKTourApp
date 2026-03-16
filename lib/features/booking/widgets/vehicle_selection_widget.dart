@@ -12,6 +12,12 @@ class VehicleSelectionWidget extends StatefulWidget {
     Map<String, dynamic> fareData,
   )
   onSelectVehicle;
+  final Function(
+    String categorySlug,
+    String categoryName,
+    Map<String, dynamic> fareData,
+  )?
+  onPrebookVehicle; // Callback for prebook button
   final bool isLoading;
   final double? pickupLat;
   final double? pickupLng;
@@ -25,6 +31,7 @@ class VehicleSelectionWidget extends StatefulWidget {
     super.key,
     required this.onVehicleSelected,
     required this.onSelectVehicle,
+    this.onPrebookVehicle,
     this.isLoading = false,
     this.pickupLat,
     this.pickupLng,
@@ -465,7 +472,7 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
 
         const SizedBox(height: 16),
 
-        // Select Vehicle button
+        // Select Vehicle button and Prebook button
         Padding(
           padding: EdgeInsets.only(
             left: 16,
@@ -473,55 +480,112 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
             top: 16,
             bottom: 16 + MediaQuery.of(context).padding.bottom,
           ),
-          child: SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: ElevatedButton(
-              onPressed: widget.isLoading || _selectedCategorySlug.isEmpty
-                  ? null
-                  : () {
-                      final category = _categories.firstWhere(
-                        (c) => c.slug == _selectedCategorySlug,
-                        orElse: () => _categories.first,
-                      );
+          child: Row(
+            children: [
+              // Confirm button
+              Expanded(
+                child: SizedBox(
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: widget.isLoading || _selectedCategorySlug.isEmpty
+                        ? null
+                        : () {
+                            final category = _categories.firstWhere(
+                              (c) => c.slug == _selectedCategorySlug,
+                              orElse: () => _categories.first,
+                            );
 
-                      // Use fare data from backend if available
-                      final fareData =
-                          _fareEstimates[_selectedCategorySlug] ??
-                          {
-                            'total_fare': 0.0,
-                            'distance_text': 'Calculation pending',
-                            'duration_text': 'Calculating...',
-                            'duration_seconds': 600,
-                          };
+                            // Use fare data from backend if available
+                            final fareData =
+                                _fareEstimates[_selectedCategorySlug] ??
+                                {
+                                  'total_fare': 0.0,
+                                  'distance_text': 'Calculation pending',
+                                  'duration_text': 'Calculating...',
+                                  'duration_seconds': 600,
+                                };
 
-                      widget.onSelectVehicle(
-                        _selectedCategorySlug,
-                        category.name,
-                        fareData,
-                      );
-                    },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryColor,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                elevation: 0,
-              ),
-              child: widget.isLoading
-                  ? const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2,
+                            widget.onSelectVehicle(
+                              _selectedCategorySlug,
+                              category.name,
+                              fareData,
+                            );
+                          },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                    )
-                  : FittedBox(
+                      elevation: 0,
+                    ),
+                    child: widget.isLoading
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              'Confirm',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Prebook button
+              Expanded(
+                child: SizedBox(
+                  height: 50,
+                  child: OutlinedButton(
+                    onPressed: widget.isLoading ||
+                            _selectedCategorySlug.isEmpty ||
+                            widget.onPrebookVehicle == null
+                        ? null
+                        : () {
+                            final category = _categories.firstWhere(
+                              (c) => c.slug == _selectedCategorySlug,
+                              orElse: () => _categories.first,
+                            );
+
+                            // Use fare data from backend if available
+                            final fareData =
+                                _fareEstimates[_selectedCategorySlug] ??
+                                {
+                                  'total_fare': 0.0,
+                                  'distance_text': 'Calculation pending',
+                                  'duration_text': 'Calculating...',
+                                  'duration_seconds': 600,
+                                };
+
+                            widget.onPrebookVehicle?.call(
+                              _selectedCategorySlug,
+                              category.name,
+                              fareData,
+                            );
+                          },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.primaryColor,
+                      side: BorderSide(color: AppTheme.primaryColor),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: FittedBox(
                       fit: BoxFit.scaleDown,
                       child: Text(
-                        'Confirm ${(_categories.isNotEmpty && _selectedCategorySlug.isNotEmpty) ? _categories.firstWhere((c) => c.slug == _selectedCategorySlug).name : ""}',
+                        'Prebook',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -530,7 +594,10 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                         ),
                       ),
                     ),
-            ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ],

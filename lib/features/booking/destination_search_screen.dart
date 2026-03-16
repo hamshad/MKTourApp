@@ -11,6 +11,7 @@ import '../../core/widgets/platform_map.dart';
 import '../../core/services/location_cache_service.dart';
 import 'dart:async';
 import 'widgets/vehicle_selection_widget.dart';
+import 'widgets/schedule_ride_sheet.dart';
 import 'ride_confirmation_screen.dart';
 
 class DestinationSearchScreen extends StatefulWidget {
@@ -647,6 +648,174 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
     }
   }
 
+  Future<void> _handlePrebookVehicle(
+    String categorySlug,
+    String categoryName,
+    Map<String, dynamic> fareData,
+  ) async {
+    // Don't proceed if pickup location is not ready
+    if (!_isPickupLocationReady) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please wait while we fetch your location'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    debugPrint('🚗 DestinationScreens: Prebook vehicle selected');
+    debugPrint('   → Category: $categorySlug');
+    debugPrint('   → Name: $categoryName');
+    debugPrint('   → Fare: £${fareData['total_fare']}');
+
+    // Get the actual pickup coordinates
+    final pickupLat = _pickupLocation?.latitude ?? _center.latitude;
+    final pickupLng = _pickupLocation?.longitude ?? _center.longitude;
+
+    // Determine the actual pickup address - prefer the geocoded address
+    String actualPickupAddress = _pickupAddress;
+
+    // If pickup address is empty or starts with "Lat:",
+    // try to fetch the actual address from coordinates
+    if (_pickupAddress.isEmpty || _pickupAddress.startsWith("Lat:")) {
+      debugPrint(
+        '📍 DestinationSearchScreen: Fetching actual pickup address...',
+      );
+
+      // Try backend API first
+      String? fetchedAddress = await _placesService.getAddressFromLatLng(
+        pickupLat,
+        pickupLng,
+      );
+
+      // If backend fails, try Nominatim (OpenStreetMap) as fallback
+      if (fetchedAddress == null || fetchedAddress.isEmpty) {
+        debugPrint(
+          '📍 DestinationSearchScreen: Backend geocoding failed, trying Nominatim...',
+        );
+        fetchedAddress = await _geocodingService.getAddressFromLatLng(
+          pickupLat,
+          pickupLng,
+        );
+      }
+
+      if (fetchedAddress != null && fetchedAddress.isNotEmpty) {
+        actualPickupAddress = fetchedAddress;
+        // Also update the stored address for future use
+        _pickupAddress = fetchedAddress;
+        debugPrint(
+          '📍 DestinationSearchScreen: Fetched address: $actualPickupAddress',
+        );
+      } else {
+        // If all geocoding fails, use the text from the controller if it's a real address
+        if (_pickupController.text.isNotEmpty &&
+            !_pickupController.text.startsWith("Lat:")) {
+          actualPickupAddress = _pickupController.text;
+        } else {
+          // Last resort - just use "Pickup Location" as a generic label
+          // The coordinates are still stored separately
+          actualPickupAddress = "Pickup Location";
+          debugPrint(
+            '⚠️ DestinationSearchScreen: All geocoding failed, using generic label',
+          );
+        }
+      }
+    } else if (_pickupController.text.isNotEmpty &&
+        !_pickupController.text.startsWith("Lat:")) {
+      // User manually entered/selected a pickup address - use the full stored address
+      // but prefer _pickupAddress if it has the full formatted address
+      if (_pickupAddress.length > _pickupController.text.length) {
+        actualPickupAddress = _pickupAddress;
+      } else {
+        actualPickupAddress = _pickupController.text;
+      }
+    }
+
+    debugPrint(
+      '📍 DestinationSearchScreen: Final pickup address: $actualPickupAddress',
+    );
+
+    final pickupLocation = {
+      'coordinates': [pickupLng, pickupLat],
+      'address': actualPickupAddress,
+      if (_pickupPlaceId != null)
+        'placeId': _pickupPlaceId, // Include placeId for airport detection
+    };
+
+    // Get the actual dropoff coordinates and address
+    final dropoffLat = _dropoffLocation?.latitude ?? _center.latitude;
+    final dropoffLng = _dropoffLocation?.longitude ?? _center.longitude;
+
+    // Use the stored dropoff address (from place selection), fallback to controller text
+    String actualDropoffAddress = _dropoffAddress.isNotEmpty
+        ? _dropoffAddress
+        : _dropoffController.text;
+
+    // If dropoff address is still empty, try to get it from coordinates
+    if (actualDropoffAddress.isEmpty && _dropoffLocation != null) {
+      final fetchedAddress = await _placesService.getAddressFromLatLng(
+        dropoffLat,
+        dropoffLng,
+      );
+      if (fetchedAddress != null && fetchedAddress.isNotEmpty) {
+        actualDropoffAddress = fetchedAddress;
+      }
+    }
+
+    final dropoffLocation = {
+      'coordinates': [dropoffLng, dropoffLat],
+      'address': actualDropoffAddress,
+      if (_dropoffPlaceId != null)
+        'placeId': _dropoffPlaceId, // Include placeId for airport detection
+    };
+
+    debugPrint('📍 DestinationSearchScreen: Pickup: $actualPickupAddress');
+    debugPrint('📍 DestinationSearchScreen: Dropoff: $actualDropoffAddress');
+
+    // Show the schedule sheet FIRST (before navigating to RideConfirmationScreen)
+    if (!mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => ScheduleRideSheet(
+        initialDateTime: DateTime.now().add(const Duration(minutes: 30)),
+        onSchedule: (selectedDateTime, notes) async {
+          // User selected a time, now navigate to RideConfirmationScreen with the scheduled time
+          if (!mounted) return;
+
+          debugPrint(
+            '📅 DestinationSearchScreen: Prebook scheduled for: $selectedDateTime',
+          );
+
+          final result = await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => RideConfirmationScreen(
+                pickupLocation: pickupLocation,
+                dropoffLocation: dropoffLocation,
+                categorySlug: categorySlug,
+                categoryName: categoryName,
+                fareData: fareData,
+                polyline: _polylines, // Pass the drawn polyline
+                isScheduled: true, // Mark as scheduled
+                scheduledDateTime: selectedDateTime, // Pass the selected time
+              ),
+            ),
+          );
+
+          if (result != null && result is Map && result['status'] == 'searching') {
+            if (mounted) {
+              Navigator.of(context).pop(result);
+            }
+          }
+        },
+      ),
+    );
+  }
+
   Widget _buildPanelContent() {
     if (_isRouteView) {
       return VehicleSelectionWidget(
@@ -654,6 +823,7 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
           debugPrint('🚗 DestinationSearchScreen: Vehicle tapped: $vehicle');
         },
         onSelectVehicle: _handleSelectVehicle,
+        onPrebookVehicle: _handlePrebookVehicle,
         isLoading: _isLoading,
         pickupLat: _pickupLocation?.latitude ?? _center.latitude,
         pickupLng: _pickupLocation?.longitude ?? _center.longitude,

@@ -7,6 +7,7 @@ import '../../core/services/location_cache_service.dart';
 import '../../core/services/places_service.dart';
 import '../../core/services/geocoding_service.dart';
 import '../booking/widgets/vehicle_selection_widget.dart';
+import '../booking/widgets/schedule_ride_sheet.dart';
 import 'package:latlong2/latlong.dart' as latlong;
 import 'package:geolocator/geolocator.dart';
 
@@ -454,6 +455,13 @@ class _AirportVehicleSelectionScreenState
                         fareData,
                       );
                     },
+                    onPrebookVehicle: (categorySlug, categoryName, fareData) {
+                      _handlePrebookVehicleSelection(
+                        categorySlug,
+                        categoryName,
+                        fareData,
+                      );
+                    },
                     pickupLat: _pickupLocation!.latitude,
                     pickupLng: _pickupLocation!.longitude,
                     dropoffLat: widget.airport.coordinates.lat,
@@ -593,4 +601,82 @@ class _AirportVehicleSelectionScreenState
       }
     }
   }
+
+  void _handlePrebookVehicleSelection(
+    String categorySlug,
+    String categoryName,
+    Map<String, dynamic> fareData,
+  ) async {
+    if (_pickupLocation == null || !_isLocationReady) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please wait for location to be ready'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Create location maps with placeId for airport detection
+    final pickupLocationMap = {
+      'coordinates': [_pickupLocation!.longitude, _pickupLocation!.latitude],
+      'address': _pickupAddress,
+    };
+
+    final dropoffLocationMap = {
+      'coordinates': [
+        widget.airport.coordinates.lng,
+        widget.airport.coordinates.lat,
+      ],
+      'address': widget.airport.address,
+      'placeId':
+          widget.airport.placeId, // Include placeId for airport detection
+    };
+
+    // Show the schedule sheet FIRST (before navigating to RideConfirmationScreen)
+    if (!mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => ScheduleRideSheet(
+        initialDateTime: DateTime.now().add(const Duration(minutes: 30)),
+        onSchedule: (selectedDateTime, notes) async {
+          // User selected a time, now navigate to RideConfirmationScreen with the scheduled time
+          if (!mounted) return;
+
+          debugPrint(
+            '📅 AirportSelectionScreen: Prebook scheduled for: $selectedDateTime',
+          );
+
+          // Navigate to ride confirmation with scheduledDateTime
+          final result = await Navigator.pushNamed(
+            context,
+            '/ride-confirmation',
+            arguments: {
+              'pickupLocation': pickupLocationMap,
+              'dropoffLocation': dropoffLocationMap,
+              'categorySlug': categorySlug,
+              'categoryName': categoryName,
+              'fareData': fareData,
+              'isScheduled': true, // Mark as scheduled
+              'scheduledDateTime': selectedDateTime, // Pass the selected time
+            },
+          );
+
+          // If booking was successful, pop back to home screen
+          if (result != null && result is Map && result['status'] == 'searching') {
+            if (context.mounted) {
+              // Pop back to airport selection screen
+              Navigator.pop(context);
+              // Pop back to home screen with the result
+              Navigator.pop(context, result);
+            }
+          }
+        },
+      ),
+    );
+  }
 }
+

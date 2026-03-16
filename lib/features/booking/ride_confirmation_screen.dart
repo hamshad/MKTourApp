@@ -23,6 +23,8 @@ class RideConfirmationScreen extends StatefulWidget {
   final String categoryName;
   final Map<String, dynamic> fareData;
   final List<dynamic>? polyline; // Added polyline
+  final bool isScheduled; // Set to true to enable scheduling flow
+  final DateTime? scheduledDateTime; // The scheduled ride time (if prebooked)
 
   const RideConfirmationScreen({
     super.key,
@@ -32,6 +34,8 @@ class RideConfirmationScreen extends StatefulWidget {
     required this.categoryName,
     required this.fareData,
     this.polyline,
+    this.isScheduled = false,
+    this.scheduledDateTime,
   });
 
   @override
@@ -66,6 +70,14 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
       _isFetchingFare = false;
     } else {
       _fetchDirectionsAndFare();
+    }
+
+    // Auto-open the schedule sheet if this is a prebook request WITHOUT a pre-selected time
+    // If scheduledDateTime is already provided, skip this (user already scheduled)
+    if (widget.isScheduled && widget.scheduledDateTime == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showScheduleSheet();
+      });
     }
   }
 
@@ -325,6 +337,18 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
       _processBooking(selectedTiming);
     }
     */
+  }
+
+  Future<void> _confirmPrebook() async {
+    // For prebooked rides, call _processBooking with the scheduledDateTime
+    // This will handle the 10% deposit payment and then show success dialog
+    if (widget.scheduledDateTime != null) {
+      _processBooking(
+        PaymentTiming.payLater,
+        scheduledAt: widget.scheduledDateTime,
+        notes: '',
+      );
+    }
   }
 
   /* Commented out for now - used in _confirmRide's bottom sheet
@@ -604,6 +628,12 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
 
                   const SizedBox(height: 16),
 
+                  // Scheduled Ride Details (if applicable)
+                  if (widget.scheduledDateTime != null) ...[
+                    _buildScheduledRideCard(),
+                    const SizedBox(height: 16),
+                  ],
+
                   // Vehicle Card
                   _buildVehicleCard(),
 
@@ -819,6 +849,135 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
           bounds: _routeBounds,
           interactive: false,
         ),
+      ),
+    );
+  }
+
+  Widget _buildScheduledRideCard() {
+    final formattedTime = widget.scheduledDateTime != null
+        ? DateFormat('h:mm a').format(widget.scheduledDateTime!)
+        : '';
+    final formattedDate = widget.scheduledDateTime != null
+        ? DateFormat('MMM d, yyyy').format(widget.scheduledDateTime!)
+        : '';
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.primaryColor.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.primaryColor, width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.calendar_today,
+                color: AppTheme.primaryColor,
+                size: 24,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Scheduled Ride',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'No payment required now',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Departure Time',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        formattedTime,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  width: 1,
+                  height: 40,
+                  color: Colors.grey[300],
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Date',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        formattedDate,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textPrimary,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1183,7 +1342,10 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                       : ElevatedButton(
                           onPressed: (_isLoading || _isFetchingFare)
                               ? null
-                              : _confirmRide,
+                              : (widget.isScheduled &&
+                                      widget.scheduledDateTime != null)
+                                  ? _confirmPrebook
+                                  : _confirmRide,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppTheme.primaryColor,
                             foregroundColor: Colors.white,
@@ -1203,11 +1365,15 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                                 )
                               : FittedBox(
                                   fit: BoxFit.scaleDown,
-                                  child: const Text(
-                                    'Confirm Ride',
+                                  child: Text(
+                                    // Change button text based on whether it's a prebooked ride
+                                    (widget.isScheduled &&
+                                            widget.scheduledDateTime != null)
+                                        ? 'Confirm Prebook'
+                                        : 'Confirm Ride',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
+                                    style: const TextStyle(
                                       fontSize: 18,
                                       fontWeight: FontWeight.bold,
                                     ),
@@ -1215,7 +1381,10 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                                 ),
                         ),
                 ),
-                if (!hasError) ...[
+                // Only show "Schedule for Later" button if NOT a prebooked ride
+                if (!hasError &&
+                    !(widget.isScheduled &&
+                        widget.scheduledDateTime != null)) ...[
                   const SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
