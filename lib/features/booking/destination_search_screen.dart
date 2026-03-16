@@ -61,8 +61,8 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
   bool _isRouteView = false;
 
   final List<Map<String, String>> _savedPlaces = [
-    {'icon': '🏠', 'title': 'Home', 'subtitle': 'Add home', 'type': 'add'},
-    {'icon': '💼', 'title': 'Work', 'subtitle': 'Add work', 'type': 'add'},
+    // {'icon': '🏠', 'title': 'Home', 'subtitle': 'Add home', 'type': 'add'},
+    // {'icon': '💼', 'title': 'Work', 'subtitle': 'Add work', 'type': 'add'},
   ];
 
   final List<Map<String, String>> _recentPlaces = [
