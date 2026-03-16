@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:intl/intl.dart';
 import '../../../core/theme.dart';
 
@@ -36,76 +37,115 @@ class _ScheduleRideSheetState extends State<ScheduleRideSheet> {
     super.dispose();
   }
 
-  Future<void> _pickDate() async {
-    final now = DateTime.now();
-    final picked = await showDatePicker(
+  void _showNativePicker({
+    required CupertinoDatePickerMode mode,
+    required DateTime initialDateTime,
+    required Function(DateTime) onChanged,
+    DateTime? minimumDate,
+    DateTime? maximumDate,
+  }) {
+    showCupertinoModalPopup(
       context: context,
-      initialDate: _selectedDateTime,
-      firstDate: now,
-      lastDate: now.add(const Duration(days: 30)),
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(
-          colorScheme: ColorScheme.light(primary: AppTheme.primaryColor),
+      builder: (context) => Container(
+        height: 320,
+        padding: const EdgeInsets.only(top: 6.0),
+        margin: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
         ),
-        child: child!,
+        color: CupertinoColors.systemBackground.resolveFrom(context),
+        child: Column(
+          children: [
+            // Header with Cancel/Done
+            Container(
+              height: 52,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: CupertinoColors.secondarySystemBackground.resolveFrom(context),
+                border: Border(
+                  bottom: BorderSide(
+                    color: CupertinoColors.separator.resolveFrom(context),
+                    width: 0.5,
+                  ),
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    child: const Text('Cancel', style: TextStyle(color: CupertinoColors.systemRed)),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                  Text(
+                    mode == CupertinoDatePickerMode.date ? 'Select Date' : 'Select Time',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                      color: CupertinoColors.label,
+                    ),
+                  ),
+                  CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    child: Text('Done', style: TextStyle(color: AppTheme.primaryColor, fontWeight: FontWeight.bold)),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+            ),
+            // Picker
+            Expanded(
+              child: CupertinoDatePicker(
+                mode: mode,
+                initialDateTime: initialDateTime,
+                minimumDate: minimumDate,
+                maximumDate: maximumDate,
+                use24hFormat: false,
+                onDateTimeChanged: onChanged,
+              ),
+            ),
+          ],
+        ),
       ),
     );
-    if (picked != null) {
-      setState(() {
-        _selectedDateTime = DateTime(
-          picked.year,
-          picked.month,
-          picked.day,
-          _selectedDateTime.hour,
-          _selectedDateTime.minute,
-        );
-      });
-    }
+  }
+
+  Future<void> _pickDate() async {
+    final now = DateTime.now();
+    _showNativePicker(
+      mode: CupertinoDatePickerMode.date,
+      initialDateTime: _selectedDateTime,
+      minimumDate: now,
+      maximumDate: now.add(const Duration(days: 30)),
+      onChanged: (picked) {
+        setState(() {
+          _selectedDateTime = DateTime(
+            picked.year,
+            picked.month,
+            picked.day,
+            _selectedDateTime.hour,
+            _selectedDateTime.minute,
+          );
+        });
+      },
+    );
   }
 
   Future<void> _pickTime() async {
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(_selectedDateTime),
-      initialEntryMode: TimePickerEntryMode.dial, // Default to analog clock
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(
-          colorScheme: ColorScheme.light(
-            primary: AppTheme.primaryColor,
-            onPrimary: Colors.white,
-            onSurface: AppTheme.textPrimary,
-          ),
-          textButtonTheme: TextButtonThemeData(
-            style: TextButton.styleFrom(
-              foregroundColor: AppTheme.primaryColor,
-            ),
-          ),
-          // Reset input decoration for the picker's internal text fields
-          // to ensure they work correctly and are clearly visible
-          inputDecorationTheme: InputDecorationTheme(
-            filled: true,
-            fillColor: Colors.grey[100],
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide.none,
-            ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          ),
-        ),
-        child: child!,
-      ),
+    _showNativePicker(
+      mode: CupertinoDatePickerMode.time,
+      initialDateTime: _selectedDateTime,
+      onChanged: (picked) {
+        setState(() {
+          _selectedDateTime = DateTime(
+            _selectedDateTime.year,
+            _selectedDateTime.month,
+            _selectedDateTime.day,
+            picked.hour,
+            picked.minute,
+          );
+        });
+      },
     );
-    if (picked != null) {
-      setState(() {
-        _selectedDateTime = DateTime(
-          _selectedDateTime.year,
-          _selectedDateTime.month,
-          _selectedDateTime.day,
-          picked.hour,
-          picked.minute,
-        );
-      });
-    }
   }
 
   bool get _isValid {

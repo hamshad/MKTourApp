@@ -123,7 +123,11 @@ class RideEaseApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      supportedLocales: const [Locale('en', '')],
+      supportedLocales: const [
+        Locale('en', 'US'),
+        Locale('en', 'GB'),
+        Locale('en', ''),
+      ],
       home: const SplashScreen(),
       routes: {
         '/role-selection': (context) => const RoleSelectionScreen(),
