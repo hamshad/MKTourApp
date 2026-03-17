@@ -63,7 +63,8 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     _initializeRouteSync();
     // Skip the old fare API if we already have promo-aware data or a fixed fare
     final hasPromoData = widget.fareData['promo_applied'] == true;
-    final hasValidFare = widget.fareData['total_fare'] != null &&
+    final hasValidFare =
+        widget.fareData['total_fare'] != null &&
         (widget.fareData['total_fare'] as num) > 0;
 
     if (_isFixedFare || hasPromoData || hasValidFare) {
@@ -221,8 +222,11 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
       builder: (context) => ScheduleRideSheet(
         initialDateTime: DateTime.now().add(const Duration(minutes: 30)),
         onSchedule: (selectedDateTime, notes) {
-          _processBooking(PaymentTiming.payLater,
-              scheduledAt: selectedDateTime, notes: notes);
+          _processBooking(
+            PaymentTiming.payLater,
+            scheduledAt: selectedDateTime,
+            notes: notes,
+          );
         },
       ),
     );
@@ -408,8 +412,11 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   }
   */
 
-  Future<void> _processBooking(PaymentTiming timing,
-      {DateTime? scheduledAt, String? notes}) async {
+  Future<void> _processBooking(
+    PaymentTiming timing, {
+    DateTime? scheduledAt,
+    String? notes,
+  }) async {
     debugPrint(
       '🚀 RideConfirmationScreen: Processing booking with timing: $timing',
     );
@@ -419,7 +426,8 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     });
 
     try {
-      final distanceMiles = _currentFareData['distance_miles'] ??
+      final distanceMiles =
+          _currentFareData['distance_miles'] ??
           ((_currentFareData['distance_meters'] ?? 0) * 0.000621371);
 
       // Use PaymentService to handle both API call and Stripe payment sheet
@@ -437,7 +445,8 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
 
       if (mounted) {
         if (result.success && result.data != null) {
-          final rideId = result.data!['_id']?.toString() ??
+          final rideId =
+              result.data!['_id']?.toString() ??
               result.data!['rideId']?.toString() ??
               '';
 
@@ -472,8 +481,9 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                 pickup: widget.pickupLocation,
                 dropoff: widget.dropoffLocation,
                 fare: _fare,
-                paymentTiming:
-                    timing == PaymentTiming.payNow ? 'pay_now' : 'pay_later',
+                paymentTiming: timing == PaymentTiming.payNow
+                    ? 'pay_now'
+                    : 'pay_later',
                 clientSecret: result.data!['clientSecret']?.toString(),
               ),
             ),
@@ -508,14 +518,13 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     required DateTime scheduledAt,
   }) async {
     try {
-      final webViewResult = await Navigator.of(context).push<Map<String, dynamic>>(
-        MaterialPageRoute(
-          builder: (_) => PaymentWebViewScreen(
-            paymentUrl: paymentUrl,
-            rideId: rideId,
-          ),
-        ),
-      );
+      final webViewResult = await Navigator.of(context)
+          .push<Map<String, dynamic>>(
+            MaterialPageRoute(
+              builder: (_) =>
+                  PaymentWebViewScreen(paymentUrl: paymentUrl, rideId: rideId),
+            ),
+          );
 
       final success = webViewResult?['success'] == true;
 
@@ -572,10 +581,13 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.primaryColor,
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
-              child: const Text('Back to Home',
-                  style: TextStyle(color: Colors.white)),
+              child: const Text(
+                'Back to Home',
+                style: TextStyle(color: Colors.white),
+              ),
             ),
           ),
         ],
@@ -891,10 +903,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                     const SizedBox(height: 4),
                     Text(
                       'No payment required now',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                      ),
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                     ),
                   ],
                 ),
@@ -934,11 +943,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                     ],
                   ),
                 ),
-                Container(
-                  width: 1,
-                  height: 40,
-                  color: Colors.grey[300],
-                ),
+                Container(width: 1, height: 40, color: Colors.grey[300]),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.center,
@@ -1120,12 +1125,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     final hasError = _fareError != null;
 
     return Container(
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 16,
-        bottom: 16,
-      ),
+      padding: EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 16),
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [
@@ -1333,9 +1333,9 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                           onPressed: (_isLoading || _isFetchingFare)
                               ? null
                               : (widget.isScheduled &&
-                                      widget.scheduledDateTime != null)
-                                  ? _confirmPrebook
-                                  : _confirmRide,
+                                    widget.scheduledDateTime != null)
+                              ? _confirmPrebook
+                              : _confirmRide,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppTheme.primaryColor,
                             foregroundColor: Colors.white,
@@ -1385,7 +1385,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                           : _showScheduleSheet,
                       icon: const Icon(Icons.calendar_month),
                       label: const Text(
-                        'Schedule for Later',
+                        'Prebook',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,

@@ -256,21 +256,47 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
             ),
           ),
 
+        // "Book now or later" - Top text outside the box
         const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Text(
-            'Choose a ride',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            'Book now or later',
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.grey,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
 
-        // Categories list (fetched from API)
+        // Box containing "Choose a ride" and vehicle list
         Expanded(
-          child: ListView.separated(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: _categories.length,
-            separatorBuilder: (context, index) => const Divider(height: 1),
-          itemBuilder: (context, index) {
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.grey[200]!),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // "Choose a ride" title inside the box
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Text(
+                    'Choose a ride',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ),
+
+                // Categories list (fetched from API)
+                Expanded(
+                  child: ListView.separated(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: _categories.length,
+                    separatorBuilder: (context, index) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
             final category = _categories[index];
             final isSelected = _selectedCategorySlug == category.slug;
 
@@ -467,8 +493,12 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
               ),
             );
           },
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
-      ),
 
         const SizedBox(height: 16),
 
@@ -480,13 +510,13 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
             top: 16,
             bottom: 16 + MediaQuery.of(context).padding.bottom,
           ),
-          child: Row(
+          child: Column(
             children: [
-              // Confirm button
-              Expanded(
-                child: SizedBox(
-                  height: 50,
-                  child: ElevatedButton(
+              // Prebook button - Small text button with icon
+              if (widget.onPrebookVehicle != null)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
                     onPressed: widget.isLoading || _selectedCategorySlug.isEmpty
                         ? null
                         : () {
@@ -495,71 +525,6 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                               orElse: () => _categories.first,
                             );
 
-                            // Use fare data from backend if available
-                            final fareData =
-                                _fareEstimates[_selectedCategorySlug] ??
-                                {
-                                  'total_fare': 0.0,
-                                  'distance_text': 'Calculation pending',
-                                  'duration_text': 'Calculating...',
-                                  'duration_seconds': 600,
-                                };
-
-                            widget.onSelectVehicle(
-                              _selectedCategorySlug,
-                              category.name,
-                              fareData,
-                            );
-                          },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryColor,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: widget.isLoading
-                        ? const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
-                            ),
-                          )
-                        : FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              'Confirm',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              // Prebook button
-              Expanded(
-                child: SizedBox(
-                  height: 50,
-                  child: OutlinedButton(
-                    onPressed: widget.isLoading ||
-                            _selectedCategorySlug.isEmpty ||
-                            widget.onPrebookVehicle == null
-                        ? null
-                        : () {
-                            final category = _categories.firstWhere(
-                              (c) => c.slug == _selectedCategorySlug,
-                              orElse: () => _categories.first,
-                            );
-
-                            // Use fare data from backend if available
                             final fareData =
                                 _fareEstimates[_selectedCategorySlug] ??
                                 {
@@ -575,26 +540,75 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                               fareData,
                             );
                           },
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppTheme.primaryColor,
-                      side: BorderSide(color: AppTheme.primaryColor),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        'Prebook',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
+                    icon: const Icon(Icons.calendar_month, size: 18),
+                    label: const Text(
+                      'Prebook',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
+                ),
+              const SizedBox(height: 8),
+              // Confirm button - Full width primary button
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: widget.isLoading || _selectedCategorySlug.isEmpty
+                      ? null
+                      : () {
+                          final category = _categories.firstWhere(
+                            (c) => c.slug == _selectedCategorySlug,
+                            orElse: () => _categories.first,
+                          );
+
+                          // Use fare data from backend if available
+                          final fareData =
+                              _fareEstimates[_selectedCategorySlug] ??
+                              {
+                                'total_fare': 0.0,
+                                'distance_text': 'Calculation pending',
+                                'duration_text': 'Calculating...',
+                                'duration_seconds': 600,
+                              };
+
+                          widget.onSelectVehicle(
+                            _selectedCategorySlug,
+                            category.name,
+                            fareData,
+                          );
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryColor,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: widget.isLoading
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            'Confirm ${(_categories.isNotEmpty && _selectedCategorySlug.isNotEmpty) ? _categories.firstWhere((c) => c.slug == _selectedCategorySlug).name : ""}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
                 ),
               ),
             ],
