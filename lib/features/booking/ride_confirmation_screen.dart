@@ -507,19 +507,6 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     required String paymentUrl,
     required DateTime scheduledAt,
   }) async {
-    final socketService = SocketService();
-    final depositCompleter = Completer<bool>();
-
-    void onDepositConfirmed(dynamic data) {
-      final confirmedRideId =
-          data is Map ? (data['rideId'] ?? data['_id'])?.toString() : null;
-      if (confirmedRideId == rideId && !depositCompleter.isCompleted) {
-        depositCompleter.complete(true);
-      }
-    }
-
-    socketService.on('ride:depositConfirmed', onDepositConfirmed);
-
     try {
       final webViewResult = await Navigator.of(context).push<Map<String, dynamic>>(
         MaterialPageRoute(
@@ -533,9 +520,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
       final success = webViewResult?['success'] == true;
 
       if (success) {
-        // Wait briefly for socket confirmation (server may fire it after redirect)
-        await depositCompleter.future
-            .timeout(const Duration(seconds: 15), onTimeout: () => true);
+        // Payment successful - show success dialog immediately
         if (mounted) _showPreBookingSuccess(rideId, scheduledAt);
       } else {
         if (mounted) {
@@ -549,8 +534,8 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
           );
         }
       }
-    } finally {
-      socketService.off('ride:depositConfirmed');
+    } catch (e) {
+      debugPrint('❌ _handleScheduledDepositPayment: Error: $e');
     }
   }
 
@@ -576,8 +561,13 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
             width: double.infinity,
             child: ElevatedButton(
               onPressed: () {
-                // Return to home or activities
-                Navigator.of(context).popUntil((route) => route.isFirst);
+                // Close dialog and pop back to home screen
+                // Pop dialog
+                Navigator.of(context).pop();
+                // Pop RideConfirmationScreen
+                Navigator.of(context).pop();
+                // Pop Destination Search / Airport Selection screen
+                Navigator.of(context).pop();
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.primaryColor,
