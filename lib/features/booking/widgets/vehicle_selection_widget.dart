@@ -262,9 +262,9 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
           child: Text(
             'Book now or later',
             style: TextStyle(
-              fontSize: 13,
-              color: Colors.grey,
-              fontWeight: FontWeight.w500,
+              fontSize: 20,
+              color: AppTheme.textPrimary,
+              fontWeight: FontWeight.bold,
             ),
           ),
         ),
@@ -286,7 +286,7 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                   padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   child: Text(
                     'Choose a ride',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Colors.grey),
                   ),
                 ),
 
@@ -500,14 +500,12 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
           ),
         ),
 
-        const SizedBox(height: 16),
-
         // Select Vehicle button and Prebook button
         Padding(
           padding: EdgeInsets.only(
             left: 16,
             right: 16,
-            top: 16,
+            top: 8,
             bottom: 16 + MediaQuery.of(context).padding.bottom,
           ),
           child: Column(
