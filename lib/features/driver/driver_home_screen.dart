@@ -247,6 +247,44 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   Future<void> _initDriver() async {
     await _ensureUserLoaded();
     if (mounted) {
+      final user = Provider.of<AuthProvider>(context, listen: false).user;
+      if (user != null) {
+        // Sync online status from database
+        final bool isOnline = user['isOnline'] == true || user['status'] == 'online';
+        
+        // Check for active ride in user object
+        final currentRide = user['currentRide'];
+        
+        setState(() {
+          if (currentRide != null) {
+            // Restore active ride state
+            _rideData = currentRide is Map ? Map<String, dynamic>.from(currentRide as Map) : null;
+            _currentRideId = _rideData?['_id']?.toString() ?? currentRide.toString();
+            
+            final rideStatus = _rideData?['status']?.toString().toLowerCase();
+            if (rideStatus == 'accepted') {
+              _status = 'pickup';
+            } else if (rideStatus == 'arrived') {
+              _status = 'arrived';
+            } else if (rideStatus == 'in_progress') {
+              _status = 'in_progress';
+            } else {
+              _status = 'online';
+            }
+            debugPrint('🚖 [DriverHomeScreen] Restored active ride: $_currentRideId with status: $_status');
+          } else if (isOnline) {
+            _status = 'online';
+            debugPrint('🟢 [DriverHomeScreen] Restored online status from profile');
+          }
+        });
+
+        // Trigger sync if we found an active ride
+        if (_currentRideId != null) {
+          _syncRideStatus();
+          _fetchNavigationRoute();
+        }
+      }
+      
       await _initSocketAndListeners();
     }
   }
