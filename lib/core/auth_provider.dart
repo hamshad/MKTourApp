@@ -353,6 +353,7 @@ class AuthProvider with ChangeNotifier {
       }
 
       _role = prefs.getString(_prefsAuthRoleKey) ?? 'user';
+      _isAuthenticated = true; // Assume authenticated based on token presence
 
       // Load cached driver profileStatus immediately (may be refreshed below).
       if (_role == 'driver') {
@@ -372,7 +373,8 @@ class AuthProvider with ChangeNotifier {
       }
       return _isAuthenticated;
     } catch (e) {
-      return false;
+      debugPrint('Error in tryAutoLogin: $e');
+      return _isAuthenticated; // Preserve authentication status on unexpected errors (e.g., network unavailability)
     }
   }
 

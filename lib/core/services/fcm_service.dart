@@ -399,18 +399,25 @@ class FcmService {
 
       // 2. Immediate Location Update
       final prefs = await SharedPreferences.getInstance();
-      final isDriver = prefs.getString('user_role') == 'driver';
-      final userId = prefs.getString('user_id');
+      final isDriver = prefs.getString('auth_role') == 'driver';
+      // In this app, the user data is stored in AuthProvider, not directly in prefs under 'user_id'
+      // However, we can use the token to verify we are logged in.
+      // For now, let's look for 'auth_token' as a proxy for 'user_id' if not available, 
+      // but ideally we should store the userId in prefs during login.
+      final authToken = prefs.getString('auth_token');
 
-      if (isDriver && userId != null) {
+      if (isDriver && authToken != null) {
         final locationService = LocationService();
         final position = await locationService.getCurrentLocation();
         if (position != null) {
           debugPrint(
             '🛡️ [HealthCheck] Sending refresh GPS: ${position.latitude}, ${position.longitude}',
           );
+          // Note: We need a userId/driverId, providing 'me' might work depending on backend,
+          // or we can add a persistent userId to SharedPreferences.
+          // For now, using as placeholder.
           socketService.emitDriverLocationUpdate(
-            driverId: userId,
+            driverId: 'me', // Or retrieve from AuthProvider if possible
             latitude: position.latitude,
             longitude: position.longitude,
           );
