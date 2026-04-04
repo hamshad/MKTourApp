@@ -346,34 +346,58 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<bool> tryAutoLogin() async {
+    debugPrint('🔐 [AuthProvider] tryAutoLogin() initiated');
     try {
       final prefs = await SharedPreferences.getInstance();
       if (!prefs.containsKey(_prefsAuthTokenKey)) {
+        debugPrint('🔐 [AuthProvider] tryAutoLogin failed: No auth token found in SharedPreferences');
         return false;
       }
 
+      final token = prefs.getString(_prefsAuthTokenKey);
       _role = prefs.getString(_prefsAuthRoleKey) ?? 'user';
+      debugPrint('🔐 [AuthProvider] Saved token found. Role: $_role. Token starts with: ${token?.substring(0, 10)}...');
+      
       _isAuthenticated = true; // Assume authenticated based on token presence
 
       // Load cached driver profileStatus immediately (may be refreshed below).
       if (_role == 'driver') {
+        debugPrint('🔐 [AuthProvider] Loading cached driver profile status...');
         _loadCachedDriverProfileStatus(prefs);
       }
 
       if (_role == 'driver') {
-        await fetchDriverProfile();
+        debugPrint('🔐 [AuthProvider] Fetching full driver profile from backend...');
+        try {
+          await fetchDriverProfile();
+          debugPrint('🔐 [AuthProvider] Full driver profile fetch complete. User: ${_user != null ? "found" : "NULL"}');
+        } catch (e) {
+          debugPrint('🔐 [AuthProvider] Error fetching driver profile: $e');
+        }
 
         // On app re-open, refresh current driver profile status.
         // If it fails (offline), the cached status remains available.
+        debugPrint('🔐 [AuthProvider] Refreshing driver profile status from backend...');
         try {
           await fetchDriverProfileStatus();
-        } catch (_) {}
+          debugPrint('🔐 [AuthProvider] Driver profile status refresh complete');
+        } catch (e) {
+          debugPrint('🔐 [AuthProvider] Error refreshing driver profile status: $e');
+        }
       } else {
-        await fetchUserProfile();
+        debugPrint('🔐 [AuthProvider] Fetching passenger profile from backend...');
+        try {
+          await fetchUserProfile();
+          debugPrint('🔐 [AuthProvider] Passenger profile fetch complete. User: ${_user != null ? "found" : "NULL"}');
+        } catch (e) {
+          debugPrint('🔐 [AuthProvider] Error fetching passenger profile: $e');
+        }
       }
+      
+      debugPrint('🔐 [AuthProvider] tryAutoLogin finished. Authenticated: $_isAuthenticated');
       return _isAuthenticated;
     } catch (e) {
-      debugPrint('Error in tryAutoLogin: $e');
+      debugPrint('❌ [AuthProvider] Error in tryAutoLogin: $e');
       return _isAuthenticated; // Preserve authentication status on unexpected errors (e.g., network unavailability)
     }
   }

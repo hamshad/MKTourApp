@@ -55,9 +55,14 @@ class LocationService {
     if (!hasPermission) return null;
 
     try {
-      return await Geolocator.getCurrentPosition();
+      return await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
     } catch (e) {
-      debugPrint('Error getting current location: $e');
+      debugPrint('Error getting current location (with timeout): $e');
       return null;
     }
   }

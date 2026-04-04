@@ -81,11 +81,15 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   @override
   void initState() {
     super.initState();
+    debugPrint('🚀 [DriverHomeScreen] initState() initiated');
     WidgetsBinding.instance.addObserver(this);
-    _initDriver();
-    _initLocation();
+    
+    // Concurrent initialization
+    _initDriver().then((_) => debugPrint('🚀 [DriverHomeScreen] _initDriver() finished'));
+    _initLocation().then((_) => debugPrint('🚀 [DriverHomeScreen] _initLocation() finished'));
     _setupConnectionListener();
     _setupFcmListener();
+    debugPrint('🚀 [DriverHomeScreen] initState() finished (futures pending)');
   }
 
   /// Listen for FCM notifications directly in the home screen
@@ -224,31 +228,46 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     }
   }
 
-  void _initLocation() async {
+  Future<void> _initLocation() async {
+    debugPrint('📍 [DriverHomeScreen] _initLocation() starting...');
     _fetchRideHistory(); // Added history fetch
-    debugPrint("📍 _initLocation called in DriverHomeScreen");
-    final position = await _locationService.getCurrentLocation();
-    if (position != null && mounted) {
-      setState(() {
-        _currentLocation = LatLng(position.latitude, position.longitude);
-        _isMapLoading = false;
-      });
-      // Start updates if already online or needed
-      if (_status == 'online') {
-        _emitLocationUpdate(position.latitude, position.longitude);
+    
+    debugPrint("📍 [DriverHomeScreen] Requesting location from LocationService...");
+    try {
+      final position = await _locationService.getCurrentLocation();
+      debugPrint("📍 [DriverHomeScreen] Location received: ${position?.latitude}, ${position?.longitude}");
+      
+      if (position != null && mounted) {
+        setState(() {
+          _currentLocation = LatLng(position.latitude, position.longitude);
+          _isMapLoading = false;
+        });
+        // Start updates if already online or needed
+        if (_status == 'online') {
+          _emitLocationUpdate(position.latitude, position.longitude);
+        }
+      } else {
+        debugPrint('📍 [DriverHomeScreen] Location was null or widget not mounted');
+        if (mounted) setState(() => _isMapLoading = false);
       }
-    } else {
-      // Handle failure or timeout - maybe show fallback or retry?
-      // For now, just stop loading to show fallback
+    } catch (e) {
+      debugPrint('📍 [DriverHomeScreen] Exception in _initLocation: $e');
       if (mounted) setState(() => _isMapLoading = false);
     }
+    debugPrint('📍 [DriverHomeScreen] _initLocation() finished');
   }
 
   Future<void> _initDriver() async {
+    debugPrint('🚖 [DriverHomeScreen] _initDriver() starting...');
     await _ensureUserLoaded();
+    debugPrint('🚖 [DriverHomeScreen] User ensure loaded check complete');
+    
     if (mounted) {
-      final user = Provider.of<AuthProvider>(context, listen: false).user;
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final user = authProvider.user;
+      
       if (user != null) {
+        debugPrint('🚖 [DriverHomeScreen] Driver profile found: ${user['name']}');
         // Sync online status from database
         final bool isOnline = user['isOnline'] == true || user['status'] == 'online';
         
@@ -262,6 +281,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             _currentRideId = _rideData?['_id']?.toString() ?? currentRide.toString();
             
             final rideStatus = _rideData?['status']?.toString().toLowerCase();
+            debugPrint('🚖 [DriverHomeScreen] Active ride detected: $_currentRideId with status: $rideStatus');
+            
             if (rideStatus == 'accepted') {
               _status = 'pickup';
             } else if (rideStatus == 'arrived') {
@@ -271,22 +292,28 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             } else {
               _status = 'online';
             }
-            debugPrint('🚖 [DriverHomeScreen] Restored active ride: $_currentRideId with status: $_status');
           } else if (isOnline) {
             _status = 'online';
-            debugPrint('🟢 [DriverHomeScreen] Restored online status from profile');
+            debugPrint('🟢 [DriverHomeScreen] Driver is online in profile');
+          } else {
+            debugPrint('⚪ [DriverHomeScreen] Driver is offline in profile');
           }
         });
 
         // Trigger sync if we found an active ride
         if (_currentRideId != null) {
+          debugPrint('🚖 [DriverHomeScreen] Syncing active ride data from backend...');
           _syncRideStatus();
           _fetchNavigationRoute();
         }
+      } else {
+        debugPrint('⚠️ [DriverHomeScreen] User is still null after _ensureUserLoaded()');
       }
       
+      debugPrint('🚖 [DriverHomeScreen] Initializing Socket and listeners...');
       await _initSocketAndListeners();
     }
+    debugPrint('🚖 [DriverHomeScreen] _initDriver() finished');
   }
 
   Future<void> _ensureUserLoaded() async {
