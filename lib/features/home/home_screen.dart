@@ -41,7 +41,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final PlacesService _placesService = PlacesService();
   String? _currentAddress;
   Timer? _bannerTimer;
-  bool _isMapLoading = true;
+  bool _isMapLoading = false; // Start false to show map immediately
 
   // Booking State
   final SocketService _socketService = SocketService();
@@ -735,39 +735,52 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _initLocation() async {
-    debugPrint("📍 _initLocation called");
-    final position = await _locationService.getCurrentLocation();
-    debugPrint("📍 Position fetched: $position");
-    if (position != null && mounted) {
-      setState(() {
-        _currentLocation = lat_lng.LatLng(
-          position.latitude,
-          position.longitude,
-        );
-        _isMapLoading = false;
-      });
-
-      // Fetch Address
-      try {
-        debugPrint(
-          "📍 Fetching address for ${position.latitude}, ${position.longitude}",
-        );
-        final address = await _placesService.getAddressFromLatLng(
-          position.latitude,
-          position.longitude,
-        );
-        debugPrint("📍 Address fetched result: $address");
-        if (address != null && mounted) {
-          setState(() {
-            _currentAddress = address;
-            debugPrint("📍 _currentAddress updated to: $_currentAddress");
-          });
-        }
-      } catch (e) {
-        debugPrint("📍 Error reverse geocoding: $e");
+    debugPrint("📍 [HomeScreen] _initLocation() starting...");
+    
+    // 1. Try to get last known location immediately for instant map update
+    try {
+      final lastKnown = await _locationService.getLastKnownLocation();
+      if (lastKnown != null && mounted) {
+        debugPrint("📍 [HomeScreen] Instant last-known location: ${lastKnown.latitude}, ${lastKnown.longitude}");
+        setState(() {
+          _currentLocation = lat_lng.LatLng(lastKnown.latitude, lastKnown.longitude);
+        });
       }
-    } else {
-      debugPrint("📍 Position is null or not mounted");
+    } catch (e) {
+      debugPrint('📍 [HomeScreen] Error fetching last known location: $e');
+    }
+
+    // 2. Continue with getting fresh current location in background
+    debugPrint("📍 [HomeScreen] Requesting fresh location fix...");
+    try {
+      final position = await _locationService.getCurrentLocation();
+      if (position != null && mounted) {
+        debugPrint("📍 [HomeScreen] Fresh location received: ${position.latitude}, ${position.longitude}");
+        setState(() {
+          _currentLocation = lat_lng.LatLng(position.latitude, position.longitude);
+        });
+
+        // 3. Update Address in background
+        _fetchAddress(position.latitude, position.longitude);
+      }
+    } catch (e) {
+      debugPrint("📍 [HomeScreen] Error in fresh location fix: $e");
+    }
+    debugPrint("📍 [HomeScreen] _initLocation() finished");
+  }
+
+  void _fetchAddress(double lat, double lng) async {
+    try {
+      debugPrint("📍 [HomeScreen] Fetching address for $lat, $lng");
+      final address = await _placesService.getAddressFromLatLng(lat, lng);
+      if (address != null && mounted) {
+        setState(() {
+          _currentAddress = address;
+        });
+        debugPrint("📍 [HomeScreen] Address updated: $_currentAddress");
+      }
+    } catch (e) {
+      debugPrint("📍 [HomeScreen] Error reverse geocoding: $e");
     }
   }
 

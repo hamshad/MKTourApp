@@ -36,8 +36,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
 
   // Location
   final LocationService _locationService = LocationService();
-  LatLng _currentLocation = const LatLng(51.5085, -0.1260); // Fallback
-  bool _isMapLoading = true;
+  LatLng _currentLocation = const LatLng(51.5085, -0.1260); // London fallback
+  bool _isMapLoading = false; // Start false to show map immediately
   double _currentBearing = 0.0;
   StreamSubscription<Position>? _positionStreamSubscription;
 
@@ -230,29 +230,41 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
 
   Future<void> _initLocation() async {
     debugPrint('📍 [DriverHomeScreen] _initLocation() starting...');
-    _fetchRideHistory(); // Added history fetch
-    
-    debugPrint("📍 [DriverHomeScreen] Requesting location from LocationService...");
+    _fetchRideHistory(); // Background process
+
+    // 1. Try to get last known location immediately for instant map update
+    try {
+      final lastKnown = await _locationService.getLastKnownLocation();
+      if (lastKnown != null && mounted) {
+        debugPrint("📍 [DriverHomeScreen] Instant last-known location: ${lastKnown.latitude}, ${lastKnown.longitude}");
+        setState(() {
+          _currentLocation = LatLng(lastKnown.latitude, lastKnown.longitude);
+        });
+      }
+    } catch (e) {
+      debugPrint('📍 [DriverHomeScreen] Error fetching last known location: $e');
+    }
+
+    // 2. Continue with getting fresh current location in background
+    debugPrint("📍 [DriverHomeScreen] Requesting fresh location fix...");
     try {
       final position = await _locationService.getCurrentLocation();
-      debugPrint("📍 [DriverHomeScreen] Location received: ${position?.latitude}, ${position?.longitude}");
       
       if (position != null && mounted) {
+        debugPrint("📍 [DriverHomeScreen] Fresh location received: ${position.latitude}, ${position.longitude}");
         setState(() {
           _currentLocation = LatLng(position.latitude, position.longitude);
-          _isMapLoading = false;
         });
+        
         // Start updates if already online or needed
         if (_status == 'online') {
           _emitLocationUpdate(position.latitude, position.longitude);
         }
       } else {
-        debugPrint('📍 [DriverHomeScreen] Location was null or widget not mounted');
-        if (mounted) setState(() => _isMapLoading = false);
+        debugPrint('📍 [DriverHomeScreen] Fresh location was null or widget not mounted');
       }
     } catch (e) {
-      debugPrint('📍 [DriverHomeScreen] Exception in _initLocation: $e');
-      if (mounted) setState(() => _isMapLoading = false);
+      debugPrint('📍 [DriverHomeScreen] Exception while getting fresh location: $e');
     }
     debugPrint('📍 [DriverHomeScreen] _initLocation() finished');
   }

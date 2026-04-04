@@ -55,16 +55,56 @@ class LocationService {
     if (!hasPermission) return null;
 
     try {
+      // First try to get last known location if it's very fresh
+      final lastKnown = await Geolocator.getLastKnownPosition();
+      if (lastKnown != null && lastKnown.timestamp != null) {
+        final age = DateTime.now().difference(lastKnown.timestamp!);
+        if (age.inMinutes < 5) {
+          debugPrint('📍 [LocationService] Using fresh last known location (${age.inSeconds}s old)');
+          // Still trigger a fresh high-accuracy update in the background
+          _triggerBackgroundUpdate();
+          return lastKnown;
+        }
+      }
+
       return await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 10),
+          accuracy: LocationAccuracy.medium, // Start with medium for faster fix
+          timeLimit: Duration(seconds: 5),
         ),
       );
     } catch (e) {
       debugPrint('Error getting current location (with timeout): $e');
       return null;
     }
+  }
+
+  /// Get the last known location from the device without waiting for a fresh fix
+  Future<Position?> getLastKnownLocation() async {
+    try {
+      final hasPermission = await handleLocationPermission();
+      if (!hasPermission) return null;
+      return await Geolocator.getLastKnownPosition();
+    } catch (e) {
+      debugPrint('Error getting last known location: $e');
+      return null;
+    }
+  }
+
+  /// Trigger a high accuracy update in the background
+  void _triggerBackgroundUpdate() {
+    Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+      ),
+    ).then((pos) {
+      debugPrint('📍 [LocationService] Background high-accuracy update received');
+      if (_periodicStreamController != null && !_periodicStreamController!.isClosed) {
+        _periodicStreamController!.add(pos);
+      }
+    }).catchError((e) {
+      debugPrint('📍 [LocationService] Background update error: $e');
+    });
   }
 
   /// Standard position stream based on distance filter
