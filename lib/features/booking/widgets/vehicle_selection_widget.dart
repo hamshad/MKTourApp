@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../../../core/services/places_service.dart';
 import '../../../core/services/vehicle_service.dart';
 import '../../../core/models/vehicle.dart';
@@ -210,6 +212,90 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
     return Icons.directions_car;
   }
 
+  Widget _buildVehicleIconWidget(VehicleCategory category, bool isSelected) {
+    if (category.icon != null && category.icon!.isNotEmpty) {
+      if (category.icon!.startsWith('data:image/svg')) {
+        try {
+          if (category.icon!.contains(';base64,')) {
+            final base64String = category.icon!.split(';base64,').last;
+            // Pad the base64 string if necessary
+            String normalizedBase64 = base64String;
+            while (normalizedBase64.length % 4 != 0) {
+              normalizedBase64 += '=';
+            }
+            return SvgPicture.memory(
+              base64Decode(normalizedBase64),
+              width: 32,
+              height: 32,
+              colorFilter: ColorFilter.mode(
+                isSelected ? AppTheme.primaryColor : Colors.grey[700]!,
+                BlendMode.srcIn,
+              ),
+            );
+          } else {
+            final parts = category.icon!.split(',');
+            if (parts.length > 1) {
+              final rawSvg = Uri.decodeComponent(parts.sublist(1).join(','));
+              return SvgPicture.string(
+                rawSvg,
+                width: 32,
+                height: 32,
+                colorFilter: ColorFilter.mode(
+                  isSelected ? AppTheme.primaryColor : Colors.grey[700]!,
+                  BlendMode.srcIn,
+                ),
+              );
+            }
+          }
+        } catch (e) {
+          debugPrint('Error parsing SVG icon: $e');
+        }
+      } else if (category.icon!.startsWith('<svg')) {
+        // Direct SVG string
+        try {
+          return SvgPicture.string(
+            category.icon!,
+            width: 32,
+            height: 32,
+            colorFilter: ColorFilter.mode(
+              isSelected ? AppTheme.primaryColor : Colors.grey[700]!,
+              BlendMode.srcIn,
+            ),
+          );
+        } catch (e) {
+          debugPrint('Error parsing SVG string: $e');
+        }
+      } else if (category.icon!.startsWith('http')) {
+        // Network SVG or Image
+        if (category.icon!.endsWith('.svg') || category.icon!.contains('.svg?')) {
+          return SvgPicture.network(
+            category.icon!,
+            width: 32,
+            height: 32,
+            colorFilter: ColorFilter.mode(
+              isSelected ? AppTheme.primaryColor : Colors.grey[700]!,
+              BlendMode.srcIn,
+            ),
+          );
+        } else {
+          return Image.network(
+            category.icon!,
+            width: 32,
+            height: 32,
+            color: isSelected ? AppTheme.primaryColor : Colors.grey[700],
+          );
+        }
+      }
+    }
+    
+    // Fallback
+    return Icon(
+      _getVehicleIcon(category.slug),
+      size: 32,
+      color: isSelected ? AppTheme.primaryColor : Colors.grey[700],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoadingCategories) {
@@ -334,13 +420,7 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                         color: Colors.grey[100],
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Icon(
-                        _getVehicleIcon(category.slug),
-                        size: 32,
-                        color: isSelected
-                            ? AppTheme.primaryColor
-                            : Colors.grey[700],
-                      ),
+                      child: _buildVehicleIconWidget(category, isSelected),
                     ),
 
                     // Details
