@@ -344,7 +344,7 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
 
         // "Book now or later" - Top text outside the box
         const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: EdgeInsets.only(left: 16, right: 16, top: 14, bottom: 0),
           child: Text(
             'Book now or later',
             style: TextStyle(
@@ -354,6 +354,19 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
             ),
           ),
         ),
+
+        if (_promoResponse != null && _promoResponse!['isOutOfArea'] == true)
+          Padding(
+            padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
+            child: Text(
+              '* Location is outside the Milton Keynes area',
+              style: TextStyle(
+                color: Colors.grey[500],
+                fontSize: 12,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
 
         // Box containing "Choose a ride" and vehicle list
         Expanded(
