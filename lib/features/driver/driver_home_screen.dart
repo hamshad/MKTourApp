@@ -1801,7 +1801,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       case 'online':
         return 160;
       case 'request':
-        return 280; // Taller for request details
+        return 320; // Increased to accommodate message banner and prevent overflow
       case 'pickup':
       case 'arrived':
       case 'in_progress':

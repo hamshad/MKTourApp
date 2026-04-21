@@ -3,6 +3,8 @@ import '../../core/theme.dart';
 import '../../core/services/places_service.dart';
 import '../../core/models/vehicle.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+import '../../core/auth_provider.dart';
 
 class DriverRequestPanel extends StatefulWidget {
   final VoidCallback onAccept;
@@ -110,35 +112,72 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
             ),
           ),
           const SizedBox(height: 10),
-          // Fallback Alert Banner
-          if (widget.rideData?['isFallback']?.toString().toLowerCase() == 'true')
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.orange[50],
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.orange[200]!),
-              ),
-              child: Row(
-                children: [
-                   Icon(Icons.info_outline, color: Colors.orange[800], size: 20),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      widget.rideData?['fallbackNote'] ?? 
-                      widget.rideData?['message'] ?? 
-                      'No 5 Seaters available. Acceptance pays the 5 Seater fare.',
-                      style: TextStyle(
-                        color: Colors.orange[900],
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
+          // Ride Message / Fallback Alert Banner
+          Builder(
+            builder: (context) {
+              final driverUser = Provider.of<AuthProvider>(context, listen: false).user;
+              final driverCategory = driverUser?['vehicle']?['categorySlug']?.toString();
+              final requestedCategory = widget.rideData?['vehicleCategorySlug']?.toString();
+              final isFallback = widget.rideData?['isFallback']?.toString().toLowerCase() == 'true';
+              final hasMessage = widget.rideData?['message'] != null || widget.rideData?['fallbackNote'] != null;
+              
+              // Hide message if categories match AND it's not a fallback
+              // (Redundant for a driver to see "This is a 4-seater request" if they ARE a 4-seater)
+              // Normalizing slugs by lowercasing for comparison
+              final bool shouldHideMessage = !isFallback && 
+                                           driverCategory != null && 
+                                           requestedCategory != null && 
+                                           driverCategory.toLowerCase() == requestedCategory.toLowerCase();
+              
+              if (hasMessage && !shouldHideMessage) {
+                return Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isFallback 
+                        ? Colors.orange[50] 
+                        : AppTheme.primaryColor.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isFallback
+                          ? Colors.orange[200]!
+                          : AppTheme.primaryColor.withOpacity(0.2),
                     ),
                   ),
-                ],
-              ),
-            ),
+                  child: Row(
+                    children: [
+                       Icon(
+                         isFallback
+                             ? Icons.info_outline
+                             : Icons.message_outlined,
+                         color: isFallback
+                             ? Colors.orange[800]
+                             : AppTheme.primaryColor,
+                         size: 20,
+                       ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          widget.rideData?['message'] ?? 
+                          widget.rideData?['fallbackNote'] ?? 
+                          'This is a specialized ride request.',
+                          style: TextStyle(
+                            color: isFallback
+                                ? Colors.orange[900]
+                                : AppTheme.textPrimary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
           const SizedBox(height: 20),
 
           // Header
@@ -291,14 +330,26 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                           color: AppTheme.textPrimary,
                         ),
                       ),
-                      Text(
-                        _getVehicleDisplayName(
-                          widget.rideData?['vehicleCategorySlug'],
-                        ),
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: AppTheme.textSecondary,
-                        ),
+                      Row(
+                        children: [
+                          // Show driver's own vehicle type here
+                          Builder(
+                            builder: (context) {
+                              final driverUser =
+                                  Provider.of<AuthProvider>(context, listen: false)
+                                      .user;
+                              final driverCategory =
+                                  driverUser?['vehicle']?['categorySlug']?.toString();
+                              return Text(
+                                _getVehicleDisplayName(driverCategory),
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: AppTheme.textSecondary,
+                                ),
+                              );
+                            },
+                          ),
+                        ],
                       ),
                     ],
                   ),
