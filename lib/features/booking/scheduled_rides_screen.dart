@@ -52,14 +52,23 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
           children: [
             const Text('Cancellation policy:'),
             const SizedBox(height: 12),
-            _policyRow(Icons.check_circle, Colors.green,
-                'Within 4 hours of booking — free cancel'),
+            _policyRow(
+              Icons.check_circle,
+              Colors.green,
+              'Within 4 hours of booking — free cancel',
+            ),
             const SizedBox(height: 6),
-            _policyRow(Icons.check_circle, Colors.green,
-                'Pickup ≥ 2 hours away — free cancel'),
+            _policyRow(
+              Icons.check_circle,
+              Colors.green,
+              'Pickup ≥ 2 hours away — free cancel',
+            ),
             const SizedBox(height: 6),
-            _policyRow(Icons.cancel, Colors.red,
-                'Otherwise — deposit $depositStr forfeited'),
+            _policyRow(
+              Icons.cancel,
+              Colors.red,
+              'Otherwise — deposit $depositStr forfeited',
+            ),
           ],
         ),
         actions: [
@@ -75,10 +84,13 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
-            child:
-                const Text('Cancel Ride', style: TextStyle(color: Colors.white)),
+            child: const Text(
+              'Cancel Ride',
+              style: TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -91,9 +103,7 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
       children: [
         Icon(icon, size: 18, color: color),
         const SizedBox(width: 8),
-        Expanded(
-          child: Text(text, style: const TextStyle(fontSize: 13)),
-        ),
+        Expanded(child: Text(text, style: const TextStyle(fontSize: 13))),
       ],
     );
   }
@@ -102,8 +112,9 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
     final rideId = ride['_id']?.toString() ?? '';
 
     // Prefer paymentUrl from depositPayment sub-object, fall back to root
-    String? paymentUrl = (ride['depositPayment'] as Map<String, dynamic>?)?['paymentUrl']
-        ?.toString();
+    String? paymentUrl =
+        (ride['depositPayment'] as Map<String, dynamic>?)?['paymentUrl']
+            ?.toString();
     paymentUrl ??= ride['paymentUrl']?.toString();
 
     if (paymentUrl == null || paymentUrl.isEmpty) {
@@ -118,8 +129,9 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
     final socketService = SocketService();
 
     void onDepositConfirmed(dynamic data) {
-      final confirmedId =
-          data is Map ? (data['rideId'] ?? data['_id'])?.toString() : null;
+      final confirmedId = data is Map
+          ? (data['rideId'] ?? data['_id'])?.toString()
+          : null;
       if (confirmedId == rideId) {
         if (mounted) {
           CustomSnackbar.show(
@@ -137,10 +149,8 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
     try {
       await Navigator.of(context).push<Map<String, dynamic>>(
         MaterialPageRoute(
-          builder: (_) => PaymentWebViewScreen(
-            paymentUrl: paymentUrl!,
-            rideId: rideId,
-          ),
+          builder: (_) =>
+              PaymentWebViewScreen(paymentUrl: paymentUrl!, rideId: rideId),
         ),
       );
       // Refresh regardless of WebView outcome — socket will update status if paid
@@ -207,14 +217,13 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : _rides.isEmpty
-                ? _buildEmpty()
-                : ListView.separated(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _rides.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 14),
-                    itemBuilder: (context, index) =>
-                        _buildRideCard(_rides[index]),
-                  ),
+            ? _buildEmpty()
+            : ListView.separated(
+                padding: const EdgeInsets.all(16),
+                itemCount: _rides.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 14),
+                itemBuilder: (context, index) => _buildRideCard(_rides[index]),
+              ),
       ),
     );
   }
@@ -241,22 +250,18 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
   }
 
   Widget _buildRideCard(Map<String, dynamic> ride) {
-    final pickup =
-        ride['pickupLocation']?['address'] ?? 'Unknown Pickup';
-    final dropoff =
-        ride['dropoffLocation']?['address'] ?? 'Unknown Dropoff';
+    final pickup = ride['pickupLocation']?['address'] ?? 'Unknown Pickup';
+    final dropoff = ride['dropoffLocation']?['address'] ?? 'Unknown Dropoff';
     final fare = (ride['fare'] as num?)?.toDouble() ?? 0;
     final deposit = (ride['depositAmount'] as num?)?.toDouble() ?? 0;
     final depositStatus = ride['depositStatus'] ?? 'pending';
     final status = ride['status'] ?? 'scheduled';
-    final driverName =
-        (ride['driver'] as Map<String, dynamic>?)?['name'] ?? '';
+    final driverName = (ride['driver'] as Map<String, dynamic>?)?['name'] ?? '';
 
     String scheduledTimeStr = '';
     if (ride['scheduledPickupTime'] != null) {
       try {
-        final dt =
-            DateTime.parse(ride['scheduledPickupTime']).toLocal();
+        final dt = DateTime.parse(ride['scheduledPickupTime']).toLocal();
         scheduledTimeStr = DateFormat('EEE, MMM dd · h:mm a').format(dt);
       } catch (_) {}
     }
@@ -281,13 +286,17 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               color: AppTheme.primaryColor.withValues(alpha: 0.06),
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(16)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(16),
+              ),
             ),
             child: Row(
               children: [
-                const Icon(Icons.calendar_today,
-                    size: 18, color: AppTheme.primaryColor),
+                const Icon(
+                  Icons.calendar_today,
+                  size: 18,
+                  color: AppTheme.primaryColor,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -348,7 +357,9 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
                           Text(
                             pickup,
                             style: const TextStyle(
-                                fontSize: 13, fontWeight: FontWeight.w500),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -356,7 +367,9 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
                           Text(
                             dropoff,
                             style: const TextStyle(
-                                fontSize: 13, fontWeight: FontWeight.w500),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -388,8 +401,10 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
                       Expanded(
                         child: Text(
                           ride['preBookingNote'],
-                          style:
-                              TextStyle(fontSize: 12, color: Colors.grey[600]),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -402,56 +417,60 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
           ),
 
           // Action buttons
-          if (status == 'awaiting_deposit') ...
-            [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () => _payDeposit(ride),
-                    icon: const Icon(Icons.payment, size: 18, color: Colors.white),
-                    label: const Text('Pay Deposit',
-                        style: TextStyle(color: Colors.white)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryColor,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
+          if (status == 'awaiting_deposit') ...[
+            // Padding(
+            //   padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+            //   child: SizedBox(
+            //     width: double.infinity,
+            //     child: ElevatedButton.icon(
+            //       onPressed: () => _payDeposit(ride),
+            //       icon: const Icon(Icons.payment, size: 18, color: Colors.white),
+            //       label: const Text('Pay Deposit',
+            //           style: TextStyle(color: Colors.white)),
+            //       style: ElevatedButton.styleFrom(
+            //         backgroundColor: AppTheme.primaryColor,
+            //         shape: RoundedRectangleBorder(
+            //             borderRadius: BorderRadius.circular(10)),
+            //       ),
+            //     ),
+            //   ),
+            // ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _showCancelDialog(ride),
+                  icon: const Icon(Icons.close, size: 18, color: Colors.red),
+                  label: const Text(
+                    'Cancel Booking',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.red),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
                     ),
                   ),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () => _showCancelDialog(ride),
-                    icon: const Icon(Icons.close, size: 18, color: Colors.red),
-                    label: const Text('Cancel Booking',
-                        style: TextStyle(color: Colors.red)),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Colors.red),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
-                    ),
-                  ),
-                ),
-              ),
-            ]
-          else if (status == 'scheduled' || status == 'requested')
+            ),
+          ] else if (status == 'scheduled' || status == 'requested')
             Container(
               width: double.infinity,
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
               child: OutlinedButton.icon(
                 onPressed: () => _showCancelDialog(ride),
                 icon: const Icon(Icons.close, size: 18, color: Colors.red),
-                label: const Text('Cancel Ride',
-                    style: TextStyle(color: Colors.red)),
+                label: const Text(
+                  'Cancel Ride',
+                  style: TextStyle(color: Colors.red),
+                ),
                 style: OutlinedButton.styleFrom(
                   side: const BorderSide(color: Colors.red),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
               ),
             ),

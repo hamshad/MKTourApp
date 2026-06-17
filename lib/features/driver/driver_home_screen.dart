@@ -883,6 +883,57 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     });
   }
 
+  double? _parseNum(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v);
+    return null;
+  }
+
+  /// Normalise flat FCM payload into nested structure expected by ride panels.
+  Map<String, dynamic> _normaliseRideData(dynamic raw) {
+    if (raw is! Map<String, dynamic>) return raw is Map ? Map<String, dynamic>.from(raw) : {};
+
+    final m = Map<String, dynamic>.from(raw);
+
+    // Normalise booleans (FCM sends everything as strings)
+    if (m['isScheduled'] is String) m['isScheduled'] = m['isScheduled'] == 'true';
+    if (m['isPriority'] is String) m['isPriority'] = m['isPriority'] == 'true';
+
+    // Normalise numeric fields that FCM sends as strings
+    if (m['fare'] is String) m['fare'] = double.tryParse(m['fare']) ?? m['fare'];
+    if (m['distance'] is String) m['distance'] = double.tryParse(m['distance']) ?? m['distance'];
+
+    // Build nested pickupLocation from flat fields
+    if (m['pickupLocation'] == null && (m['pickupAddress'] != null || m['pickupLat'] != null)) {
+      final lat = _parseNum(m['pickupLat']);
+      final lng = _parseNum(m['pickupLon']);
+      m['pickupLocation'] = {
+        'address': m['pickupAddress'],
+        if (lat != null && lng != null)
+          'coordinates': [lng, lat],
+      };
+    }
+
+    // Build nested dropoffLocation from flat fields
+    if (m['dropoffLocation'] == null && (m['dropoffAddress'] != null || m['dropoffLat'] != null)) {
+      final lat = _parseNum(m['dropoffLat']);
+      final lng = _parseNum(m['dropoffLon']);
+      m['dropoffLocation'] = {
+        'address': m['dropoffAddress'],
+        if (lat != null && lng != null)
+          'coordinates': [lng, lat],
+      };
+    }
+
+    // Build nested user from flat userName
+    if (m['user'] == null && m['userName'] != null) {
+      m['user'] = {'name': m['userName']};
+    }
+
+    return m;
+  }
+
   void _handleNewRideRequest(dynamic data) {
     debugPrint(
       '🔔 [DriverHomeScreen] Handling request. Current status: $_status',
@@ -894,19 +945,21 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       // Play app custom notification sound
       AudioService.instance.playNotification();
 
+      final normalised = _normaliseRideData(data);
+
       setState(() {
         _status = 'request';
-        _currentRideId = data['rideId'] ?? data['_id']; // Store ride ID
-        _rideData = data;
+        _currentRideId = normalised['rideId'] ?? normalised['_id'];
+        _rideData = normalised;
       });
 
       // Show notification
-      final isScheduled = data['isScheduled'] == true;
-      final isFallback = data['isFallback']?.toString().toLowerCase() == 'true';
+      final isScheduled = normalised['isScheduled'] == true;
+      final isFallback = normalised['isFallback']?.toString().toLowerCase() == 'true';
 
-      String message = isScheduled ? 'Scheduled Ride Request! 📅' : 'New Ride Request! 🚗';
+      String message = isScheduled ? 'Scheduled Ride Request!' : 'New Ride Request!';
       if (isFallback) {
-        message = 'Open Ride Request (5-Seater)! 🚗';
+        message = 'Open Ride Request (5-Seater)!';
       }
 
       CustomSnackbar.show(

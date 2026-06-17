@@ -170,7 +170,9 @@ class PaymentService {
           'dropoffPlaceId': dropoffLocation['placeId'],
       };
 
-      debugPrint('💳 PaymentService: Creating ${isScheduled ? 'scheduled' : 'regular'} ride...');
+      debugPrint(
+        '💳 PaymentService: Creating ${isScheduled ? 'scheduled' : 'regular'} ride...',
+      );
       debugPrint('💳 PaymentService: Request: ${jsonEncode(requestBody)}');
 
       final response = await http.post(
@@ -222,7 +224,8 @@ class PaymentService {
         );
         return PaymentResult.success(
           rideId: rideId!,
-          message: 'Scheduled ride created. Complete deposit payment to confirm.',
+          message:
+              'Scheduled ride created. Complete deposit payment to confirm.',
           data: rideData,
         );
       }
@@ -420,13 +423,14 @@ class PaymentService {
         if (status != null) 'status': status,
       };
 
-      final uri = Uri.parse(ApiConstants.scheduledRides)
-          .replace(queryParameters: queryParams.isNotEmpty ? queryParams : null);
+      final uri = Uri.parse(
+        ApiConstants.scheduledRides,
+      ).replace(queryParameters: queryParams.isNotEmpty ? queryParams : null);
 
       final response = await http.get(uri, headers: headers);
 
       debugPrint(
-        '📅 PaymentService: Scheduled rides response: ${response.statusCode}',
+        '📅 PaymentService: Scheduled rides response: ${response.body}',
       );
 
       if (response.statusCode != 200) {
@@ -447,7 +451,9 @@ class PaymentService {
     String rideId,
   ) async {
     try {
-      debugPrint('📅 PaymentService: Cancelling scheduled ride (user): $rideId');
+      debugPrint(
+        '📅 PaymentService: Cancelling scheduled ride (user): $rideId',
+      );
       final headers = await ApiConfig.getAuthHeaders();
 
       final response = await http.post(
@@ -455,9 +461,7 @@ class PaymentService {
         headers: headers,
       );
 
-      debugPrint(
-        '📅 PaymentService: Cancel response: ${response.statusCode}',
-      );
+      debugPrint('📅 PaymentService: Cancel response: ${response.statusCode}');
 
       if (response.statusCode != 200) {
         final errorData = jsonDecode(response.body);

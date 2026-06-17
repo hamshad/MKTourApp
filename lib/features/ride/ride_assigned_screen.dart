@@ -121,11 +121,10 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   String _selectedPaymentMethodDisplay = '';
 
   // Chrome Custom Tab payment link tracking
-  bool _waitingForPaymentLink = false;
-  Completer<bool>? _paymentLinkCompleter;
+  // Payment link now uses PaymentWebViewScreen (direct result via Navigator)
 
-  // CRITICAL: Prevent duplicate listener setup
-  bool _socketListenersInitialized = false;
+  // Prevent concurrent socket listener re-registration (initState vs reconnect)
+  bool _setupInProgress = false;
 
   // Promo (Free Ride) state
   bool _isPromoRide = false;
@@ -185,59 +184,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         _socketService.joinDriverRoom(_currentDriverId!);
       }
 
-      // 3. Check payment link result if waiting
-      if (_waitingForPaymentLink) {
-        _checkPaymentLinkResult();
-        return; // Skip ride sync — we'll handle navigation from the completer
-      }
-
-      // 4. CRITICAL: Manual Sync Fallback
+      // 3. CRITICAL: Manual Sync Fallback
       _syncRideStatus();
-    }
-  }
-
-  /// Called when app resumes after Chrome Custom Tab is closed.
-  /// Checks backend for payment status and completes the Completer.
-  Future<void> _checkPaymentLinkResult() async {
-    if (!_waitingForPaymentLink ||
-        _paymentLinkCompleter == null ||
-        _paymentLinkCompleter!.isCompleted)
-      return;
-
-    try {
-      // Small delay to allow Stripe webhook to reach the backend
-      await Future.delayed(const Duration(seconds: 2));
-
-      debugPrint(
-        '🔗 [Payment Link] Checking payment status after Chrome Custom Tab closed...',
-      );
-      final response = await _apiService.getRideDetails(widget.rideId);
-
-      final data = response['data'] ?? response;
-      final ride = data['ride'] ?? data;
-      final paymentStatus =
-          ride['paymentStatus']?.toString().toLowerCase() ?? '';
-      final paymentMethod =
-          ride['paymentMethod']?.toString().toLowerCase() ?? '';
-
-      debugPrint(
-        '🔗 [Payment Link] paymentStatus=$paymentStatus, paymentMethod=$paymentMethod',
-      );
-
-      if (paymentStatus == 'paid' ||
-          paymentStatus == 'succeeded' ||
-          paymentStatus == 'completed') {
-        _paymentLinkCompleter!.complete(true);
-      } else {
-        _paymentLinkCompleter!.complete(false);
-      }
-    } catch (e) {
-      debugPrint('❌ [Payment Link] Error checking payment status: $e');
-      if (!_paymentLinkCompleter!.isCompleted) {
-        _paymentLinkCompleter!.complete(false);
-      }
-    } finally {
-      _waitingForPaymentLink = false;
     }
   }
 
@@ -450,6 +398,14 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
           }
         }
 
+        // CRITICAL: Re-register socket event listeners in case the socket
+        // was recreated (initSocket forceReconnect disposes old socket,
+        // losing all event listeners registered via socket.on()).
+        debugPrint(
+          '🔄 [RideAssignedScreen] Reconnected — re-registering socket event listeners',
+        );
+        _setupSocketListeners();
+
         // Auto-sync ride status after any disconnection gap > 3 seconds
         final gap = _socketService.disconnectionGap;
         if (gap != null && gap.inSeconds > 3) {
@@ -530,15 +486,10 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   }
 
   Future<void> _setupSocketListeners() async {
-    // CRITICAL: Prevent duplicate listener setup
-    if (_socketListenersInitialized) {
-      debugPrint(
-        '⚠️ [RideAssignedScreen] Socket listeners already initialized, skipping...',
-      );
-      return;
-    }
-    _socketListenersInitialized = true;
-
+    // CRITICAL: Prevent concurrent re-registration (initState vs reconnect)
+    if (_setupInProgress) return;
+    _setupInProgress = true;
+    try {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final user = authProvider.user;
 
@@ -1053,7 +1004,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       _showPaymentSuccessScreen(mergedRideData);
     });
 
-    _socketService.on('ride:driverArrived', (data) async {
+    _socketService.on('ride:driverArrived', (data) {
       debugPrint('🚖 [RideAssignedScreen] Driver Arrived: $data');
 
       if (!mounted || !context.mounted) return;
@@ -1062,61 +1013,43 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       AudioService.instance.playNotification();
 
       // Update map state immediately
-      if (mounted) {
-        setState(() {
-          _rideStatus = 'driver_arrived';
-          _driverLocation = _pickupLocation;
-          _polylines = [];
-          _updateMarkers();
-        });
-      }
+      setState(() {
+        _rideStatus = 'driver_arrived';
+        _driverLocation = _pickupLocation;
+        _polylines = [];
+        _updateMarkers();
+      });
 
-      // Only call the API if fare info wasn't already captured from ride:accepted.
+      // Show visual arrival message box (before any async work)
+      _showDriverArrivedDialog();
+
+      // Async fare fetch — fire and forget (not awaited, so socket.io handler stays sync)
       if (_currentFare == null) {
-        debugPrint(
-          '🚖 [RideAssignedScreen] Fare unknown — fetching ride details before dialog...',
-        );
-        try {
-          final response = await _apiService.getRideDetails(widget.rideId);
-          if (mounted &&
-              response['success'] == true &&
-              response['data'] != null) {
+        _apiService.getRideDetails(widget.rideId).then((response) {
+          if (mounted && response['success'] == true && response['data'] != null) {
             final rideData = response['data'];
-            final bool isPromo = rideData['isPromoRide'] == true;
             final double? fare = rideData['fare'] != null
                 ? (rideData['fare'] as num).toDouble()
                 : null;
-            final bool fullyCovered =
-                rideData['promoFullyCovered'] == true ||
-                (isPromo && fare != null && fare == 0.0);
-            final double? originalFare = rideData['originalFare'] != null
-                ? (rideData['originalFare'] as num).toDouble()
-                : null;
             setState(() {
-              _isPromoRide = isPromo;
-              _promoFullyCovered = fullyCovered;
-              if (originalFare != null) _promoOriginalFare = originalFare;
+              _isPromoRide = rideData['isPromoRide'] == true;
+              _promoFullyCovered = rideData['promoFullyCovered'] == true ||
+                  (_isPromoRide && fare != null && fare == 0.0);
+              if (rideData['originalFare'] != null) {
+                _promoOriginalFare = (rideData['originalFare'] as num).toDouble();
+              }
               if (fare != null) _currentFare = fare;
-              // Confirm scheduled flag from live data
               if (rideData['isScheduled'] == true) _isScheduled = true;
             });
-            debugPrint(
-              '🚖 [RideAssignedScreen] Pre-dialog sync — isPromo: $isPromo, fullyCovered: $fullyCovered, fare: $fare',
-            );
           }
-        } catch (e) {
+        }).catchError((e) {
           debugPrint('⚠️ [RideAssignedScreen] Pre-dialog ride sync failed: $e');
-        }
+        });
       } else {
         debugPrint(
-          '🚖 [RideAssignedScreen] Fare already known ($_currentFare), skipping API call. promoFullyCovered: $_promoFullyCovered',
+          '🚖 [RideAssignedScreen] Fare already known ($_currentFare), skipping API call.',
         );
       }
-
-      if (!mounted || !context.mounted) return;
-
-      // Show visual arrival message box
-      _showDriverArrivedDialog();
     });
 
     _socketService.on('ride:otpExpired', (data) {
@@ -1341,7 +1274,10 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         );
       }
     });
+  } finally {
+    _setupInProgress = false;
   }
+}
 
   void _updateMarkers() {
     final List<MapMarker> newMarkers = [];
@@ -2998,109 +2934,43 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
           if (Navigator.canPop(context)) {
             Navigator.pop(context);
           }
-
           if (paymentUrl != null) {
-            if (Platform.isAndroid) {
-              // ── Android: Chrome Custom Tab ──────────────────────────
-              debugPrint(
-                '✅ [Payment Link] Opening in Chrome Custom Tab (Android)',
-              );
+            // ── In-app WebView (same as prebooking) ──────────────────
+            debugPrint('✅ [Payment Link] Opening in-app WebView');
 
-              _paymentLinkCompleter = Completer<bool>();
-              _waitingForPaymentLink = true;
+            final result = await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => PaymentWebViewScreen(
+                  paymentUrl: paymentUrl,
+                  rideId: widget.rideId,
+                ),
+              ),
+            );
 
-              final launched = await launchUrl(
-                Uri.parse(paymentUrl),
-                mode: LaunchMode.inAppBrowserView,
-              );
-
-              if (!launched) {
-                _waitingForPaymentLink = false;
-                _paymentLinkCompleter = null;
-                debugPrint('❌ [Payment Link] Could not open Chrome Custom Tab');
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Could not open payment page. Please try again.',
-                    ),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-                _reopenPaymentSelectionModal();
-                return;
-              }
-
-              // Block until the Completer is resolved by _checkPaymentLinkResult
-              final success = await _paymentLinkCompleter!.future;
-
-              if (!mounted) return;
-              if (success) {
-                debugPrint(
-                  '✅ [Payment Link] Payment completed (Chrome Custom Tab)',
-                );
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Payment successful! Share OTP with driver.'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-                setState(() {
-                  _isPaymentMethodSelected = true;
-                  _selectedPaymentMethodDisplay = 'Payment Link';
-                });
-              } else {
-                debugPrint(
-                  '❌ [Payment Link] Payment not completed (Chrome Custom Tab)',
-                );
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Payment was not completed. Please try again.',
-                    ),
-                    backgroundColor: Colors.orange,
-                  ),
-                );
-                _reopenPaymentSelectionModal();
-              }
-            } else {
-              // ── iOS / other: In-app WebView ──────────────────────────
-              debugPrint('✅ [Payment Link] Opening in-app WebView');
-
-              final result = await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => PaymentWebViewScreen(
-                    paymentUrl: paymentUrl,
-                    rideId: widget.rideId,
-                  ),
+            if (result != null && result['success'] == true) {
+              debugPrint('✅ [Payment Link] Payment completed successfully');
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Payment successful! Share OTP with driver.'),
+                  backgroundColor: Colors.green,
                 ),
               );
-
-              if (result != null && result['success'] == true) {
-                debugPrint('✅ [Payment Link] Payment completed successfully');
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Payment successful! Share OTP with driver.'),
-                    backgroundColor: Colors.green,
+              setState(() {
+                _isPaymentMethodSelected = true;
+                _selectedPaymentMethodDisplay = 'Payment Link';
+              });
+            } else {
+              debugPrint('❌ [Payment Link] Payment cancelled or failed');
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Payment was not completed. Please try again.',
                   ),
-                );
-                setState(() {
-                  _isPaymentMethodSelected = true;
-                  _selectedPaymentMethodDisplay = 'Payment Link';
-                });
-              } else {
-                debugPrint('❌ [Payment Link] Payment cancelled or failed');
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Payment was not completed. Please try again.',
-                    ),
-                    backgroundColor: Colors.orange,
-                  ),
-                );
-                _reopenPaymentSelectionModal();
-              }
+                  backgroundColor: Colors.orange,
+                ),
+              );
+              _reopenPaymentSelectionModal();
             }
           } else {
             debugPrint('❌ [Payment Link] URL missing in response');
