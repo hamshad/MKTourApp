@@ -839,7 +839,20 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         _isPromoRide = promoRide;
         if (promoOriginalFare != null) _promoOriginalFare = promoOriginalFare;
         _completedFare = completedFare;
-        _completedRideData = data is Map<String, dynamic> ? data : null;
+
+        // For scheduled rides: merge deferred payment data into completed data
+        // so payment method (payment_link) is preserved, not lost or defaulted to cash
+        if (_isScheduled && _deferredPaymentSuccessData != null) {
+          final rawData = data is Map<String, dynamic> ? data : <String, dynamic>{};
+          _completedRideData = {
+            ..._deferredPaymentSuccessData!,
+            ...rawData,
+          };
+          _deferredPaymentSuccessData = null;
+        } else {
+          _completedRideData = data is Map<String, dynamic> ? data : null;
+        }
+
         _rideStatus = 'completed';
       });
     });
@@ -1946,11 +1959,18 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         'bookingId': widget.rideId,
         'driver': _driver,
         'fare': _completedFare ?? widget.fare,
+        'isScheduled': _isScheduled || widget.isScheduled,
         if (_isPromoRide) 'isPromoRide': true,
         if (_isPromoRide && _promoOriginalFare > 0)
           'originalFare': _promoOriginalFare,
         if (_completedRideData != null) ..._completedRideData!,
       };
+
+      // For scheduled rides, always ensure paymentMethod is set (never cash)
+      if ((_isScheduled || widget.isScheduled) &&
+          completedData['paymentMethod'] == null) {
+        completedData['paymentMethod'] = 'payment_link';
+      }
       return RideCompleteScreen(rideData: completedData);
     }
 
@@ -2021,7 +2041,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       if (originalFareValue != null) 'originalFare': originalFareValue,
       'isScheduled': _isScheduled || widget.isScheduled,
       ...rideData,
-      'paymentMethod': rideData['paymentMethod'] ?? 'Cash',
+      'paymentMethod': rideData['paymentMethod'] ?? (_isScheduled ? 'payment_link' : null),
     };
 
     Navigator.pushReplacement(
