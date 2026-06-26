@@ -97,9 +97,10 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
           // Drag Handle
           Center(
             child: Container(
@@ -472,8 +473,6 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
             ],
           ),
 
-          const Spacer(),
-
           // Action Buttons
           Padding(
             padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
@@ -555,6 +554,7 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
           ),
           const SizedBox(height: 16),
         ],
+      ),
       ),
     );
   }

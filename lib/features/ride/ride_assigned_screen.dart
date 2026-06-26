@@ -1022,6 +1022,12 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
       if (!mounted || !context.mounted) return;
 
+      // Extract scheduled status from socket event immediately
+      // (before async API call completes, so payment modal hides cash correctly)
+      if (data['isScheduled'] == true) {
+        setState(() { _isScheduled = true; });
+      }
+
       // Play app custom notification sound
       AudioService.instance.playNotification();
 
@@ -2041,7 +2047,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       if (originalFareValue != null) 'originalFare': originalFareValue,
       'isScheduled': _isScheduled || widget.isScheduled,
       ...rideData,
-      'paymentMethod': rideData['paymentMethod'] ?? (_isScheduled ? 'payment_link' : null),
+      'paymentMethod': rideData['paymentMethod'] ?? 'payment_link',
     };
 
     Navigator.pushReplacement(

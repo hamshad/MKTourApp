@@ -246,7 +246,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       '✅ [HomeScreen] Navigating to RideAssignedScreen with rideId: $rideId',
     );
 
-    final bool isScheduled = data['isScheduled'] == true;
+    // Use state manager to determine scheduled status (persisted at booking time)
+    // instead of relying on socket event data which may lack isScheduled flag.
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final bool isScheduled = data['isScheduled'] == true || auth.isRideScheduled(rideId);
 
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(

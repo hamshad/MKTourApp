@@ -8,6 +8,8 @@ import '../../core/services/socket_service.dart';
 import '../ride/payment_webview_screen.dart';
 import '../ride/ride_assigned_screen.dart';
 import 'dart:async';
+import 'package:provider/provider.dart';
+import '../../core/auth_provider.dart';
 import '../../core/widgets/platform_map.dart';
 import 'package:latlong2/latlong.dart' as lat_lng;
 import 'package:flutter_map/flutter_map.dart' as fmap;
@@ -453,6 +455,10 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
           debugPrint('✅ [RideConfirmationScreen] Ride created: $rideId');
 
           if (scheduledAt != null) {
+            // Persist scheduled status in state manager so downstream screens
+            // (RideAssignedScreen, RideCompleteScreen) know this is a prebook ride
+            // without relying on socket event fields or async API calls.
+            Provider.of<AuthProvider>(context, listen: false).markRideAsScheduled(rideId);
             setState(() => _isLoading = false);
             final paymentUrl = result.data!['paymentUrl']?.toString();
             if (paymentUrl != null && paymentUrl.isNotEmpty) {

@@ -15,6 +15,7 @@ class AuthProvider with ChangeNotifier {
   String? _role;
   Map<String, dynamic>? _driverProfileStatus;
   String? _lastDeleteMessage;
+  final Set<String> _scheduledRideIds = {};
 
   static const String _prefsAuthTokenKey = 'auth_token';
   static const String _prefsAuthRoleKey = 'auth_role';
@@ -27,6 +28,12 @@ class AuthProvider with ChangeNotifier {
   bool get isDriver => _role == 'driver';
   Map<String, dynamic>? get driverProfileStatus => _driverProfileStatus;
   String? get lastDeleteMessage => _lastDeleteMessage;
+
+  void markRideAsScheduled(String rideId) {
+    _scheduledRideIds.add(rideId);
+  }
+
+  bool isRideScheduled(String rideId) => _scheduledRideIds.contains(rideId);
 
   /// Send FCM token to backend based on current role
   Future<void> _sendFcmToken() async {
@@ -619,6 +626,7 @@ class AuthProvider with ChangeNotifier {
     _user = null;
     _rideHistory = [];
     _lastRideHistoryFetch = null;
+    _scheduledRideIds.clear();
     _role = null;
     _driverProfileStatus = null;
     final prefs = await SharedPreferences.getInstance();
