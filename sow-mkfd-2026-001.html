@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Statement of Work — MK Food Delivery Platform</title>
+<meta name="author" content="Moksha Solutions">
+<meta name="description" content="Statement of Work for the development of the MK Food Delivery Platform, a cross-platform food delivery system serving Milton Keynes, UK.">
+<meta name="keywords" content="Statement of Work, Food Delivery Platform, Milton Keynes, Mobile App, Web Admin, React Native">
+<meta name="generator" content="Kami">
+<style>
+  @font-face { font-family: "JetBrains Mono"; src: url("/Users/moksha/.agents/skills/kami/assets/fonts/JetBrainsMono.woff2") format("woff2"); font-weight: 400; font-style: normal; }
+  @font-face { font-family: "JetBrains Mono"; src: url("/Users/moksha/.agents/skills/kami/assets/fonts/JetBrainsMono.woff2") format("woff2"); font-weight: 500; font-style: normal; }
+
+  @page {
+    size: A4;
+    margin: 20mm 22mm 22mm 22mm;
+    background: #f5f4ed;
+
+    @top-right {
+      content: string(section-title);
+      font-family: Charter, Georgia, Palatino, serif;
+      font-size: 8pt;
+      color: #6b6a64;
+    }
+
+    @bottom-center {
+      content: counter(page) "  ·  Statement of Work — MK Food Delivery Platform";
+      font-family: Charter, Georgia, Palatino, serif;
+      font-size: 9pt;
+      color: #6b6a64;
+    }
+  }
+  @page:first {
+    @top-right { content: ""; }
+    @bottom-center { content: ""; }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --parchment: #f5f4ed;
+    --ivory:     #faf9f5;
+    --near-black:#141413;
+    --dark-warm: #3d3d3a;
+    --olive:     #504e49;
+    --stone:     #6b6a64;
+    --brand:     #1B365D;
+    --border:    #e8e6dc;
+    --border-soft:#e5e3d8;
+    --tag-bg:    #E4ECF5;
+
+    --serif: Charter, Georgia,
+             Palatino, "Times New Roman", serif;
+    --sans: var(--serif);
+    --mono:  "JetBrains Mono", "SF Mono", "Fira Code",
+             Consolas, Monaco, monospace;
+
+    --rhythm-module:  14pt;
+    --rhythm-section: 18pt;
+  }
+
+  html, body { background: var(--parchment); }
+
+  @media screen {
+    body { max-width: 210mm; margin: 0 auto; padding: 20mm 22mm 22mm 22mm; }
+  }
+
+  body {
+    color: var(--near-black);
+    font-family: var(--serif);
+    font-size: 10.5pt;
+    line-height: 1.55;
+    widows: 3;
+    orphans: 3;
+  }
+
+  .sans { font-family: var(--sans); }
+
+  .cover {
+    min-height: 240mm;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 40mm 0 0 0;
+    break-after: page;
+  }
+  .cover-eyebrow {
+    font-family: var(--sans);
+    font-size: 10pt;
+    color: var(--brand);
+    letter-spacing: 2pt;
+    text-transform: uppercase;
+    font-weight: 500;
+    margin-bottom: 18pt;
+  }
+  .cover-title {
+    font-size: 40pt;
+    font-weight: 500;
+    color: var(--near-black);
+    line-height: 1.12;
+    letter-spacing: -0.5pt;
+    margin-bottom: 16pt;
+  }
+  .cover-sub {
+    font-family: var(--sans);
+    font-size: 14pt;
+    color: var(--olive);
+    line-height: 1.45;
+    max-width: 85%;
+    margin-bottom: 30pt;
+  }
+  .cover-meta {
+    font-family: var(--sans);
+    font-size: 10pt;
+    color: var(--stone);
+    line-height: 1.55;
+    font-variant-numeric: tabular-nums;
+  }
+  .cover-meta strong { color: var(--dark-warm); font-weight: 500; }
+
+  .toc { break-after: page; }
+  .toc h2 {
+    font-size: 22pt;
+    font-weight: 500;
+    margin-bottom: var(--rhythm-module);
+    border-left: 2.5pt solid var(--brand);
+    border-radius: 1.5pt;
+    padding-left: 8pt;
+  }
+  .toc-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 6pt 0;
+    border-bottom: 0.3pt dotted var(--border);
+    font-size: 11pt;
+  }
+  .toc-item:last-of-type { border-bottom: none; }
+  .toc-num {
+    color: var(--brand);
+    font-weight: 500;
+    min-width: 30pt;
+    font-variant-numeric: tabular-nums;
+  }
+  .toc-title {
+    flex: 1;
+    color: var(--near-black);
+    padding-left: 6pt;
+  }
+  .toc-page {
+    color: var(--stone);
+    font-variant-numeric: tabular-nums;
+  }
+
+  h1 {
+    font-size: 24pt;
+    font-weight: 500;
+    line-height: 1.15;
+    letter-spacing: -0.3pt;
+    margin: 0 0 10pt 0;
+    border-left: 2.5pt solid var(--brand);
+    border-radius: 1.5pt;
+    padding-left: 8pt;
+    color: var(--near-black);
+    break-after: avoid;
+  }
+  h2 {
+    font-size: 16pt;
+    font-weight: 500;
+    line-height: 1.25;
+    margin: 24pt 0 8pt 0;
+    color: var(--near-black);
+    break-after: avoid;
+    page-break-after: avoid;
+    string-set: section-title content();
+  }
+  h3 {
+    font-size: 13pt;
+    font-weight: 500;
+    line-height: 1.3;
+    margin: 18pt 0 6pt 0;
+    color: var(--dark-warm);
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  .chapter-num {
+    font-family: var(--sans);
+    font-size: 10pt;
+    color: var(--brand);
+    letter-spacing: 1pt;
+    text-transform: uppercase;
+    font-weight: 500;
+    margin-bottom: 6pt;
+  }
+
+  p { margin: 0 0 10pt 0; line-height: 1.55; color: var(--near-black); widows: 3; orphans: 3; }
+
+  .lead {
+    font-size: 12pt;
+    line-height: 1.55;
+    color: var(--dark-warm);
+    margin-bottom: var(--rhythm-module);
+  }
+
+  .hl { color: var(--brand); font-weight: 500; }
+  strong { font-weight: 500; }
+
+  ul, ol {
+    margin: 6pt 0 10pt 0;
+    padding-left: 20pt;
+    line-height: 1.55;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  ul li::marker { color: var(--brand); }
+  ol li::marker { color: var(--brand); font-weight: 500; }
+
+  blockquote, .quote {
+    border-left: 2pt solid var(--brand);
+    margin: 12pt 0;
+    padding: 4pt 0 4pt 16pt;
+    color: var(--olive);
+    line-height: 1.55;
+    break-inside: avoid;
+  }
+  blockquote .cite, .quote .cite {
+    display: block;
+    font-family: var(--sans);
+    font-size: 9pt;
+    color: var(--stone);
+    margin-top: 4pt;
+  }
+
+  code {
+    font-family: var(--mono);
+    font-size: 9pt;
+    background: var(--ivory);
+    padding: 1pt 4pt;
+    border-radius: 2pt;
+    color: var(--dark-warm);
+  }
+  pre {
+    font-family: var(--mono);
+    font-size: 9pt;
+    line-height: 1.5;
+    background: var(--ivory);
+    border-radius: 4pt;
+    padding: 10pt 14pt;
+    margin: 10pt 0;
+    white-space: pre-wrap;
+    color: var(--near-black);
+    break-inside: avoid;
+  }
+  pre code { background: transparent; padding: 0; font-size: inherit; }
+
+  table, .kami-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9.5pt;
+    margin: 12pt 0;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  thead { display: table-header-group; }
+  table th, .kami-table th {
+    text-align: left;
+    font-family: var(--sans);
+    font-weight: 500;
+    color: var(--dark-warm);
+    padding: 6pt 8pt;
+    border-bottom: 1pt solid var(--border);
+    background: var(--ivory);
+  }
+  table td, .kami-table td {
+    padding: 5pt 8pt;
+    border-bottom: 0.3pt solid var(--border-soft);
+    vertical-align: top;
+  }
+  table.compact th, .kami-table.compact th { padding: 3pt 6pt; font-size: 8pt; }
+  table.compact td, .kami-table.compact td { padding: 2pt 6pt; font-size: 8pt; line-height: 1.4; }
+  table.financial td:not(:first-child), .kami-table.financial td:not(:first-child) {
+    text-align: right; font-variant-numeric: tabular-nums;
+  }
+  table.financial th:not(:first-child), .kami-table.financial th:not(:first-child) { text-align: right; }
+  table.striped tbody tr:nth-child(even) td, .kami-table.striped tbody tr:nth-child(even) td {
+    background: var(--ivory);
+  }
+  table .total td, .kami-table .total td {
+    font-weight: 500; border-top: 1pt solid var(--brand); border-bottom: none; color: var(--near-black);
+  }
+
+  .callout {
+    background: var(--ivory);
+    border-left: 2pt solid var(--brand);
+    padding: 10pt 14pt;
+    border-radius: 3pt;
+    margin: 12pt 0;
+    line-height: 1.55;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .callout blockquote,
+  .callout .quote {
+    border-left: none;
+    padding-left: 0;
+    margin: 6pt 0;
+    color: var(--olive);
+  }
+  .callout blockquote:first-child,
+  .callout .quote:first-child { margin-top: 0; }
+  .callout blockquote:last-child,
+  .callout .quote:last-child  { margin-bottom: 0; }
+  .takeaway {
+    background: var(--ivory);
+    border-radius: 4pt;
+    padding: 10pt 14pt;
+    margin: 14pt 0;
+    break-inside: avoid;
+  }
+  .takeaway-label {
+    font-family: var(--sans);
+    font-size: 9pt;
+    color: var(--brand);
+    letter-spacing: 1pt;
+    text-transform: uppercase;
+    font-weight: 500;
+    margin-bottom: 4pt;
+  }
+
+  .tag {
+    display: inline-block;
+    background: var(--tag-bg);
+    color: var(--brand);
+    font-family: var(--sans);
+    font-size: 9pt;
+    font-weight: 500;
+    padding: 1pt 6pt;
+    border-radius: 3pt;
+    letter-spacing: 0.4pt;
+    text-transform: uppercase;
+    margin-right: 4pt;
+  }
+
+  figure { margin: 14pt 0; break-inside: avoid; }
+  figure img { max-width: 100%; border-radius: 4pt; }
+  figcaption {
+    font-family: var(--sans);
+    font-size: 9pt;
+    color: var(--stone);
+    margin-top: 6pt;
+    text-align: center;
+  }
+
+  .chapter { break-before: page; }
+
+  /* Keep heading + following content together */
+  h2 + p, h2 + table, h2 + ul, h2 + ol,
+  h3 + p, h3 + table, h3 + ul, h3 + ol {
+    page-break-before: avoid;
+    break-before: avoid;
+  }
+</style>
+</head>
+<body>
+
+<!-- COVER -->
+<section class="cover">
+  <div>
+    <div class="cover-eyebrow">Statement of Work</div>
+    <div class="cover-title">MK Food Delivery<br>Platform</div>
+    <div class="cover-sub">A comprehensive food delivery platform serving Milton Keynes, United Kingdom — comprising customer and delivery partner mobile app, restaurant management app, and web-based admin panel.</div>
+  </div>
+  <div class="cover-meta">
+    <strong>Moksha Solutions</strong><br>
+    Version 1.0 · 2026.06<br>
+    Prepared for MK-Tours
+  </div>
+</section>
+
+<!-- TOC -->
+<section class="toc">
+  <h2>Contents</h2>
+  <div class="toc-item"><span class="toc-num">01</span><span class="toc-title">Introduction &amp; Project Overview</span><span class="toc-page">03</span></div>
+  <div class="toc-item"><span class="toc-num">02</span><span class="toc-title">Scope of Work &amp; Deliverables</span><span class="toc-page">04</span></div>
+  <div class="toc-item"><span class="toc-num">03</span><span class="toc-title">Architecture, Services &amp; Costs</span><span class="toc-page">08</span></div>
+  <div class="toc-item"><span class="toc-num">04</span><span class="toc-title">Timeline, Payment &amp; Responsibilities</span><span class="toc-page">10</span></div>
+  <div class="toc-item"><span class="toc-num">05</span><span class="toc-title">Legal Terms &amp; Sign-Off</span><span class="toc-page">12</span></div>
+</section>
+
+<!-- Chapter 01 -->
+<section class="chapter">
+  <div class="chapter-num">01 · Introduction &amp; Overview</div>
+  <h1>Introduction &amp; Project Overview</h1>
+
+  <p class="lead">
+    This Statement of Work sets out the terms, scope, deliverables, timeline, and investment for the development of the <span class="hl">MK Food Delivery Platform</span> between <strong>Moksha Solutions</strong> (the Developer) and <strong>MK-Tours</strong> (the Client). It defines the work to be undertaken, the deliverables the Client will receive, the responsibilities of both parties, and the commercial terms governing the engagement.
+  </p>
+
+  <p>This SoW is to be read in conjunction with any accompanying Master Services Agreement (MSA) between the parties. In the event of a conflict, the MSA takes precedence.</p>
+
+  <h2>Project Overview</h2>
+
+  <p>The Client requires the development of a comprehensive food delivery platform serving the <span class="hl">Milton Keynes area, United Kingdom</span>. The platform consists of three interconnected components, each targeting a distinct user group:</p>
+
+  <table class="striped">
+    <thead>
+      <tr><th>Component</th><th>Target Users</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>Customer &amp; Delivery Partner App</strong></td><td>Consumers &amp; Delivery Drivers</td><td>Cross-platform mobile app — customers discover restaurants, place orders, and track deliveries. Delivery partners receive and complete deliveries within the same app.</td></tr>
+      <tr><td><strong>Restaurant App</strong></td><td>Restaurant Owners &amp; Staff</td><td>Dedicated cross-platform mobile app for restaurant partners to manage menus, process orders, and monitor sales.</td></tr>
+      <tr><td><strong>Admin Panel Dashboard</strong></td><td>Platform Administrators</td><td>Web-based management portal for user management, restaurant approvals, live order monitoring, and financial reporting.</td></tr>
+    </tbody>
+  </table>
+
+  <p>All three components communicate with a single <span class="hl">centralized backend API</span> and shared database infrastructure. The project targets launch within <strong>4 months</strong> of commencement, across iOS, Android, and web.</p>
+
+  <div class="takeaway">
+    <div class="takeaway-label">Document Reference</div>
+    SOW-MKFD-2026-001 · Version 1.0 · Prepared 29 June 2026 · Status: Awaiting Client Approval
+  </div>
+</section>
+
+<!-- Chapter 02 -->
+<section class="chapter">
+  <div class="chapter-num">02 · Scope of Work</div>
+  <h1>Scope of Work &amp; Deliverables</h1>
+
+  <p class="lead">
+    The Developer will design and build a secure, scalable RESTful API and real-time event system, three client applications, and a web-based admin dashboard. This section defines every feature area and functional deliverable across all components.
+  </p>
+
+  <h2>Backend API</h2>
+  <p>The backend API serves as the single source of truth for all three client applications. Key deliverables include:</p>
+  <ul>
+    <li>Database schema design covering users, drivers, restaurants, menus, orders, and payments</li>
+    <li>RESTful API endpoints for all platform features</li>
+    <li>Real-time event infrastructure using <span class="hl">WebSockets</span> for live order status and delivery tracking</li>
+    <li>Secure authentication via phone-number-based OTP login</li>
+    <li>Payment processing integration supporting card payments and cash-on-delivery</li>
+    <li>Push notification service for all order lifecycle events</li>
+    <li>Geospatial querying to surface nearby restaurants based on user location</li>
+    <li><span class="hl">Virtual Ledger</span> financial model — customer payments collected into the Client's account, with automated calculation of amounts owed to restaurants and delivery partners, net of platform commission</li>
+    <li>Document management system for delivery partner verification files</li>
+    <li>Server deployment on the Client's existing Hostinger KVM 2 infrastructure</li>
+  </ul>
+
+  <h2>Customer &amp; Delivery Partner Mobile App</h2>
+  <p>A single cross-platform mobile application (iOS &amp; Android) with two distinct role-based modes.</p>
+
+  <h3>Customer Mode</h3>
+  <table class="striped">
+    <thead><tr><th>Feature Area</th><th>Functionality</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Authentication</strong></td><td>Phone number registration and login via SMS OTP verification</td></tr>
+      <tr><td><strong>Home &amp; Discovery</strong></td><td>Nearby restaurants browsable by proximity and food category</td></tr>
+      <tr><td><strong>Restaurant Profile</strong></td><td>Details, operating hours, minimum order value, delivery fee</td></tr>
+      <tr><td><strong>Menu &amp; Items</strong></td><td>Full menu by category with descriptions, prices, and images</td></tr>
+      <tr><td><strong>Cart &amp; Checkout</strong></td><td>Add/remove items, adjust quantities, full order summary</td></tr>
+      <tr><td><strong>Delivery Address</strong></td><td>Enter or select address; save commonly used addresses</td></tr>
+      <tr><td><strong>Payment</strong></td><td>Secure card payment via Stripe, or Cash on Delivery</td></tr>
+      <tr><td><strong>Order Confirmation</strong></td><td>Estimated preparation and delivery time</td></tr>
+      <tr><td><strong>Live Order Tracking</strong></td><td>Real-time map of delivery partner location and status updates</td></tr>
+      <tr><td><strong>Order History</strong></td><td>Past orders with itemised receipts</td></tr>
+      <tr><td><strong>Ratings</strong></td><td>Rate restaurant and delivery experience after completion</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Delivery Partner Mode</h3>
+  <table class="striped">
+    <thead><tr><th>Feature Area</th><th>Functionality</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Onboarding &amp; Verification</strong></td><td>Registration, document upload (driving licence, insurance, vehicle details), admin approval</td></tr>
+      <tr><td><strong>Online / Offline Toggle</strong></td><td>Set availability to receive delivery requests</td></tr>
+      <tr><td><strong>Delivery Requests</strong></td><td>Real-time incoming requests with restaurant name, distance, and earnings</td></tr>
+      <tr><td><strong>Active Delivery Flow</strong></td><td>Navigate to Restaurant → Confirm Pickup → Navigate to Customer → Confirm Delivery</td></tr>
+      <tr><td><strong>Navigation</strong></td><td>One-tap integration with Google Maps for turn-by-turn routing</td></tr>
+      <tr><td><strong>Earnings Dashboard</strong></td><td>Completed deliveries, per-delivery earnings, pending payout summary</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Restaurant Mobile App</h2>
+  <p>A dedicated cross-platform mobile application (iOS &amp; Android) for restaurant partners:</p>
+  <table class="striped">
+    <thead><tr><th>Feature Area</th><th>Functionality</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Restaurant Onboarding</strong></td><td>Registration with name, address, cuisine type, hours, contact details, logo and cover image upload; admin approval</td></tr>
+      <tr><td><strong>Menu Management</strong></td><td>Create, edit, delete categories and items with name, description, price, and image; mark items as available or sold out</td></tr>
+      <tr><td><strong>Incoming Orders</strong></td><td>Real-time push and in-app alerts; accept or reject with reason</td></tr>
+      <tr><td><strong>Order Preparation</strong></td><td>Set estimated preparation time; mark orders ready for pickup</td></tr>
+      <tr><td><strong>Order History</strong></td><td>Past orders with full itemised details</td></tr>
+      <tr><td><strong>Earnings Overview</strong></td><td>Daily and weekly sales totals, order volumes, payout log</td></tr>
+      <tr><td><strong>Operating Controls</strong></td><td>Pause incoming orders (Busy Mode); update operating hours</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Admin Panel Dashboard</h2>
+  <p>A secure, web-based management portal accessible via desktop browser:</p>
+  <table class="striped">
+    <thead><tr><th>Module</th><th>Functionality</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Dashboard Overview</strong></td><td>Platform metrics: active orders, registered users, active drivers, onboarded restaurants</td></tr>
+      <tr><td><strong>User Management</strong></td><td>View customers, activity, order history; suspend or delete accounts</td></tr>
+      <tr><td><strong>Driver Management</strong></td><td>Review applications and verification documents; approve or reject; view performance and delivery history</td></tr>
+      <tr><td><strong>Restaurant Management</strong></td><td>Review and approve applications; view performance metrics; manage active/inactive status</td></tr>
+      <tr><td><strong>Order Monitoring</strong></td><td>Live view of all orders and current status; dispute resolution tools</td></tr>
+      <tr><td><strong>Financial Dashboard</strong></td><td>Revenue overview; Virtual Ledger view of amounts owed per settlement period; mark payouts as completed</td></tr>
+      <tr><td><strong>Platform Configuration</strong></td><td>Set commission rates, delivery radius, minimum order values</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- Chapter 03 -->
+<section class="chapter">
+  <div class="chapter-num">03 · Architecture &amp; Services</div>
+  <h1>Technical Architecture &amp; Third-Party Services</h1>
+
+  <p class="lead">
+    The platform is built on a Node.js backend with MongoDB, served via a Hostinger KVM 2 VPS. Mobile applications use React Native for cross-platform delivery. Payment processing, mapping, and authentication are handled by established third-party services.
+  </p>
+
+  <h2>Technology Stack</h2>
+  <table class="striped">
+    <thead><tr><th>Layer</th><th>Technology</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Backend Runtime</strong></td><td>Node.js with Express.js</td><td>Core API server and business logic</td></tr>
+      <tr><td><strong>Database</strong></td><td>MongoDB</td><td>Primary data store with geospatial indexing</td></tr>
+      <tr><td><strong>Real-Time</strong></td><td>Socket.io</td><td>Live delivery tracking and order status</td></tr>
+      <tr><td><strong>Mobile Apps</strong></td><td>React Native / Flutter</td><td>Cross-platform iOS &amp; Android</td></tr>
+      <tr><td><strong>Admin Panel</strong></td><td>React.js</td><td>Web-based admin dashboard</td></tr>
+      <tr><td><strong>Push Notifications</strong></td><td>Firebase Cloud Messaging</td><td>Order lifecycle notifications</td></tr>
+      <tr><td><strong>Payment Processing</strong></td><td>Stripe (Standard)</td><td>SCA-compliant UK card payments</td></tr>
+      <tr><td><strong>Mapping &amp; Routing</strong></td><td>Google Maps Platform</td><td>Places, Directions, Distance Matrix APIs</td></tr>
+      <tr><td><strong>SMS Auth</strong></td><td>Twilio</td><td>OTP delivery for login</td></tr>
+      <tr><td><strong>Server</strong></td><td>Hostinger KVM 2 VPS</td><td>2 vCPU, 8 GB RAM, 60 GB NVMe</td></tr>
+      <tr><td><strong>Reverse Proxy</strong></td><td>NGINX</td><td>Traffic routing</td></tr>
+      <tr><td><strong>Process Manager</strong></td><td>PM2</td><td>24/7 uptime and auto-restart</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Third-Party Services &amp; Ongoing Costs</h2>
+  <p>The following services are paid <span class="hl">directly by the Client</span> to third-party providers. These are operational costs independent of the development engagement and scale with platform usage.</p>
+  <table class="striped">
+    <thead><tr><th>Service</th><th>Provider</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Mapping &amp; Routing</strong></td><td>Google Maps Platform</td><td>Monthly usage credit; costs scale with order volume</td></tr>
+      <tr><td><strong>Payment Processing</strong></td><td>Stripe</td><td>Standard UK SCA-compliant transaction fees</td></tr>
+      <tr><td><strong>SMS OTP</strong></td><td>Twilio</td><td>Per-SMS fee based on volume</td></tr>
+      <tr><td><strong>Server Hosting</strong></td><td>Hostinger (existing)</td><td>Deployed alongside existing services on current VPS at no additional cost</td></tr>
+      <tr><td><strong>Push Notifications</strong></td><td>Firebase Cloud Messaging</td><td>Free within standard usage limits</td></tr>
+      <tr><td><strong>iOS Distribution</strong></td><td>Apple Developer Programme</td><td>Annual membership required for App Store</td></tr>
+      <tr><td><strong>Android Distribution</strong></td><td>Google Play Console</td><td>One-time registration fee</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- Chapter 04 -->
+<section class="chapter">
+  <div class="chapter-num">04 · Timeline &amp; Terms</div>
+  <h1>Project Timeline, Payment &amp; Responsibilities</h1>
+
+  <p class="lead">
+    The project is estimated at <span class="hl">16 weeks (4 months)</span> from the confirmed start date. Phases run partially concurrently to meet this timeline. Progress on each phase is contingent on receipt of payment for the preceding milestone.
+  </p>
+
+  <h2>Project Timeline</h2>
+  <table class="striped">
+    <thead><tr><th>Phase</th><th>Scope</th><th>Duration</th><th>Deliverable</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Phase 1</strong></td><td>Database schema, core API, authentication, payment integration, real-time sockets, notifications</td><td>Weeks 1–5</td><td>Functional backend API</td></tr>
+      <tr><td><strong>Phase 2</strong></td><td>Web admin panel (all modules) + Restaurant mobile app (iOS &amp; Android)</td><td>Weeks 4–9</td><td>Deployed admin panel + Restaurant App builds</td></tr>
+      <tr><td><strong>Phase 3</strong></td><td>Customer &amp; Delivery Partner mobile app (ordering, tracking, driver dispatch)</td><td>Weeks 7–13</td><td>Customer &amp; Driver App builds</td></tr>
+      <tr><td><strong>Phase 4</strong></td><td>Integration testing, bug resolution, App Store &amp; Play Store submission, server deployment</td><td>Weeks 14–16</td><td>Live production deployment</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Payment Schedule</h2>
+  <p>Payments are structured around milestone completion. The agreed commercial terms, including the total project fee and individual milestone amounts, are documented in a separate Commercial Agreement issued alongside this SoW.</p>
+  <table class="striped">
+    <thead><tr><th>Milestone</th><th>Trigger</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Milestone 1</strong></td><td>Project kickoff upon signing of SoW</td></tr>
+      <tr><td><strong>Milestone 2</strong></td><td>Backend API and admin panel delivered and demonstrated</td></tr>
+      <tr><td><strong>Milestone 3</strong></td><td>Beta builds of Customer/Driver App and Restaurant App for client testing</td></tr>
+      <tr><td><strong>Milestone 4</strong></td><td>Successful live deployment and approved App Store submissions</td></tr>
+    </tbody>
+  </table>
+  <p>All invoices are payable within <strong>7 days</strong> of the milestone trigger date. All fees are exclusive of VAT.</p>
+
+  <h2>Client Responsibilities</h2>
+  <p>The following items must be provided by the Client to enable timely delivery. Delays may impact the project timeline.</p>
+  <table class="striped">
+    <thead><tr><th>#</th><th>Responsibility</th><th>Required By</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td><strong>Stripe Account</strong> — UK Standard account, API credentials shared</td><td>Before Phase 1 completion</td></tr>
+      <tr><td>2</td><td><strong>Google Maps API Key</strong> — Cloud account with Maps, Places, Distance Matrix, Directions APIs enabled</td><td>Before Phase 1 completion</td></tr>
+      <tr><td>3</td><td><strong>Twilio Account</strong> — Active phone number for SMS OTP</td><td>Before Phase 1 completion</td></tr>
+      <tr><td>4</td><td><strong>Firebase Project</strong> — Cloud Messaging enabled, credentials shared</td><td>Before Phase 1 completion</td></tr>
+      <tr><td>5</td><td><strong>Hostinger VPS Access</strong> — SSH access to KVM 2 server</td><td>Before Phase 4</td></tr>
+      <tr><td>6</td><td><strong>Apple Developer Account</strong> — Active membership</td><td>Before Phase 4</td></tr>
+      <tr><td>7</td><td><strong>Google Play Console Account</strong> — Registered account</td><td>Before Phase 4</td></tr>
+      <tr><td>8</td><td><strong>Branding Assets</strong> — App name, vector logo, brand colour palette</td><td>Before Phase 2</td></tr>
+      <tr><td>9</td><td><strong>Restaurant Onboarding</strong> — Client recruits and onboard restaurant partners pre-launch</td><td>Before launch</td></tr>
+      <tr><td>10</td><td><strong>Legal Documents</strong> — UK GDPR-compliant Privacy Policy, Terms &amp; Conditions</td><td>Before Phase 4</td></tr>
+      <tr><td>11</td><td><strong>Content &amp; Photography</strong> — Menu descriptions, prices, images by Client or restaurant partners</td><td>Post-delivery</td></tr>
+      <tr><td>12</td><td><strong>Delivery Partner Recruitment</strong> — Client recruits and onboard drivers pre-launch and post-launch</td><td>Before launch</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Assumptions &amp; Constraints</h2>
+  <p>This SoW is based on the following assumptions. If any proves incorrect, scope, timeline, or cost may require formal revision.</p>
+  <ol>
+    <li>Payments processed via Client's Stripe Standard account; no automated split-payment or escrow included</li>
+    <li>Platform scoped for <span class="hl">Milton Keynes area only</span>; multi-city expansion out of scope</li>
+    <li>English language only; no multi-language support</li>
+    <li>Existing Hostinger KVM 2 VPS has sufficient remaining capacity for launch-phase traffic</li>
+    <li>Client or nominated contact available for feedback and approvals within 48 hours of request</li>
+    <li>Developer not responsible for third-party API downtime, pricing changes, or policy changes</li>
+    <li>App Store and Play Store review processes controlled by Apple and Google; Developer will prepare compliant submissions but cannot guarantee approval timelines</li>
+  </ol>
+
+  <div class="callout">
+    Delays in Client-provided items beyond the noted deadlines may shift the project timeline. The Developer cannot be held liable for resulting delays.
+  </div>
+</section>
+
+<!-- Chapter 05 -->
+<section class="chapter">
+  <div class="chapter-num">05 · Legal Terms</div>
+  <h1>Legal Terms &amp; Sign-Off</h1>
+
+  <p class="lead">
+    This section covers exclusions, acceptance criteria, intellectual property, confidentiality, change control, and the formal sign-off process. These terms govern the working relationship between Moksha Solutions and MK-Tours throughout the engagement.
+  </p>
+
+  <h2>Exclusions — Out of Scope</h2>
+  <p>The following items are <span class="hl">explicitly not included</span> in this SoW. Any request to include them will be treated as a change request and quoted separately.</p>
+  <ul>
+    <li>Promo codes, vouchers, or discount functionality</li>
+    <li>In-app chat between customers and delivery partners</li>
+    <li>Multi-order batching (concurrent orders to a single driver)</li>
+    <li>Loyalty/rewards points system</li>
+    <li>Scheduled or pre-booked orders</li>
+    <li>Automated payouts via Stripe Connect / escrow model</li>
+    <li>Alcohol delivery age-verification flow</li>
+    <li>Multi-language or localisation support</li>
+    <li>Multi-city or multi-region expansion</li>
+    <li>Third-party food aggregator integrations (Just Eat, Uber Eats, etc.)</li>
+    <li>Custom analytics or BI dashboards beyond Section 3.4 specifications</li>
+    <li>Copywriting, legal drafting, or content creation of any kind</li>
+    <li>Post-launch support and maintenance beyond 30-day defect warranty</li>
+    <li>Marketing, SEO, or social media services</li>
+  </ul>
+
+  <h2>Acceptance Criteria</h2>
+  <p>Each deliverable is considered accepted when: the Developer notifies the Client of completion, the Client reviews and confirms in writing that requirements are met, or <strong>7 calendar days</strong> pass with no written objection. The Developer provides a <span class="hl">30-day defect warranty</span> from final deployment, covering bugs and defects only — not new features or scope changes.</p>
+
+  <h2>Intellectual Property</h2>
+  <p>Upon full payment of all milestones, full ownership of the platform's <strong>source code and deliverables</strong> transfers to the Client. The Developer retains the right to reference the project in portfolio and case studies unless the Client requests otherwise in writing. Third-party libraries remain subject to their respective open-source licences. Third-party service accounts (Stripe, Google, Twilio, Firebase, Apple, Google Play) remain the sole property of the Client.</p>
+
+  <h2>Confidentiality</h2>
+  <p>Both parties agree to keep the terms of this SoW and any proprietary information shared during the project strictly confidential. Neither party shall disclose such information to any third party without prior written consent, except as required by law.</p>
+
+  <h2>Change Control</h2>
+  <p>Any request to add, remove, or modify deliverables beyond Section 3 must follow a formal process: written Change Request submitted, Developer provides impact assessment within 5 business days, both parties sign off in writing before work commences. Verbal agreements do not constitute approved changes.</p>
+
+  <div class="takeaway">
+    <div class="takeaway-label">Validity</div>
+    This document is valid for 30 days from the date of issue. After this period, the scope and timelines are subject to review.
+  </div>
+
+  <h2>Authorisation &amp; Sign-Off</h2>
+  <p>By signing below, both parties confirm they have read, understood, and agree to the terms set out in this Statement of Work.</p>
+
+  <table style="margin-top: 24pt;">
+    <thead><tr><th colspan="2" style="border-bottom: 2pt solid var(--brand); background: transparent; padding: 8pt 0; font-size: 12pt;">On behalf of Moksha Solutions (The Developer)</th></tr></thead>
+    <tbody>
+      <tr><td style="width: 100pt;"><strong>Name</strong></td><td style="border-bottom: 0.5pt solid var(--border); height: 28pt;">&nbsp;</td></tr>
+      <tr><td><strong>Title</strong></td><td style="border-bottom: 0.5pt solid var(--border); height: 28pt;">&nbsp;</td></tr>
+      <tr><td><strong>Signature</strong></td><td style="border-bottom: 0.5pt solid var(--border); height: 28pt;">&nbsp;</td></tr>
+      <tr><td><strong>Date</strong></td><td style="border-bottom: 0.5pt solid var(--border); height: 28pt;">&nbsp;</td></tr>
+    </tbody>
+  </table>
+
+  <table style="margin-top: 24pt;">
+    <thead><tr><th colspan="2" style="border-bottom: 2pt solid var(--brand); background: transparent; padding: 8pt 0; font-size: 12pt;">On behalf of MK-Tours (The Client)</th></tr></thead>
+    <tbody>
+      <tr><td style="width: 100pt;"><strong>Name</strong></td><td style="border-bottom: 0.5pt solid var(--border); height: 28pt;">&nbsp;</td></tr>
+      <tr><td><strong>Title</strong></td><td style="border-bottom: 0.5pt solid var(--border); height: 28pt;">&nbsp;</td></tr>
+      <tr><td><strong>Signature</strong></td><td style="border-bottom: 0.5pt solid var(--border); height: 28pt;">&nbsp;</td></tr>
+      <tr><td><strong>Date</strong></td><td style="border-bottom: 0.5pt solid var(--border); height: 28pt;">&nbsp;</td></tr>
+    </tbody>
+  </table>
+
+  <p style="margin-top: 20pt; font-size: 9pt; color: var(--stone);">
+    <em>Document Reference: SOW-MKFD-2026-001 · Version 1.0 · Prepared 29 June 2026</em>
+  </p>
+</section>
+
+</body>
+</html>
