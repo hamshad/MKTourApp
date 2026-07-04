@@ -109,13 +109,6 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
        _isCashConfirmed = true;
        return;
      }
-
-     // Scheduled/prebook rides are always paid online — never cash
-     if (widget.rideData['isScheduled'] == true) {
-       _isCashConfirmed = true;
-       return;
-     }
-
      // If it's card, it's already paid. If cash, check if already confirmed (logic could vary)
      if (widget.rideData['paymentMethod'] != 'cash') {
        _isCashConfirmed = true;
@@ -152,11 +145,6 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
 
   String _paymentMethodLabel() {
     final raw = (widget.rideData['paymentMethod'] ?? '').toString().toLowerCase();
-
-    // Scheduled/prebook rides are always online payment — never cash
-    if (widget.rideData['isScheduled'] == true) {
-      return 'Online Payment';
-    }
 
     if (raw.isEmpty) {
       return 'Cash';

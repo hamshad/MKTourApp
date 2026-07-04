@@ -716,6 +716,12 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
           // This is more efficient than calling Distance Matrix API repeatedly
           if (data['eta'] != null && _rideStatus == 'accepted') {
             final eta = data['eta'];
+
+            if (eta['status'] == 'driver_arrived') {
+              _handleDriverArrival(eta);
+              return;
+            }
+
             final duration = eta['duration'] as String?; // e.g., "5 mins"
             final isGoingToPickup = eta['isGoingToPickup'] as bool? ?? true;
 
@@ -1018,57 +1024,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     });
 
     _socketService.on('ride:driverArrived', (data) {
-      debugPrint('🚖 [RideAssignedScreen] Driver Arrived: $data');
-
-      if (!mounted || !context.mounted) return;
-
-      // Extract scheduled status from socket event immediately
-      // (before async API call completes, so payment modal hides cash correctly)
-      if (data['isScheduled'] == true) {
-        setState(() { _isScheduled = true; });
-      }
-
-      // Play app custom notification sound
-      AudioService.instance.playNotification();
-
-      // Update map state immediately
-      setState(() {
-        _rideStatus = 'driver_arrived';
-        _driverLocation = _pickupLocation;
-        _polylines = [];
-        _updateMarkers();
-      });
-
-      // Show visual arrival message box (before any async work)
-      _showDriverArrivedDialog();
-
-      // Async fare fetch — fire and forget (not awaited, so socket.io handler stays sync)
-      if (_currentFare == null) {
-        _apiService.getRideDetails(widget.rideId).then((response) {
-          if (mounted && response['success'] == true && response['data'] != null) {
-            final rideData = response['data'];
-            final double? fare = rideData['fare'] != null
-                ? (rideData['fare'] as num).toDouble()
-                : null;
-            setState(() {
-              _isPromoRide = rideData['isPromoRide'] == true;
-              _promoFullyCovered = rideData['promoFullyCovered'] == true ||
-                  (_isPromoRide && fare != null && fare == 0.0);
-              if (rideData['originalFare'] != null) {
-                _promoOriginalFare = (rideData['originalFare'] as num).toDouble();
-              }
-              if (fare != null) _currentFare = fare;
-              if (rideData['isScheduled'] == true) _isScheduled = true;
-            });
-          }
-        }).catchError((e) {
-          debugPrint('⚠️ [RideAssignedScreen] Pre-dialog ride sync failed: $e');
-        });
-      } else {
-        debugPrint(
-          '🚖 [RideAssignedScreen] Fare already known ($_currentFare), skipping API call.',
-        );
-      }
+      debugPrint('🚖 [RideAssignedScreen] Driver Arrived via event: $data');
+      _handleDriverArrival(data);
     });
 
     _socketService.on('ride:otpExpired', (data) {
@@ -1714,6 +1671,52 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     }
   }
 
+  void _handleDriverArrival([Map<String, dynamic>? socketData]) {
+    if (!mounted || !context.mounted) return;
+
+    if (socketData?['isScheduled'] == true) {
+      setState(() { _isScheduled = true; });
+    }
+
+    AudioService.instance.playNotification();
+
+    setState(() {
+      _rideStatus = 'driver_arrived';
+      _driverLocation = _pickupLocation;
+      _polylines = [];
+      _updateMarkers();
+    });
+
+    _showDriverArrivedDialog();
+
+    if (_currentFare == null) {
+      _apiService.getRideDetails(widget.rideId).then((response) {
+        if (mounted && response['success'] == true && response['data'] != null) {
+          final rideData = response['data'];
+          final double? fare = rideData['fare'] != null
+              ? (rideData['fare'] as num).toDouble()
+              : null;
+          setState(() {
+            _isPromoRide = rideData['isPromoRide'] == true;
+            _promoFullyCovered = rideData['promoFullyCovered'] == true ||
+                (_isPromoRide && fare != null && fare == 0.0);
+            if (rideData['originalFare'] != null) {
+              _promoOriginalFare = (rideData['originalFare'] as num).toDouble();
+            }
+            if (fare != null) _currentFare = fare;
+            if (rideData['isScheduled'] == true) _isScheduled = true;
+          });
+        }
+      }).catchError((e) {
+        debugPrint('⚠️ [RideAssignedScreen] Pre-dialog ride sync failed: $e');
+      });
+    } else {
+      debugPrint(
+        '🚖 [RideAssignedScreen] Fare already known ($_currentFare), skipping API call.',
+      );
+    }
+  }
+
   /// Show visual message dialog when driver arrives
   void _showDriverArrivedDialog() {
     final driverName = _driver['name'] ?? 'Your driver';
@@ -1971,12 +1974,6 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
           'originalFare': _promoOriginalFare,
         if (_completedRideData != null) ..._completedRideData!,
       };
-
-      // For scheduled rides, always ensure paymentMethod is set (never cash)
-      if ((_isScheduled || widget.isScheduled) &&
-          completedData['paymentMethod'] == null) {
-        completedData['paymentMethod'] = 'payment_link';
-      }
       return RideCompleteScreen(rideData: completedData);
     }
 
@@ -2690,15 +2687,14 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                   ),
                 ],
                 const SizedBox(height: 24),
-                // Cash option — not available for scheduled rides (deposit already paid)
-                if (!_isScheduled)
-                  _buildPaymentOption(
-                    icon: Icons.money,
-                    title: 'Cash',
-                    subtitle: 'Pay directly to driver',
-                    onTap: () => _handlePaymentSelection('cash'),
-                  ),
-                if (!_isScheduled) const SizedBox(height: 16),
+                // Cash option
+                _buildPaymentOption(
+                  icon: Icons.money,
+                  title: 'Cash',
+                  subtitle: 'Pay directly to driver',
+                  onTap: () => _handlePaymentSelection('cash'),
+                ),
+                const SizedBox(height: 16),
                 // Payment Link option - available on both iOS and Android
                 _buildPaymentOption(
                   icon: Icons.link,

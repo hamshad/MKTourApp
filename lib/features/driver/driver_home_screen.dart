@@ -75,8 +75,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   // Store driverId to use in dispose without accessing context
   String? _driverId;
 
-  // FCM notification subscription
+  // FCM notification subscriptions
   StreamSubscription<FcmNotificationData>? _fcmSubscription;
+  StreamSubscription<FcmNotificationData>? _fcmForegroundSubscription;
 
   @override
   void initState() {
@@ -94,9 +95,22 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
 
   /// Listen for FCM notifications directly in the home screen
   void _setupFcmListener() {
+    // Handle notification tap (user taps tray → app opens)
     _fcmSubscription = FcmService.instance.onNotificationTap.listen((data) {
       if (data.type == NotificationType.rideRequest) {
         debugPrint('🔔 [DriverHomeScreen] Received rideRequest via FCM tap');
+        if (mounted) {
+          _handleNewRideRequest(data.rawData);
+        }
+      }
+    });
+
+    // Handle foreground FCM (app already open) — scheduled rides arrive here
+    // without a socket event, so we must auto-process the push notification
+    _fcmForegroundSubscription =
+        FcmService.instance.onForegroundNotification.listen((data) {
+      if (data.type == NotificationType.rideRequest) {
+        debugPrint('🔔 [DriverHomeScreen] Received rideRequest via FCM foreground');
         if (mounted) {
           _handleNewRideRequest(data.rawData);
         }
@@ -376,6 +390,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     _positionStreamSubscription?.cancel();
     _connectionSubscription?.cancel();
     _fcmSubscription?.cancel();
+    _fcmForegroundSubscription?.cancel();
 
     // Clean up services
     _navigationService.dispose();
