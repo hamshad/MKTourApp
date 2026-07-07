@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:mktours/core/constants/api_constants.dart';
+import 'package:mktours/core/constants/countries.dart';
 import 'package:mktours/features/auth/user_registration_screen.dart';
 
 import '../../core/api_service.dart';
@@ -20,10 +20,7 @@ class PhoneLoginScreen extends StatefulWidget {
 class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
-  String _selectedCountryCode = '+44';
-  final List<String> _countryCodes = ApiConstants.baseUrl.contains('mktours')
-      ? ['+91', '+44', '+971']
-      : ['+91', '+1', '+44'];
+  Country _selectedCountry = countries.firstWhere((c) => c.dialCode == '+44');
   final ApiService _apiService = ApiService();
   bool _isLoading = false;
 
@@ -38,7 +35,7 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
       return;
     }
 
-    final fullPhoneNumber = '$_selectedCountryCode$phone';
+    final fullPhoneNumber = '${_selectedCountry.dialCode}$phone';
     final email = _emailController.text.trim();
     final method = email.isNotEmpty ? 'email' : 'sms';
 
@@ -120,6 +117,113 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
     super.dispose();
   }
 
+  void _showCountryPicker() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        TextEditingController searchController = TextEditingController();
+        ValueNotifier<List<Country>> filtered =
+            ValueNotifier(List.from(countries));
+
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: 12),
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppTheme.borderColor,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: TextField(
+                      controller: searchController,
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        hintText: 'Search country...',
+                        prefixIcon: const Icon(Icons.search),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                      ),
+                      onChanged: (query) {
+                        setModalState(() {
+                          filtered.value = countries
+                              .where((c) =>
+                                  c.name
+                                      .toLowerCase()
+                                      .contains(query.toLowerCase()) ||
+                                  c.dialCode.contains(query))
+                              .toList();
+                        });
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Flexible(
+                    child: ValueListenableBuilder<List<Country>>(
+                      valueListenable: filtered,
+                      builder: (context, list, _) {
+                        return ListView.separated(
+                          shrinkWrap: true,
+                          itemCount: list.length,
+                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          itemBuilder: (context, index) {
+                            final c = list[index];
+                            return ListTile(
+                              leading: Text(c.flag, style: const TextStyle(fontSize: 24)),
+                              title: Text(
+                                c.name,
+                                style: GoogleFonts.outfit(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              trailing: Text(
+                                c.dialCode,
+                                style: GoogleFonts.outfit(
+                                  fontSize: 15,
+                                  color: AppTheme.textSecondary,
+                                ),
+                              ),
+                              onTap: () {
+                                setState(() => _selectedCountry = c);
+                                Navigator.pop(context);
+                              },
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -178,29 +282,32 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
                           right: BorderSide(color: AppTheme.borderColor),
                         ),
                       ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: _selectedCountryCode,
-                          icon: const Icon(
-                            Icons.keyboard_arrow_down,
-                            color: AppTheme.textSecondary,
+                      child: InkWell(
+                        onTap: _showCountryPicker,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                _selectedCountry.flag,
+                                style: const TextStyle(fontSize: 22),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                _selectedCountry.dialCode,
+                                style: GoogleFonts.outfit(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.textPrimary,
+                                ),
+                              ),
+                              const Icon(
+                                Icons.keyboard_arrow_down,
+                                color: AppTheme.textSecondary,
+                              ),
+                            ],
                           ),
-                          style: GoogleFonts.outfit(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textPrimary,
-                          ),
-                          items: _countryCodes.map((String code) {
-                            return DropdownMenuItem<String>(
-                              value: code,
-                              child: Text(code),
-                            );
-                          }).toList(),
-                          onChanged: (String? newValue) {
-                            setState(() {
-                              _selectedCountryCode = newValue!;
-                            });
-                          },
                         ),
                       ),
                     ),
