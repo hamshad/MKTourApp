@@ -1,7 +1,7 @@
 class ApiConstants {
   // Local development socket URL (commented when using live API)
   // static const String socketUrl = 'http://192.168.1.20:5000';
-  // static const String socketUrl = 'http://192.168.1.29:5001';
+  // static const String socketUrl = 'http://192.168.1.19:5001';
   // Live API socket URL
   static const String socketUrl = 'https://api.mktours.co.uk';
   static const String baseUrl = '$socketUrl/api/v1';
@@ -9,6 +9,7 @@ class ApiConstants {
   // Auth Endpoints
   static const String sendOtp = '$baseUrl/auth/send-otp';
   static const String verifyOtp = '$baseUrl/auth/verify-otp';
+  static const String checkPhone = '$baseUrl/auth/check-phone';
 
   // Vehicle Endpoints
   static const String vehicles = '$baseUrl/vehicles';

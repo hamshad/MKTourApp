@@ -45,8 +45,10 @@ class _NameInputScreenState extends State<NameInputScreen> {
     try {
       // Send OTP before navigating
       debugPrint('⏳ [NameInputScreen] Calling ApiService.sendOtp...');
-      final response = await _apiService.sendOtp(widget.phoneNumber);
-      
+      final response = await _apiService.sendOtp(
+        phone: widget.phoneNumber,
+      );
+
       if (!mounted) return;
 
       setState(() {
@@ -54,15 +56,9 @@ class _NameInputScreenState extends State<NameInputScreen> {
       });
 
       if (response['success'] == true) {
-        final otp = response['data']['otp'];
-        debugPrint('🎉 [NameInputScreen] OTP Sent. OTP: $otp');
-        
+        final otp = response['data']?['otp'];
         if (otp != null) {
-          CustomSnackbar.show(
-            context,
-            message: 'OTP Sent: $otp',
-            type: SnackbarType.success,
-          );
+          debugPrint('🎉 [NameInputScreen] OTP Sent. OTP: $otp');
         }
 
         // Navigate based on role

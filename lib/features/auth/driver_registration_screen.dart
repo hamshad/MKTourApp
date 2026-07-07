@@ -14,12 +14,14 @@ class DriverRegistrationScreen extends StatefulWidget {
   final String phoneNumber;
   final bool isNewUser;
   final String? name;
+  final String? email;
 
   const DriverRegistrationScreen({
     super.key,
     required this.phoneNumber,
     this.isNewUser = true,
     this.name,
+    this.email,
   });
 
   @override
@@ -30,6 +32,7 @@ class DriverRegistrationScreen extends StatefulWidget {
 class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
   final TextEditingController _otpController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
   final TextEditingController _vehicleModelController = TextEditingController();
   final TextEditingController _vehicleNumberController =
       TextEditingController();
@@ -48,6 +51,9 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
     super.initState();
     if (widget.name != null) {
       _nameController.text = widget.name!;
+    }
+    if (widget.email != null) {
+      _emailController.text = widget.email!;
     }
     _loadCategories();
   }
@@ -79,7 +85,12 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
   Future<void> _resendOtp() async {
     setState(() => _isLoading = true);
     try {
-      final response = await _apiService.sendOtp(widget.phoneNumber);
+      final email = _emailController.text.trim();
+      final response = await _apiService.sendOtp(
+        phone: widget.phoneNumber,
+        method: email.isNotEmpty ? 'email' : 'sms',
+        email: email.isNotEmpty ? email : null,
+      );
       if (response['success'] == true) {
         CustomSnackbar.show(
           context,
@@ -102,6 +113,128 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
     } finally {
       setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _sendOtpToEmail(String email) async {
+    setState(() => _isLoading = true);
+    try {
+      final response = await _apiService.sendOtp(
+        phone: widget.phoneNumber,
+        method: 'email',
+        email: email,
+      );
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+
+      if (response['success'] == true) {
+        _emailController.text = email;
+        CustomSnackbar.show(
+          context,
+          message: 'OTP sent to $email',
+          type: SnackbarType.success,
+        );
+      } else {
+        CustomSnackbar.show(
+          context,
+          message: response['message'] ?? 'Failed to send OTP',
+          type: SnackbarType.error,
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      CustomSnackbar.show(
+        context,
+        message: 'Error: $e',
+        type: SnackbarType.error,
+      );
+    }
+  }
+
+  Future<void> _receiveOtpViaEmail() async {
+    final existingEmail = _emailController.text.trim();
+
+    if (existingEmail.isNotEmpty) {
+      await _sendOtpToEmail(existingEmail);
+      return;
+    }
+
+    final emailController = TextEditingController();
+
+    final email = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Get OTP via Email',
+          style: GoogleFonts.outfit(
+            fontWeight: FontWeight.bold,
+            fontSize: 20,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Enter your email to receive the verification code.',
+              style: GoogleFonts.outfit(
+                  fontSize: 14, color: AppTheme.textSecondary),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: emailController,
+              keyboardType: TextInputType.emailAddress,
+              autofocus: true,
+              style: GoogleFonts.outfit(fontSize: 16),
+              decoration: InputDecoration(
+                hintText: 'Email Address',
+                prefixIcon: const Icon(Icons.email_outlined),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.outfit(color: AppTheme.textSecondary),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, emailController.text.trim()),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryColor,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: Text(
+              'Send OTP',
+              style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (email == null || email.isEmpty) return;
+    await _sendOtpToEmail(email);
+  }
+
+  String _emailLinkLabel() {
+    final email = _emailController.text.trim();
+    if (email.isNotEmpty) {
+      return email.length > 24
+          ? 'Send OTP to ${email.substring(0, 21)}...'
+          : 'Send OTP to $email';
+    }
+    return 'Receive OTP via email';
   }
 
   Future<void> _completeRegistration() async {
@@ -154,8 +287,9 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
         otp: _otpController.text,
         role: 'driver',
         name: widget.isNewUser ? _nameController.text : null,
+        email: _emailController.text.trim(),
         vehicleDetails: vehicleDetails,
-        fcmToken: fcmToken, // Send FCM token during login (Option 1)
+        fcmToken: fcmToken,
       );
 
       if (!mounted) return;
@@ -312,134 +446,162 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
                 textAlign: TextAlign.center,
               ),
             ),
-            // Resend OTP text link (UX improvement)
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: _isLoading ? null : _resendOtp,
-                child: Text(
-                  'Resend OTP',
-                  style: GoogleFonts.outfit(
-                    fontSize: 14,
-                    color: AppTheme.primaryColor,
-                    fontWeight: FontWeight.w500,
+            // Resend OTP + Email OTP links
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                TextButton(
+                  onPressed: _isLoading ? null : _resendOtp,
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    minimumSize: Size.zero,
+                  ),
+                  child: Text(
+                    'Resend OTP',
+                    style: GoogleFonts.outfit(
+                      fontSize: 14,
+                      color: AppTheme.primaryColor,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
-              ),
+                Text(
+                  '|',
+                  style: GoogleFonts.outfit(
+                    fontSize: 13,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+                TextButton(
+                  onPressed: _isLoading ? null : _receiveOtpViaEmail,
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    minimumSize: Size.zero,
+                  ),
+                  child: Text(
+                    _emailLinkLabel(),
+                    style: GoogleFonts.outfit(
+                      fontSize: 13,
+                      color: AppTheme.primaryColor,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
             ),
 
             if (widget.isNewUser) ...[
-              const SizedBox(height: 32),
+              const SizedBox(height: 28),
 
-              // Personal Details
-              _buildSectionHeader('Personal Details'),
-              const SizedBox(height: 16),
-              _buildTextField(
-                controller: _nameController,
-                label: 'Full Name',
-                icon: Icons.person_outline,
-              ),
-
-              const SizedBox(height: 32),
-
-              // Vehicle Details
-              _buildSectionHeader('Vehicle Information'),
-              const SizedBox(height: 16),
-
-              // Vehicle Category Dropdown
-              _isLoadingCategories
-                  ? const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(8.0),
-                        child: CircularProgressIndicator(),
+              // Personal + Vehicle Details Card
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceColor,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppTheme.borderColor),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Personal Details',
+                      style: GoogleFonts.outfit(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary,
                       ),
-                    )
-                  : Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 4,
+                    ),
+                    const SizedBox(height: 16),
+                    _buildTextField(
+                      controller: _nameController,
+                      label: 'Full Name',
+                      icon: Icons.person_outline,
+                    ),
+                    const SizedBox(height: 28),
+                    Text(
+                      'Vehicle Information',
+                      style: GoogleFonts.outfit(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary,
                       ),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppTheme.borderColor),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: _selectedCategorySlug,
-                          isExpanded: true,
-                          hint: Row(
-                            children: [
-                              const Icon(
+                    ),
+                    const SizedBox(height: 16),
+                    _isLoadingCategories
+                        ? const Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(8.0),
+                              child: CircularProgressIndicator(),
+                            ),
+                          )
+                        : DropdownButtonFormField<String>(
+                            value: _selectedCategorySlug,
+                            isExpanded: true,
+                            decoration: InputDecoration(
+                              labelText: 'Vehicle Category',
+                              prefixIcon: const Icon(
                                 Icons.directions_car_outlined,
                                 color: AppTheme.textSecondary,
                               ),
-                              const SizedBox(width: 12),
-                              Text(
-                                'Select Vehicle Category',
-                                style: GoogleFonts.outfit(
-                                  color: AppTheme.textSecondary,
-                                  fontSize: 16,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                vertical: 16,
+                              ),
+                            ),
+                            hint: Text(
+                              'Select Vehicle Category',
+                              style: GoogleFonts.outfit(
+                                color: AppTheme.textSecondary,
+                                fontSize: 16,
+                              ),
+                            ),
+                            items: _categories.map((category) {
+                              return DropdownMenuItem(
+                                value: category.slug,
+                                child: Text(
+                                  category.name != 'Unknown' &&
+                                          category.name != category.slug
+                                      ? category.name
+                                      : VehicleCategory.formatSlug(category.slug),
                                 ),
-                              ),
-                            ],
+                              );
+                            }).toList(),
+                            onChanged: (value) =>
+                                setState(() => _selectedCategorySlug = value),
                           ),
-                          items: _categories.map((category) {
-                            return DropdownMenuItem(
-                              value: category.slug,
-                              child: Row(
-                                children: [
-                                  const Icon(
-                                    Icons.directions_car_outlined,
-                                    color: AppTheme.textPrimary,
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Text(
-                                    category.name != 'Unknown' &&
-                                            category.name != category.slug
-                                        ? category.name
-                                        : VehicleCategory.formatSlug(
-                                            category.slug,
-                                          ),
-                                    style: GoogleFonts.outfit(
-                                      color: AppTheme.textPrimary,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          }).toList(),
-                          onChanged: (value) =>
-                              setState(() => _selectedCategorySlug = value),
+                    const SizedBox(height: 16),
+                    _buildTextField(
+                      controller: _vehicleModelController,
+                      label: 'Vehicle Model (e.g., Toyota Camry)',
+                      icon: Icons.model_training,
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildTextField(
+                            controller: _vehicleNumberController,
+                            label: 'Vehicle Number',
+                            icon: Icons.pin_outlined,
+                          ),
                         ),
-                      ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: _buildTextField(
+                            controller: _vehicleColorController,
+                            label: 'Color',
+                            icon: Icons.color_lens_outlined,
+                          ),
+                        ),
+                      ],
                     ),
-              const SizedBox(height: 16),
-
-              _buildTextField(
-                controller: _vehicleModelController,
-                label: 'Vehicle Model (e.g., Toyota Camry)',
-                icon: Icons.model_training,
-              ),
-              const SizedBox(height: 16),
-
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildTextField(
-                      controller: _vehicleNumberController,
-                      label: 'Vehicle Number',
-                      icon: Icons.pin_outlined,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: _buildTextField(
-                      controller: _vehicleColorController,
-                      label: 'Color',
-                      icon: Icons.color_lens_outlined,
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ],
 

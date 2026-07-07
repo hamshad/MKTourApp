@@ -9,7 +9,7 @@ import '../../core/widgets/custom_snackbar.dart';
 import 'driver_registration_screen.dart';
 
 class PhoneLoginScreen extends StatefulWidget {
-  final String role; // 'user' or 'driver'
+  final String role;
 
   const PhoneLoginScreen({super.key, required this.role});
 
@@ -19,6 +19,7 @@ class PhoneLoginScreen extends StatefulWidget {
 
 class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
   final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
   String _selectedCountryCode = '+44';
   final List<String> _countryCodes = ApiConstants.baseUrl.contains('mktours')
       ? ['+91', '+44', '+971']
@@ -26,7 +27,7 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
   final ApiService _apiService = ApiService();
   bool _isLoading = false;
 
-  Future<void> _onContinue() async {
+  Future<void> _sendOtpAndNavigate() async {
     final phone = _phoneController.text.trim();
     if (phone.isEmpty) {
       CustomSnackbar.show(
@@ -37,21 +38,14 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
-
     final fullPhoneNumber = '$_selectedCountryCode$phone';
-    debugPrint(
-      '📱 ------------------------------------------------------------------',
-    );
-    debugPrint('📱 [PhoneLoginScreen] User tapped Continue');
-    debugPrint('📱 [PhoneLoginScreen] Phone: $fullPhoneNumber');
-    debugPrint('📱 [PhoneLoginScreen] Role: ${widget.role}');
+    final email = _emailController.text.trim();
+    final method = email.isNotEmpty ? 'email' : 'sms';
+
+    setState(() => _isLoading = true);
 
     try {
-      // Step 1: Check Phone
-      debugPrint('⏳ [PhoneLoginScreen] Calling ApiService.checkPhone...');
+      debugPrint('⏳ [PhoneLoginScreen] Checking phone status...');
       final checkResponse = await _apiService.checkPhone(
         fullPhoneNumber,
         widget.role,
@@ -59,162 +53,71 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
 
       if (!mounted) return;
 
-      if (checkResponse['success'] == true) {
-        final data = checkResponse['data'];
-        final bool isNewUser = data['isNewUser'] ?? false;
-        final String? existingName = data['user']?['name'];
+      final bool isNewUser = checkResponse['success'] == true
+          ? (checkResponse['data']?['isNewUser'] ?? true)
+          : true;
+      final String? existingName =
+          checkResponse['data']?['user']?['name'];
 
-        debugPrint(
-          '🔍 [PhoneLoginScreen] Check Phone Result: isNewUser=$isNewUser, Name=$existingName',
+      debugPrint(
+          '🔍 [PhoneLoginScreen] isNewUser=$isNewUser, Name=$existingName');
+
+      debugPrint('⏳ [PhoneLoginScreen] Sending OTP via $method...');
+      final otpResponse = await _apiService.sendOtp(
+        phone: fullPhoneNumber,
+        method: method,
+        email: email.isNotEmpty ? email : null,
+      );
+
+      if (!mounted) return;
+
+      setState(() => _isLoading = false);
+
+      if (otpResponse['success'] == true) {
+        debugPrint('🎉 [PhoneLoginScreen] OTP Sent');
+
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => widget.role == 'driver'
+                ? DriverRegistrationScreen(
+                    phoneNumber: fullPhoneNumber,
+                    isNewUser: isNewUser,
+                    name: existingName,
+                    email: email.isNotEmpty ? email : null,
+                  )
+                : UserRegistrationScreen(
+                    phoneNumber: fullPhoneNumber,
+                    isNewUser: isNewUser,
+                    name: existingName,
+                    email: email.isNotEmpty ? email : null,
+                  ),
+          ),
         );
-
-        if (isNewUser) {
-          // Case A: New User -> Send OTP and go directly to registration screen
-          debugPrint('🆕 [PhoneLoginScreen] New User detected. Sending OTP...');
-
-          // Send OTP
-          final otpResponse = await _apiService.sendOtp(fullPhoneNumber);
-
-          if (!mounted) return;
-
-          setState(() {
-            _isLoading = false;
-          });
-
-          if (otpResponse['success'] == true) {
-            final otp = otpResponse['data']['otp'];
-            if (otp != null) {
-              debugPrint('🎉 [PhoneLoginScreen] OTP Sent. OTP: $otp');
-              CustomSnackbar.show(
-                context,
-                message: 'OTP Sent: $otp',
-                type: SnackbarType.success,
-              );
-            }
-
-            // Navigate based on role
-            if (widget.role == 'driver') {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => DriverRegistrationScreen(
-                    phoneNumber: fullPhoneNumber,
-                    isNewUser: true,
-                  ),
-                ),
-              );
-            } else {
-              // For new passengers, navigate directly to registration screen
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => UserRegistrationScreen(
-                    phoneNumber: fullPhoneNumber,
-                    isNewUser: true,
-                    name: null,
-                  ),
-                ),
-              );
-            }
-          } else {
-            CustomSnackbar.show(
-              context,
-              message: otpResponse['message'] ?? 'Failed to send OTP',
-              type: SnackbarType.error,
-            );
-          }
-        } else {
-          // Case B: Returning User -> Show Welcome & Send OTP
-          debugPrint(
-            '👋 [PhoneLoginScreen] Returning User detected. Sending OTP...',
-          );
-
-          if (existingName != null) {
-            // CustomSnackbar.show(
-            //   context,
-            //   message: 'Welcome back, $existingName! Sending OTP...',
-            //   type: SnackbarType.info,
-            // );
-          }
-
-          // Send OTP
-          final otpResponse = await _apiService.sendOtp(fullPhoneNumber);
-
-          if (!mounted) return;
-
-          setState(() {
-            _isLoading = false;
-          });
-
-          if (otpResponse['success'] == true) {
-            final otp = otpResponse['data']['otp'];
-            if (otp != null) {
-              debugPrint('🎉 [PhoneLoginScreen] OTP Sent. OTP: $otp');
-              CustomSnackbar.show(
-                context,
-                message: 'OTP Sent: $otp',
-                type: SnackbarType.success,
-              );
-            }
-
-            // Navigate to OTP Screen (UserRegistrationScreen)
-            if (widget.role == 'user') {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => UserRegistrationScreen(
-                    phoneNumber: fullPhoneNumber,
-                    isNewUser: false,
-                    name: existingName,
-                  ),
-                ),
-              );
-            } else {
-              // For returning driver, pass isNewUser: false
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => DriverRegistrationScreen(
-                    phoneNumber: fullPhoneNumber,
-                    isNewUser: false,
-                    name: existingName,
-                  ),
-                ),
-              );
-            }
-          } else {
-            CustomSnackbar.show(
-              context,
-              message: otpResponse['message'] ?? 'Failed to send OTP',
-              type: SnackbarType.error,
-            );
-          }
-        }
       } else {
-        setState(() {
-          _isLoading = false;
-        });
         CustomSnackbar.show(
           context,
-          message: checkResponse['message'] ?? 'Failed to check phone',
+          message: otpResponse['message'] ?? 'Failed to send OTP',
           type: SnackbarType.error,
         );
       }
     } catch (e) {
       debugPrint('❌ [PhoneLoginScreen] Error occurred: $e');
-      debugPrint(
-        '📱 ------------------------------------------------------------------',
-      );
       if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-      });
+      setState(() => _isLoading = false);
       CustomSnackbar.show(
         context,
         message: 'Error: $e',
         type: SnackbarType.error,
       );
     }
+  }
+
+  @override
+  void dispose() {
+    _phoneController.dispose();
+    _emailController.dispose();
+    super.dispose();
   }
 
   @override
@@ -230,7 +133,6 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
             if (Navigator.canPop(context)) {
               Navigator.pop(context);
             } else {
-              // If we can't pop (e.g. after sign out), go to RoleSelectionScreen
               Navigator.pushReplacementNamed(context, '/role-selection');
             }
           },
@@ -239,7 +141,8 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24.0),
-          child: Column(
+          child: SingleChildScrollView(
+            child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
@@ -268,7 +171,6 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
                 ),
                 child: Row(
                   children: [
-                    // Country Code Dropdown
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       decoration: const BoxDecoration(
@@ -302,8 +204,6 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
                         ),
                       ),
                     ),
-
-                    // Phone Number Input
                     Expanded(
                       child: TextField(
                         controller: _phoneController,
@@ -331,53 +231,89 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
                 ),
               ),
 
-              const Spacer(),
+              const SizedBox(height: 16),
 
-              // Continue Button
-              Padding(
-                padding: EdgeInsets.only(
-                  bottom: MediaQuery.of(context).padding.bottom,
+              // Email Input (for OTP delivery)
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppTheme.borderColor),
                 ),
-                child: SizedBox(
-                  width: double.infinity,
-                  height: 56,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _onContinue,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryColor,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: TextField(
+                  controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  style: GoogleFonts.outfit(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    color: AppTheme.textPrimary,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Email (for OTP)',
+                    hintStyle: GoogleFonts.outfit(
+                      color: AppTheme.textSecondary,
                     ),
-                    child: _isLoading
-                        ? const SizedBox(
-                            height: 24,
-                            width: 24,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.5,
-                              color: Colors.white,
-                            ),
-                          )
-                        : FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              'Continue',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.outfit(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
+                    border: InputBorder.none,
+                    icon: const Icon(
+                      Icons.email_outlined,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 8),
+
+              Text(
+                'OTP will be sent via email if provided, otherwise via SMS.',
+                style: GoogleFonts.outfit(
+                  fontSize: 13,
+                  color: AppTheme.textSecondary,
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  onPressed: _isLoading ? null : _sendOtpAndNavigate,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryColor,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          height: 24,
+                          width: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: Colors.white,
+                          ),
+                        )
+                      : FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            'Continue',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.outfit(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
-                  ),
+                        ),
                 ),
               ),
               const SizedBox(height: 16),
             ],
           ),
+        ),
         ),
       ),
     );

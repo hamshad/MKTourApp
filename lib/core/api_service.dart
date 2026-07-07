@@ -254,43 +254,57 @@ class ApiService {
   }
 
   // Removed conflicting static completeRide method
-  Future<Map<String, dynamic>> sendOtp(String phone) async {
+  Future<Map<String, dynamic>> sendOtp({
+    required String phone,
+    String method = 'sms',
+    String? email,
+  }) async {
     debugPrint(
       '🔵 ------------------------------------------------------------------',
     );
     debugPrint('🔵 [ApiService] sendOtp called');
     debugPrint('🔵 [Request] URL: ${ApiConstants.sendOtp}');
-    debugPrint('🔵 [Request] Body: {"phone": "$phone"}');
+    debugPrint('🔵 [Request] Body: {phone: $phone, method: $method}');
+
+    final Map<String, dynamic> body = {
+      'phone': phone,
+      'method': method,
+    };
+    if (email != null) {
+      body['email'] = email;
+    }
 
     try {
       final response = await http.post(
         Uri.parse(ApiConstants.sendOtp),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'phone': phone}),
+        body: jsonEncode(body),
       );
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
+
+      final decoded = jsonDecode(response.body);
 
       if (response.statusCode == 200) {
         debugPrint('🟢 [ApiService] sendOtp Success');
         debugPrint(
           '🔵 ------------------------------------------------------------------',
         );
-        return jsonDecode(response.body);
-      } else {
-        debugPrint('🔴 [ApiService] sendOtp Failed: ${response.body}');
-        debugPrint(
-          '🔵 ------------------------------------------------------------------',
-        );
-        throw Exception('Failed to send OTP: ${response.body}');
+        return decoded;
       }
+
+      debugPrint('🔴 [ApiService] sendOtp Failed: ${response.body}');
+      debugPrint(
+        '🔵 ------------------------------------------------------------------',
+      );
+      return decoded;
     } catch (e) {
       debugPrint('🟠 [ApiService] Exception caught: $e');
       debugPrint(
         '🔵 ------------------------------------------------------------------',
       );
-      throw Exception('Failed to send OTP: $e');
+      return {'success': false, 'message': 'Failed to send OTP: $e'};
     }
   }
 
@@ -299,14 +313,12 @@ class ApiService {
       '🔵 ------------------------------------------------------------------',
     );
     debugPrint('🔵 [ApiService] checkPhone called');
-    debugPrint('🔵 [Request] URL: ${ApiConstants.baseUrl}/auth/check-phone');
+    debugPrint('🔵 [Request] URL: ${ApiConstants.checkPhone}');
     debugPrint('🔵 [Request] Body: {"phone": "$phone", "role": "$role"}');
 
     try {
-      // Note: Using a direct URL construction here as ApiConstants might not have checkPhone yet
-      // Ideally, add checkPhone to ApiConstants
       final response = await http.post(
-        Uri.parse('${ApiConstants.baseUrl}/auth/check-phone'),
+        Uri.parse(ApiConstants.checkPhone),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'phone': phone, 'role': role}),
       );
@@ -340,9 +352,10 @@ class ApiService {
     required String phone,
     required String otp,
     required String role,
-    String? name, // Made nullable
+    String? name,
+    String? email,
     Map<String, dynamic>? vehicleDetails,
-    String? fcmToken, // NEW: FCM token from Firebase Messaging
+    String? fcmToken,
   }) async {
     debugPrint(
       '🔵 ------------------------------------------------------------------',
@@ -357,6 +370,10 @@ class ApiService {
 
     if (name != null) {
       requestBody['name'] = name;
+    }
+
+    if (email != null) {
+      requestBody['email'] = email;
     }
 
     if (fcmToken != null && fcmToken.isNotEmpty) {

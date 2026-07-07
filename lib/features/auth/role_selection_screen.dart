@@ -13,15 +13,15 @@ class RoleSelectionScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 48),
+            child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Spacer(),
               // App Logo or Icon could go here
-              Container(
+              Center(
+                child: Container(
                 width: 80,
                 height: 80,
                 decoration: BoxDecoration(
@@ -33,6 +33,7 @@ class RoleSelectionScreen extends StatelessWidget {
                   size: 40,
                   color: AppTheme.primaryColor,
                 ),
+              ),
               ),
               const SizedBox(height: 24),
               
@@ -84,10 +85,11 @@ class RoleSelectionScreen extends StatelessWidget {
                   );
                 },
               ),
-              const Spacer(),
+              const SizedBox(height: 48),
             ],
           ),
         ),
+      ),
       ),
     );
   }
