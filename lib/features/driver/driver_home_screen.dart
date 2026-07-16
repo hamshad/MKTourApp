@@ -1241,14 +1241,21 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         // Accept Ride
         debugPrint('🚖 [DriverHomeScreen] Accepting ride: $_currentRideId');
 
-        // Check socket connection before deciding whether to emit or use API
-        if (_socketService.isConnected) {
-          debugPrint('🔌 [DriverHomeScreen] Emitting ride:accept via socket');
-          _socketService.emitRideAccept(_currentRideId!);
-          // The socket response will be handled by the listener, but we can 
-          // also call the API as a parallel/fallback or just wait for socket.
-          // Requirement says: "fall back to calling the POST /rides/:rideId/accept REST API endpoint instead".
+        // Ensure the socket is connected so the ride:accept event reaches
+        // the backend reliably. On iOS the socket drops more often, so we
+        // force a reconnect instead of silently skipping the emit.
+        if (!_socketService.isConnected) {
+          debugPrint(
+            '🔌 [DriverHomeScreen] Socket not connected, forcing reconnect before accept',
+          );
+          await _socketService.initSocket(forceReconnect: true);
         }
+
+        // Always emit ride:accept via socket (emitReliable queues if still
+        // reconnecting). The backend uses this event to broadcast to the
+        // passenger — the REST call alone may not trigger the push.
+        debugPrint('🔌 [DriverHomeScreen] Emitting ride:accept via socket');
+        _socketService.emitRideAccept(_currentRideId!);
 
         // Always call REST API as a reliable fallback/method if socket is shaky or as primary
         final response = await _apiService.acceptRide(_currentRideId!);
