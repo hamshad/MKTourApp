@@ -33,6 +33,7 @@ class NotificationType {
   static const String rideCompleted = 'ride_completed';
   static const String rideEarlyCompleted = 'ride_early_completed';
   static const String rideCancelledByDriver = 'ride_cancelled_by_driver';
+  static const String rideDriverReassigning = 'ride_driver_reassigning';
   static const String rideCancelledTimeout = 'ride_cancelled_timeout';
   static const String cashCollected = 'cash_collected';
   static const String rideExpired = 'ride_expired';
@@ -498,6 +499,7 @@ class FcmService {
       case NotificationType.driverArrived:
       case NotificationType.rideStarted:
       case NotificationType.rideCompleted:
+      case NotificationType.rideDriverReassigning:
       case NotificationType.scheduledReminder1hr:
       case NotificationType.scheduledReminder15min:
       case NotificationType.promoUnlocked:
@@ -610,6 +612,9 @@ mixin FcmNotificationHandler<T extends StatefulWidget> on State<T> {
       case NotificationType.rideCancelledByDriver:
         onRideCancelledByDriver(data);
         break;
+      case NotificationType.rideDriverReassigning:
+        onRideDriverReassigning(data);
+        break;
       case NotificationType.rideCancelledByUser:
         onRideCancelledByUser(data);
         break;
@@ -686,6 +691,7 @@ mixin FcmNotificationHandler<T extends StatefulWidget> on State<T> {
   void onRideCompleted(FcmNotificationData data) {}
   void onRideEarlyCompleted(FcmNotificationData data) {}
   void onRideCancelledByDriver(FcmNotificationData data) {}
+  void onRideDriverReassigning(FcmNotificationData data) {}
   void onRideCancelledTimeout(FcmNotificationData data) {}
   void onCashCollected(FcmNotificationData data) {}
 

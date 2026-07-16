@@ -51,6 +51,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   final NavigationService _navigationService = NavigationService();
   final PlacesService _placesService = PlacesService();
   String _rideStatus = 'searching';
+  String? _reassignMessage;
 
   bool _isValidDriver(dynamic driver) {
     if (driver is! Map) return false;
@@ -519,6 +520,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     _socketService.off('ride:longRunning');
     _socketService.off('user:status');
     _socketService.off('ride:promoApplied');
+    _socketService.off('ride:driverReassigning');
 
     // Ensure we are joined to the driver room after socket init
     if (_currentDriverId != null) {
@@ -541,6 +543,55 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
     _socketService.on('user:status', (data) {
       debugPrint('📩 [RideAssignedScreen] User status: ${data['status']}');
+    });
+
+    _socketService.on('ride:driverReassigning', (data) {
+      debugPrint(
+        '═══════════════════════════════════════════════════════',
+      );
+      debugPrint('🔄 [RideAssignedScreen] DRIVER REASSIGNING EVENT RECEIVED');
+      debugPrint('═══════════════════════════════════════════════════════');
+      debugPrint('📦 [RideAssignedScreen] Reassign data: $data');
+
+      if (!mounted || !context.mounted) return;
+
+      final message =
+          data['message']?.toString() ??
+          'Your driver had an unexpected issue. We\'re assigning you a new driver.';
+      final reassignmentCount = data['reassignmentCount'];
+
+      scheduleMicrotask(() {
+        if (!mounted || !context.mounted) return;
+
+        setState(() {
+          // Ride is still alive — reset to searching for a new driver.
+          // Clear the old driver so the UI shows "finding new driver".
+          _rideStatus = 'searching';
+          _driver = {};
+          _driverLocation = null;
+          _otp = '';
+          _currentDriverId = null;
+          _reassignMessage = message;
+        });
+
+        // Leave the old driver's location room if joined.
+        // (joinDriverRoom is keyed by driver id; old id already cleared above)
+
+        if (reassignmentCount != null) {
+          debugPrint(
+            '🔄 [RideAssignedScreen] Reassignment count: $reassignmentCount',
+          );
+        }
+
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            duration: const Duration(seconds: 5),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      });
     });
 
     _socketService.on('ride:accepted', (data) {
@@ -608,6 +659,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         setState(() {
           _rideStatus = 'accepted';
           _driver = driverData as Map<String, dynamic>;
+          _reassignMessage = null;
 
           // Try multiple possible OTP field names
           _otp =
@@ -2095,6 +2147,40 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         mainAxisSize: MainAxisSize.min,
         children: [
           if (_rideStatus == 'searching') ...[
+            if (_reassignMessage != null) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.orange.shade200),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.autorenew,
+                      color: Colors.orange,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _reassignMessage!,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.orange,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const CircularProgressIndicator(),
             const SizedBox(height: 16),
             const Text(
