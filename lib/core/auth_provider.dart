@@ -483,15 +483,33 @@ class AuthProvider with ChangeNotifier {
     return false;
   }
 
+  /// Step 1: Request OTP for phone number update
+  Future<Map<String, dynamic>> requestPhoneUpdateOtp(String newPhone) async {
+    try {
+      final response = await _apiService.requestPhoneUpdateOtp(
+        newPhone: newPhone,
+        role: _role ?? 'user',
+      );
+      return response;
+    } catch (e) {
+      print('Error requesting phone update OTP: $e');
+      return {'success': false, 'message': 'Failed to request OTP: $e'};
+    }
+  }
+
   Future<bool> updateUser({
-    required String name,
-    required String email,
+    String? name,
+    String? email,
+    String? phone,
+    String? otp,
     File? profilePicture,
   }) async {
     try {
       final response = await _apiService.updateUserProfile(
         name: name,
         email: email,
+        phone: phone,
+        otp: otp,
         profilePicture: profilePicture,
       );
 

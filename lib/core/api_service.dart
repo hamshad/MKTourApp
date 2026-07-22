@@ -572,9 +572,71 @@ class ApiService {
     }
   }
 
+  /// Request OTP for phone number update (Step 1 of phone change flow)
+  Future<Map<String, dynamic>> requestPhoneUpdateOtp({
+    required String newPhone,
+    required String role,
+  }) async {
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
+    debugPrint('🔵 [ApiService] requestPhoneUpdateOtp called');
+    final url = role == 'driver'
+        ? ApiConstants.requestDriverPhoneUpdateOtp
+        : ApiConstants.requestUserPhoneUpdateOtp;
+    debugPrint('🔵 [Request] URL: $url');
+    debugPrint('🔵 [Request] newPhone: $newPhone');
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString(_prefsAuthTokenKey);
+      if (token == null) throw Exception('No auth token found');
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'newPhone': newPhone}),
+      );
+
+      debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
+      debugPrint('🟣 [Response] Body: ${response.body}');
+
+      await _checkUnauthorized(response);
+
+      final decoded = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        debugPrint('🟢 [ApiService] requestPhoneUpdateOtp Success');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
+        return decoded;
+      }
+
+      debugPrint(
+        '🔴 [ApiService] requestPhoneUpdateOtp Failed: ${response.body}',
+      );
+      debugPrint(
+        '🔵 ------------------------------------------------------------------',
+      );
+      return decoded;
+    } catch (e) {
+      debugPrint('🟠 [ApiService] Exception caught: $e');
+      debugPrint(
+        '🔵 ------------------------------------------------------------------',
+      );
+      return {'success': false, 'message': 'Failed to request OTP: $e'};
+    }
+  }
+
   Future<Map<String, dynamic>> updateUserProfile({
-    required String name,
-    required String email,
+    String? name,
+    String? email,
+    String? phone,
+    String? otp,
     File? profilePicture,
   }) async {
     debugPrint(
@@ -582,7 +644,9 @@ class ApiService {
     );
     debugPrint('🔵 [ApiService] updateUserProfile called');
     debugPrint('🔵 [Request] URL: ${ApiConstants.updateUser}');
-    debugPrint('🔵 [Request] Name: $name, Email: $email');
+    debugPrint(
+      '🔵 [Request] Name: $name, Email: $email, Phone: $phone, HasOtp: ${otp != null}',
+    );
     if (profilePicture != null) {
       debugPrint('🔵 [Request] Profile Picture: ${profilePicture.path}');
     }
@@ -595,32 +659,52 @@ class ApiService {
         throw Exception('No auth token found');
       }
 
-      var request = http.MultipartRequest(
-        'PATCH',
-        Uri.parse(ApiConstants.updateUser),
-      );
-      request.headers['Authorization'] = 'Bearer $token';
-
-      request.fields['name'] = name;
-      request.fields['email'] = email;
+      http.Response response;
 
       if (profilePicture != null) {
+        var request = http.MultipartRequest(
+          'PATCH',
+          Uri.parse(ApiConstants.updateUser),
+        );
+        request.headers['Authorization'] = 'Bearer $token';
+
+        if (name != null) request.fields['name'] = name;
+        if (email != null) request.fields['email'] = email;
+        if (phone != null) request.fields['phone'] = phone;
+        if (otp != null) request.fields['otp'] = otp;
+
         request.files.add(
           await http.MultipartFile.fromPath(
             'profilePicture',
             profilePicture.path,
           ),
         );
-      }
 
-      debugPrint('🔵 [Request] Sending multipart request...');
-      final streamedResponse = await request.send();
-      final response = await http.Response.fromStream(streamedResponse);
+        debugPrint('🔵 [Request] Sending multipart request...');
+        final streamedResponse = await request.send();
+        response = await http.Response.fromStream(streamedResponse);
+      } else {
+        final Map<String, dynamic> body = {};
+        if (name != null) body['name'] = name;
+        if (email != null) body['email'] = email;
+        if (phone != null) body['phone'] = phone;
+        if (otp != null) body['otp'] = otp;
+
+        debugPrint('🔵 [Request] Body: $body');
+
+        response = await http.patch(
+          Uri.parse(ApiConstants.updateUser),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          body: jsonEncode(body),
+        );
+      }
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
       debugPrint('🟣 [Response] Body: ${response.body}');
 
-      // Check for 401 unauthorized
       await _checkUnauthorized(response);
 
       if (response.statusCode == 200) {
@@ -636,7 +720,8 @@ class ApiService {
         debugPrint(
           '🔵 ------------------------------------------------------------------',
         );
-        throw Exception('Failed to update user profile: ${response.body}');
+        final decoded = jsonDecode(response.body);
+        return decoded;
       }
     } catch (e) {
       debugPrint('🟠 [ApiService] Exception caught: $e');
