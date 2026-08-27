@@ -147,6 +147,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     WidgetsBinding.instance.addObserver(this);
     _initializeLocations();
     _setupInitialState();
+    _fetchOtp();
     _setupSocketListeners();
     _setupConnectionListener();
     _fetchDetailedAddresses();
@@ -190,6 +191,33 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     }
   }
 
+  /// Fetch the OTP from the backend. The socket payload may omit the OTP for
+  /// the passenger, but [getRideDetails] returns it (as ride_detail_screen
+  /// demonstrates), so this is the reliable source.
+  Future<void> _fetchOtp() async {
+    try {
+      final response = await _apiService.getRideDetails(widget.rideId);
+      if (response['success'] == true && response['data'] != null) {
+        final data = response['data'];
+        final String? otp = data['otp']?.toString() ??
+            data['verificationOTP']?.toString() ??
+            data['verification_otp']?.toString() ??
+            (data['ride'] is Map ? data['ride']['otp']?.toString() : null) ??
+            (data['ride'] is Map
+                ? data['ride']['verificationOTP']?.toString()
+                : null);
+        if (otp != null && otp.isNotEmpty && mounted) {
+          setState(() {
+            _otp = otp;
+          });
+          debugPrint('🔐 [RideAssignedScreen] OTP fetched from API: "$_otp"');
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ [RideAssignedScreen] Error fetching OTP: $e');
+    }
+  }
+
   /// Sync ride status with backend when app resumes
   Future<void> _syncRideStatus() async {
     try {
@@ -200,6 +228,17 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
       if (response['success'] == true && response['data'] != null) {
         final rideData = response['data'];
+
+        // Always hydrate OTP from the API — the socket payload may omit it for
+        // the passenger even though getRideDetails returns it.
+        final String? apiOtp = rideData['otp']?.toString() ??
+            rideData['verificationOTP']?.toString() ??
+            rideData['verification_otp']?.toString();
+        if (apiOtp != null && apiOtp.isNotEmpty && mounted) {
+          setState(() {
+            _otp = apiOtp;
+          });
+        }
 
         // Capture promo info from sync
         final bool isPromo = rideData['isPromoRide'] == true;
@@ -246,13 +285,6 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
               // Update driver data only when valid
               if (hasValidDriver) {
                 _driver = driverData as Map<String, dynamic>;
-
-                // Update OTP if available
-                _otp =
-                    rideData['otp']?.toString() ??
-                    rideData['verificationOTP']?.toString() ??
-                    rideData['verification_otp']?.toString() ??
-                    _otp;
 
                 // Update driver location
                 if (_driver['location'] != null) {
