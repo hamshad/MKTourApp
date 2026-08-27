@@ -785,6 +785,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         if (status == 'in_progress') {
           Navigator.of(context).pushReplacementNamed('/ride-progress');
         } else {
+          // Inject OTP into the driver map — RideAssignedScreen reads the OTP
+          // from widget.driver['otp'], and the stored ride details keep it at the
+          // ride top-level, not inside the nested driver object.
+          final Map<String, dynamic> driverMap = Map<String, dynamic>.from(
+            (ride['driver'] is Map) ? ride['driver'] as Map : {},
+          );
+          final String? otp = ride['otp']?.toString() ??
+              ride['verificationOTP']?.toString() ??
+              ride['verification_otp']?.toString() ??
+              (raw is Map ? raw['otp']?.toString() : null) ??
+              (raw is Map ? raw['verificationOTP']?.toString() : null);
+          if (otp != null) {
+            driverMap['otp'] = otp;
+            driverMap['verificationOTP'] = otp;
+          }
+
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(
               builder: (context) => RideAssignedScreen(
@@ -792,7 +808,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 pickup: ride['pickupLocation'] ?? ride['pickup'],
                 dropoff: ride['dropoffLocation'] ?? ride['dropoff'],
                 fare: (ride['fare'] ?? 0.0).toDouble(),
-                driver: ride['driver'],
+                driver: driverMap,
                 paymentTiming: ride['paymentTiming'],
                 clientSecret: ride['clientSecret'],
                 isScheduled: ride['isScheduled'] == true,
