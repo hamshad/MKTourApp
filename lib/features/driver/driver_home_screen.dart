@@ -14,6 +14,7 @@ import '../../core/widgets/custom_snackbar.dart';
 import '../../core/services/socket_service.dart';
 import '../../core/services/location_service.dart';
 import '../../core/services/navigation_service.dart';
+import '../../core/services/active_ride_storage.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -68,6 +69,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   // Last emitted location timestamp to throttle updates
   DateTime? _lastEmitTime;
   static const int _minEmitIntervalMs = 3000; // Minimum 3 seconds between emits
+
+  // Location-health watchdog
+  bool _locationStale = false;
+  DateTime? _lastPositionUpdateTime;
+  Timer? _locationWatchdog;
 
   // Track if socket listeners are set up to re-register after reconnection
   bool _socketListenersSetup = false;
@@ -338,6 +344,24 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       
       debugPrint('🚖 [DriverHomeScreen] Initializing Socket and listeners...');
       await _initSocketAndListeners();
+
+      // Restore an active ride from local storage (accept -> kill app -> reopen).
+      await _restoreActiveRideFromStorage();
+
+      // H1 FIX: If an active ride was restored (e.g. a prebook ride that started
+      // while the app was backgrounded/terminated), the normal 'online' entry
+      // point never ran, so location streaming was never started. Without it the
+      // driver map stays static and the passenger never receives
+      // driver:locationUpdate (passenger appears "stuck on one screen").
+      if (_currentRideId != null &&
+          (_status == 'pickup' ||
+              _status == 'arrived' ||
+              _status == 'in_progress')) {
+        debugPrint(
+          '📍 [DriverHomeScreen] Restored active ride — starting location updates',
+        );
+        _startLocationUpdates();
+      }
     }
     debugPrint('🚖 [DriverHomeScreen] _initDriver() finished');
   }
@@ -388,6 +412,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
 
     // Clean up streams
     _positionStreamSubscription?.cancel();
+    _locationWatchdog?.cancel();
     _connectionSubscription?.cancel();
     _fcmSubscription?.cancel();
     _fcmForegroundSubscription?.cancel();
@@ -468,6 +493,23 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         '📍 [DriverHomeScreen] Started periodic location stream (4s interval)',
       );
     }
+
+    // Watchdog: surface "location lost" to the driver instead of failing silently.
+    _locationWatchdog?.cancel();
+    _locationWatchdog = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!mounted) return;
+      final needsLoc = _status == 'online' ||
+          _status == 'pickup' ||
+          _status == 'arrived' ||
+          _status == 'in_progress';
+      if (!needsLoc) {
+        if (_locationStale) setState(() => _locationStale = false);
+        return;
+      }
+      final stale = _lastPositionUpdateTime == null ||
+          DateTime.now().difference(_lastPositionUpdateTime!).inSeconds > 15;
+      if (stale != _locationStale) setState(() => _locationStale = stale);
+    });
   }
 
   /// Handle incoming position updates
@@ -492,6 +534,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     setState(() {
       _currentLocation = LatLng(position.latitude, position.longitude);
     });
+
+    _lastPositionUpdateTime = DateTime.now();
+    if (_locationStale) setState(() => _locationStale = false);
 
     // Throttle location emissions to prevent overwhelming the server
     final now = DateTime.now();
@@ -548,6 +593,82 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     _navigationService.clearRoute();
     _navigationState = null;
     _navigationPolylines = [];
+  }
+
+  /// Persist the current active ride so it can be restored after an app restart.
+  Future<void> _persistActiveRide() async {
+    if (_currentRideId == null) return;
+    await ActiveRideStorage.save(
+      rideId: _currentRideId!,
+      role: 'driver',
+      status: _status,
+    );
+  }
+
+  Future<void> _clearActiveRideStorage() async {
+    await ActiveRideStorage.clear();
+  }
+
+  /// Restore an active ride from local storage (covers the case where the backend
+  /// profile didn't carry currentRide, e.g. accept -> kill app -> reopen).
+  Future<void> _restoreActiveRideFromStorage() async {
+    if (_currentRideId != null) return; // already restored from profile
+    final id = await ActiveRideStorage.getRideId();
+    final role = await ActiveRideStorage.getRole();
+    if (id == null || role != 'driver') return;
+
+    try {
+      final response = await _apiService.getRideDetails(id);
+      if (response['success'] != true) {
+        await ActiveRideStorage.clear();
+        return;
+      }
+      final raw = response['data'];
+      final ride = raw is Map ? (raw['ride'] ?? raw) : null;
+      if (ride == null) {
+        await ActiveRideStorage.clear();
+        return;
+      }
+      final status = (ride['status'] ?? '').toString().toLowerCase();
+      if (const [
+        'completed',
+        'early_completed',
+        'cancelled',
+        'cancelled_by_user',
+        'cancelled_by_driver',
+        'expired',
+      ].contains(status)) {
+        await ActiveRideStorage.clear();
+        return;
+      }
+
+      String uiStatus;
+      switch (status) {
+        case 'accepted':
+          uiStatus = 'pickup';
+          break;
+        case 'arrived':
+          uiStatus = 'arrived';
+          break;
+        case 'in_progress':
+          uiStatus = 'in_progress';
+          break;
+        default:
+          uiStatus = 'pickup';
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _currentRideId = id;
+        _rideData = Map<String, dynamic>.from(ride as Map);
+        _status = uiStatus;
+      });
+      await ActiveRideStorage.updateStatus(status);
+      _fetchNavigationRoute();
+    } catch (e) {
+      debugPrint('⚠️ [DriverHomeScreen] Restore active ride failed: $e');
+      await ActiveRideStorage.clear();
+    }
   }
 
   /// Fetch navigation route based on current status
@@ -706,6 +827,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           _currentRideId = null;
           _rideData = null;
           _clearNavigationUi();
+          _clearActiveRideStorage();
         });
         _fetchRideHistory();
       }
@@ -840,6 +962,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           _currentRideId = null;
           _rideData = null;
           _clearNavigationUi();
+          _clearActiveRideStorage();
         });
 
         showDialog(
@@ -869,6 +992,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           _currentRideId = null;
           _rideData = null;
           _clearNavigationUi();
+          _clearActiveRideStorage();
         });
 
         final message = cancellationFee > 0
@@ -888,6 +1012,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           _currentRideId = null;
           _rideData = null;
           _clearNavigationUi();
+          _clearActiveRideStorage();
         });
         CustomSnackbar.show(
           context,
@@ -1269,6 +1394,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
               _currentRideId = newData['_id']?.toString() ?? _currentRideId;
             }
           });
+          _persistActiveRide();
           CustomSnackbar.show(
             context,
             message: 'Ride Accepted!',
@@ -1302,6 +1428,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
               _rideData = {...?_rideData, ...newData};
             }
           });
+          _persistActiveRide();
           CustomSnackbar.show(
             context,
             message: 'You have arrived!',
@@ -1366,12 +1493,13 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
               );
             }
           } else if (paymentMethod == 'cash') {
-            setState(() {
-              _status = 'awaiting_cash_confirmation';
-            });
-            CustomSnackbar.show(
-              context,
-              message: 'Ride completed. Collect cash from passenger.',
+          setState(() {
+            _status = 'awaiting_cash_confirmation';
+          });
+          _persistActiveRide();
+          CustomSnackbar.show(
+            context,
+            message: 'Ride completed. Collect cash from passenger.',
               type: SnackbarType.warning,
             );
           } else {
@@ -1412,6 +1540,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             _currentRideId = null;
             _rideData = null;
             _clearNavigationUi();
+            _clearActiveRideStorage();
           });
           _fetchRideHistory();
         } else {
@@ -1715,6 +1844,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             _currentRideId = null;
             _rideData = null;
             _clearNavigationUi();
+            _clearActiveRideStorage();
           });
           _fetchRideHistory();
           CustomSnackbar.show(
@@ -1822,6 +1952,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             _rideData = {...?_rideData, ...newData};
           }
         });
+        _persistActiveRide();
         CustomSnackbar.show(
           context,
           message: 'OTP Verified! Trip Started.',
@@ -2030,6 +2161,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           ),
         ),
 
+        // Location-lost warning (driver has no other signal that tracking died)
+        if (_locationStale) _buildLocationStaleBanner(),
+
         // Complete Trip Overlay
         if (_status == 'complete')
           Container(
@@ -2072,6 +2206,47 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             ),
           ),
       ],
+    );
+  }
+
+  Widget _buildLocationStaleBanner() {
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      child: SafeArea(
+        child: Container(
+          margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.orange,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: const Row(
+            children: [
+              Icon(Icons.gps_off, color: Colors.white, size: 18),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Location unavailable — passenger tracking may be paused. Check GPS / data connection.',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

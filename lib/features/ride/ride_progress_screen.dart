@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import '../../core/theme.dart';
@@ -31,15 +32,30 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
   String _dropoffAddress = 'Destination';
   double _bearing = 0.0;
   double _tilt = 45.0; // Navigation tilt
-  
+
+  // Location-health watchdog (so a dead feed doesn't look like a hard freeze)
+  bool _locationStale = false;
+  DateTime? _lastLocationUpdateTime;
+  Timer? _staleTimer;
+
   @override
   void initState() {
     super.initState();
     _initSocketListener();
     _fetchDetailedAddress();
     _setupNavigation();
+
+    // If no driver:locationUpdate arrives for a while, show a retry state
+    // instead of leaving the passenger silently stuck on one screen.
+    _staleTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!mounted) return;
+      final stale = _lastLocationUpdateTime == null ||
+          DateTime.now().difference(_lastLocationUpdateTime!).inSeconds > 20;
+      if (stale != _locationStale) setState(() => _locationStale = stale);
+    });
   }
   
+
   Future<void> _initSocketListener() async {
     await _socketService.initSocket();
     
@@ -52,6 +68,8 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
                double.parse(data['latitude'].toString()), 
                double.parse(data['longitude'].toString())
              );
+             _lastLocationUpdateTime = DateTime.now();
+             _locationStale = false;
           });
        }
     });
@@ -145,10 +163,20 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
 
   @override
   void dispose() {
+    _staleTimer?.cancel();
     _socketService.off('driver:locationUpdate');
     _socketService.off('ride:statusUpdate');
     _navigationService.dispose();
     super.dispose();
+  }
+
+  /// Reconnect socket + clear stale state if the driver feed went quiet.
+  Future<void> _retryTracking() async {
+    await _socketService.initSocket(forceReconnect: true);
+    setState(() {
+      _locationStale = false;
+      _lastLocationUpdateTime = DateTime.now();
+    });
   }
 
   @override
@@ -200,7 +228,59 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
               ),
             ),
           ),
-          
+
+          // Stale-location notice (driver feed went quiet — offer retry)
+          if (_locationStale)
+            Positioned(
+              top: 92,
+              left: 16,
+              right: 16,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.orange,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.gps_off, color: Colors.white, size: 18),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        "Driver location unavailable",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: _retryTracking,
+                      style: TextButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      ),
+                      child: const Text(
+                        'Retry',
+                        style: TextStyle(
+                          color: Colors.orange,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
           // Status Panel
           Positioned(
             bottom: 0,

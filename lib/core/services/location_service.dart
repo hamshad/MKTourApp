@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter/foundation.dart';
 
@@ -168,16 +169,27 @@ class LocationService {
 
   /// High-accuracy position stream for active rides (combines distance and time-based updates)
   /// Updates on movement (5m) OR every [intervalSeconds] seconds, whichever comes first.
+  ///
+  /// NOTE: `AndroidSettings` throws on iOS. Use the platform-appropriate settings so
+  /// active-ride tracking works on both platforms.
   Stream<Position> getRideTrackingStream({int intervalSeconds = 3}) {
-    return Geolocator.getPositionStream(
-      locationSettings: AndroidSettings(
+    final LocationSettings settings;
+    if (Platform.isAndroid) {
+      settings = AndroidSettings(
         accuracy: LocationAccuracy.high,
         distanceFilter: 5, // More sensitive: update every 5 meters
         intervalDuration: Duration(
           seconds: intervalSeconds,
         ), // Also update at intervals
-      ),
-    );
+      );
+    } else {
+      settings = LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 5,
+        timeLimit: Duration(seconds: intervalSeconds * 10),
+      );
+    }
+    return Geolocator.getPositionStream(locationSettings: settings);
   }
 
   /// Dispose of resources

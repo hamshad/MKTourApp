@@ -13,6 +13,7 @@ import '../../core/services/places_service.dart';
 import 'package:latlong2/latlong.dart' as lat_lng;
 import 'dart:async';
 import '../../core/services/socket_service.dart';
+import '../../core/services/active_ride_storage.dart';
 import '../../core/api_service.dart';
 import '../ride/ride_assigned_screen.dart';
 import '../booking/ride_confirmation_screen.dart';
@@ -68,6 +69,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _startBannerTimer();
     _setupSocketListeners();
     _setupConnectionListener();
+    _restoreActiveRide();
   }
 
   @override
@@ -198,7 +200,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   /// Handle ride accepted event or synced data
-  void _handleRideAccepted(dynamic data) {
+  Future<void> _handleRideAccepted(dynamic data) async {
     debugPrint('🚀 [HomeScreen] _handleRideAccepted called with data: $data');
 
     if (!mounted) {
@@ -241,6 +243,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       debugPrint('⚠️ [HomeScreen] Cannot navigate: missing ride ID');
       return;
     }
+
+    // Persist so the ride can be restored if the app is killed mid-ride.
+    await ActiveRideStorage.save(
+      rideId: rideId,
+      role: 'passenger',
+      status: 'accepted',
+    );
 
     debugPrint(
       '✅ [HomeScreen] Navigating to RideAssignedScreen with rideId: $rideId',
@@ -444,6 +453,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _isSearching = false;
           _activeRide = null;
         });
+        ActiveRideStorage.clear();
       }
     });
 
@@ -734,6 +744,66 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _activeRide = result['ride'];
         _lastRideConfirmationData = result['confirmationData'];
       });
+    }
+  }
+
+  /// Restore an in-progress passenger ride after app restart (kill + reopen).
+  Future<void> _restoreActiveRide() async {
+    final id = await ActiveRideStorage.getRideId();
+    final role = await ActiveRideStorage.getRole();
+    if (id == null || role != 'passenger') return;
+
+    try {
+      final response = await _apiService.getRideDetails(id);
+      if (response['success'] != true) {
+        await ActiveRideStorage.clear();
+        return;
+      }
+      final raw = response['data'];
+      final ride = raw is Map ? (raw['ride'] ?? raw) : null;
+      if (ride == null) {
+        await ActiveRideStorage.clear();
+        return;
+      }
+      final status = (ride['status'] ?? '').toString().toLowerCase();
+      if (const [
+        'completed',
+        'early_completed',
+        'cancelled',
+        'cancelled_by_user',
+        'cancelled_by_driver',
+        'expired',
+      ].contains(status)) {
+        await ActiveRideStorage.clear();
+        return;
+      }
+      await ActiveRideStorage.updateStatus(status);
+
+      if (!mounted || !context.mounted) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !context.mounted) return;
+        if (status == 'in_progress') {
+          Navigator.of(context).pushReplacementNamed('/ride-progress');
+        } else {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => RideAssignedScreen(
+                rideId: id,
+                pickup: ride['pickupLocation'] ?? ride['pickup'],
+                dropoff: ride['dropoffLocation'] ?? ride['dropoff'],
+                fare: (ride['fare'] ?? 0.0).toDouble(),
+                driver: ride['driver'],
+                paymentTiming: ride['paymentTiming'],
+                clientSecret: ride['clientSecret'],
+                isScheduled: ride['isScheduled'] == true,
+              ),
+            ),
+          );
+        }
+      });
+    } catch (e) {
+      debugPrint('⚠️ [HomeScreen] Restore active ride failed: $e');
+      await ActiveRideStorage.clear();
     }
   }
 
