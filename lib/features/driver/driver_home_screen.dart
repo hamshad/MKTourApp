@@ -75,6 +75,25 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   DateTime? _lastPositionUpdateTime;
   Timer? _locationWatchdog;
 
+  // GPS health monitoring
+  String? _gpsServiceProblem; // non-null when GPS is off or permission denied
+  bool _noGpsSignal = false; // true when no location updates are received
+  Timer? _gpsHealthTimer;
+  String? _lastShownGpsWarning;
+
+  /// Banner message describing the current location problem, or null if healthy.
+  String? get _locationBannerMessage {
+    if (_gpsServiceProblem != null) return _gpsServiceProblem;
+    if (_noGpsSignal) {
+      return 'No GPS signal received. Riders cannot see your live location — '
+          'check your signal or restart location services.';
+    }
+    if (_locationStale) {
+      return 'Location updates are delayed. Riders may see an outdated position.';
+    }
+    return null;
+  }
+
   // Track if socket listeners are set up to re-register after reconnection
   bool _socketListenersSetup = false;
 
@@ -137,6 +156,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
       debugPrint('🔄 [DriverHomeScreen] App resumed, syncing state...');
+
+      // 0. Re-check GPS health (driver may have toggled location/permission)
+      _checkGpsHealth();
 
       // 1. Force check socket connection
       if (!_socketService.isConnected) {
@@ -413,6 +435,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     // Clean up streams
     _positionStreamSubscription?.cancel();
     _locationWatchdog?.cancel();
+    _gpsHealthTimer?.cancel();
     _connectionSubscription?.cancel();
     _fcmSubscription?.cancel();
     _fcmForegroundSubscription?.cancel();
@@ -457,6 +480,54 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     }
   }
 
+  void _updateGpsWarningState() {
+    final msg = _locationBannerMessage;
+    if (msg != _lastShownGpsWarning) {
+      _lastShownGpsWarning = msg;
+      if (msg != null && mounted) {
+        CustomSnackbar.show(
+          context,
+          message: msg,
+          type: SnackbarType.warning,
+        );
+      }
+    }
+  }
+
+  /// Detect GPS-off / permission-denied and surface it to the driver.
+  Future<void> _checkGpsHealth() async {
+    String? problem;
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        problem = 'GPS / location services are OFF. Riders cannot see you — '
+            'turn on location services.';
+      } else {
+        final permission = await Geolocator.checkPermission();
+        if (permission == LocationPermission.denied ||
+            permission == LocationPermission.deniedForever) {
+          problem = 'Location permission denied. Riders cannot see you — '
+              'enable it in app settings.';
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ [DriverHomeScreen] GPS health check failed: $e');
+    }
+    if (mounted) {
+      setState(() => _gpsServiceProblem = problem);
+      _updateGpsWarningState();
+    }
+  }
+
+  void _onLocationStreamError(dynamic error) {
+    debugPrint('⚠️ [DriverHomeScreen] Location stream error: $error');
+    _checkGpsHealth();
+    if (mounted) {
+      setState(() => _noGpsSignal = true);
+      _updateGpsWarningState();
+    }
+  }
+
   void _startLocationUpdates() async {
     _positionStreamSubscription?.cancel();
 
@@ -467,6 +538,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         _currentLocation = LatLng(position.latitude, position.longitude);
       });
       _emitLocationUpdate(position.latitude, position.longitude);
+    } else {
+      // No fix at all — likely GPS off / permission denied / no signal.
+      setState(() => _noGpsSignal = true);
+      _updateGpsWarningState();
     }
 
     // Use ride tracking stream for active rides (more frequent updates)
@@ -478,7 +553,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       // Use high-frequency tracking for active rides (every 3 seconds, 5m distance filter)
       _positionStreamSubscription = _locationService
           .getRideTrackingStream(intervalSeconds: 3)
-          .listen(_handlePositionUpdate);
+          .listen(_handlePositionUpdate, onError: _onLocationStreamError);
 
       debugPrint(
         '📍 [DriverHomeScreen] Started ride tracking stream (3s interval)',
@@ -487,12 +562,20 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       // Use periodic updates when just online (every 4 seconds)
       _positionStreamSubscription = _locationService
           .getPeriodicPositionStream(intervalSeconds: 4)
-          .listen(_handlePositionUpdate);
+          .listen(_handlePositionUpdate, onError: _onLocationStreamError);
 
       debugPrint(
         '📍 [DriverHomeScreen] Started periodic location stream (4s interval)',
       );
     }
+
+    // Probe GPS health now (permission/service) and re-check periodically so the
+    // warning clears automatically once the driver fixes it.
+    _checkGpsHealth();
+    _gpsHealthTimer?.cancel();
+    _gpsHealthTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (mounted) _checkGpsHealth();
+    });
 
     // Watchdog: surface "location lost" to the driver instead of failing silently.
     _locationWatchdog?.cancel();
@@ -504,11 +587,22 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           _status == 'in_progress';
       if (!needsLoc) {
         if (_locationStale) setState(() => _locationStale = false);
+        if (_noGpsSignal) {
+          setState(() => _noGpsSignal = false);
+          _updateGpsWarningState();
+        }
         return;
       }
-      final stale = _lastPositionUpdateTime == null ||
-          DateTime.now().difference(_lastPositionUpdateTime!).inSeconds > 15;
+      final diff = _lastPositionUpdateTime == null
+          ? 999999
+          : DateTime.now().difference(_lastPositionUpdateTime!).inSeconds;
+      final stale = diff > 15;
       if (stale != _locationStale) setState(() => _locationStale = stale);
+      final noSignal = diff > 20;
+      if (noSignal != _noGpsSignal) {
+        setState(() => _noGpsSignal = noSignal);
+        _updateGpsWarningState();
+      }
     });
   }
 
@@ -537,6 +631,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
 
     _lastPositionUpdateTime = DateTime.now();
     if (_locationStale) setState(() => _locationStale = false);
+    if (_noGpsSignal) {
+      setState(() => _noGpsSignal = false);
+      _updateGpsWarningState();
+    }
 
     // Throttle location emissions to prevent overwhelming the server
     final now = DateTime.now();
@@ -2161,8 +2259,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           ),
         ),
 
-        // Location-lost warning (driver has no other signal that tracking died)
-        if (_locationStale) _buildLocationStaleBanner(),
+        // Location-lost / GPS-health warning
+        if (_locationBannerMessage != null) _buildGpsWarningBanner(),
 
         // Complete Trip Overlay
         if (_status == 'complete')
@@ -2209,7 +2307,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     );
   }
 
-  Widget _buildLocationStaleBanner() {
+  Widget _buildGpsWarningBanner() {
+    final message = _locationBannerMessage ?? '';
+    final isHardFailure = _gpsServiceProblem != null;
     return Positioned(
       top: 0,
       left: 0,
@@ -2219,7 +2319,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            color: Colors.orange,
+            color: isHardFailure ? Colors.red : Colors.orange,
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
@@ -2229,20 +2329,41 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
               ),
             ],
           ),
-          child: const Row(
+          child: Row(
             children: [
-              Icon(Icons.gps_off, color: Colors.white, size: 18),
-              SizedBox(width: 10),
+              Icon(
+                isHardFailure ? Icons.location_off : Icons.gps_off,
+                color: Colors.white,
+                size: 18,
+              ),
+              const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Location unavailable — passenger tracking may be paused. Check GPS / data connection.',
-                  style: TextStyle(
+                  message,
+                  style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w600,
                     fontSize: 12,
                   ),
                 ),
               ),
+              if (isHardFailure)
+                TextButton(
+                  onPressed: () async {
+                    try {
+                      await Geolocator.openLocationSettings();
+                    } catch (_) {
+                      // Settings can't be opened on some platforms — ignore.
+                    }
+                  },
+                  child: const Text(
+                    'SETTINGS',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
