@@ -113,6 +113,13 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   String _etaText = 'Calculating...';
   int _etaMinutes = 0;
 
+  // ETA coordination: socket ETA (realtime, per location update) wins over
+  // fallback HTTP ETA (30s timer, slow response). Without this, a stale
+  // fallback response overwrites fresher socket values -> ETA jumps 11-4-5
+  // and can show e.g. 11min even as driver reaches pickup.
+  DateTime? _lastSocketEtaAt;
+  int _etaRequestSeq = 0;
+
   // Cancellation state
   bool _isCancelling = false;
   bool _isProcessingPayment = false;
@@ -810,12 +817,10 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
             final isGoingToPickup = eta['isGoingToPickup'] as bool? ?? true;
 
             if (duration != null && isGoingToPickup) {
-              // Extract minutes from duration string (e.g., "5 mins" -> 5)
-              final minutesMatch = RegExp(r'(\d+)').firstMatch(duration);
-              final minutes = minutesMatch != null
-                  ? int.parse(minutesMatch.group(1)!)
-                  : 0;
+              // Full duration string may be "1 hour 11 mins" - parse all parts.
+              final minutes = _parseEtaMinutes(duration);
 
+              _lastSocketEtaAt = DateTime.now();
               setState(() {
                 _etaText = duration;
                 _etaMinutes = minutes;
@@ -1486,6 +1491,22 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     });
   }
 
+  /// Parse ETA duration text to total minutes.
+  /// "5 mins" -> 5, "1 hour 11 mins" -> 71. The old first-number-only regex
+  /// returned 1 for hour+ durations (number right in text, wrong in badge).
+  int _parseEtaMinutes(String duration) {
+    final numbers = RegExp(
+      r'(\d+)',
+    ).allMatches(duration).map((m) => int.parse(m.group(1)!)).toList();
+    if (numbers.isEmpty) return 0;
+    final lower = duration.toLowerCase();
+    if (lower.contains('hour') || lower.contains('hr')) {
+      final mins = numbers.length > 1 ? numbers[1] : 0;
+      return numbers[0] * 60 + mins;
+    }
+    return numbers[0];
+  }
+
   /// Calculate ETA using Distance Matrix API with real traffic data
   /// This is a FALLBACK method - normally ETA comes from driver:locationChanged event
   /// Called periodically to ensure ETA is available even if socket misses updates
@@ -1494,6 +1515,11 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
     // Only calculate ETA when driver is heading to pickup
     if (_rideStatus != 'accepted') return;
+
+    // Snapshot origin + sequence: a slow response must not overwrite
+    // fresher socket ETA that arrived while this request was in flight.
+    final requestOrigin = _driverLocation!;
+    final requestSeq = ++_etaRequestSeq;
 
     try {
       debugPrint(
@@ -1510,6 +1536,33 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       );
 
       if (result != null && mounted) {
+        // Drop superseded responses (a newer fallback request started).
+        if (requestSeq != _etaRequestSeq) return;
+        // Status may have changed mid-flight (arrived/started) - don't touch ETA.
+        if (_rideStatus != 'accepted') return;
+        // Socket is realtime: if it delivered ETA recently, this slower
+        // fallback value is older info - don't overwrite fresher display.
+        final socketEtaAt = _lastSocketEtaAt;
+        if (socketEtaAt != null &&
+            DateTime.now().difference(socketEtaAt).inSeconds < 45) {
+          debugPrint(
+            '🕐 [RideAssignedScreen] Skipping stale fallback ETA (socket is fresh)',
+          );
+          return;
+        }
+        // Origin moved on while request was in flight - response is stale.
+        final movedMeters = const latlong2.Distance().as(
+          latlong2.LengthUnit.Meter,
+          requestOrigin,
+          _driverLocation ?? requestOrigin,
+        );
+        if (movedMeters > 300) {
+          debugPrint(
+            '🕐 [RideAssignedScreen] Skipping stale fallback ETA (driver moved ${movedMeters.toStringAsFixed(0)}m during request)',
+          );
+          return;
+        }
+
         final durationSeconds = result['duration_seconds'] as int? ?? 0;
         final durationText =
             result['duration_text'] as String? ?? 'Calculating...';
