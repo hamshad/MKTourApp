@@ -798,13 +798,13 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
           // CRITICAL: Extract ETA from socket event (server-calculated with traffic)
           // This is more efficient than calling Distance Matrix API repeatedly
+          // NOTE: Manual-arrival only. eta.status == 'driver_arrived' from
+          // proximity must NOT trigger arrival UI. Arrival UI fires only on
+          // explicit ride:driverArrived socket event / FCM driver_arrived,
+          // which backend sends after driver taps "arrived at pickup"
+          // (POST /rides/:id/arrive).
           if (data['eta'] != null && _rideStatus == 'accepted') {
             final eta = data['eta'];
-
-            if (eta['status'] == 'driver_arrived') {
-              _handleDriverArrival(eta);
-              return;
-            }
 
             final duration = eta['duration'] as String?; // e.g., "5 mins"
             final isGoingToPickup = eta['isGoingToPickup'] as bool? ?? true;
