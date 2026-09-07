@@ -9,6 +9,7 @@ import 'core/api_service.dart';
 import 'core/config/api_config.dart';
 import 'core/services/stripe_service.dart';
 import 'core/services/fcm_service.dart';
+import 'core/services/tiktok_service.dart';
 import 'core/services/places_service.dart';
 import 'features/auth/splash_screen.dart';
 import 'features/auth/signup_screen.dart';
@@ -49,6 +50,9 @@ void main() async {
 
   // Initialize Stripe
   await StripeService.init();
+
+  // Initialize TikTok Events SDK (no-op while TIKTOK_* keys in .env are blank)
+  await TikTokService.initialize();
 
   // Initialize FCM Service for push notifications
   await FcmService.instance.initialize();

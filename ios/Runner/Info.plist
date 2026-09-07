@@ -39,6 +39,8 @@
 	<string>MK-Tours uses your location to show you nearby tourist attractions and destinations on the map. For example, we'll display your current position relative to tour sites, help you find attractions near you, and provide distance calculations to points of interest. This allows you to plan and navigate your tours effectively.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>We need access to your photo library to upload profile pictures and documents.</string>
+	<key>NSUserTrackingUsageDescription</key>
+	<string>MK-Tours uses the identifier for advertisers (IDFA) to measure ad performance and improve ad personalization with TikTok.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

@@ -30,6 +30,39 @@ class ApiConfig {
     return dotenv.env['MAPS_API_KEY_IOS'] ?? '';
   }
 
+  /// TikTok Events SDK - Android App ID (blank until added manually)
+  static String get tiktokAndroidAppId {
+    return dotenv.env['TIKTOK_ANDROID_APP_ID'] ?? '';
+  }
+
+  /// TikTok Events SDK - Android TikTok ID (blank until added manually)
+  static String get tiktokAndroidTikTokId {
+    return dotenv.env['TIKTOK_ANDROID_TIKTOK_ID'] ?? '';
+  }
+
+  /// TikTok Events SDK - iOS App ID (blank until added manually)
+  static String get tiktokIosAppId {
+    return dotenv.env['TIKTOK_IOS_APP_ID'] ?? '';
+  }
+
+  /// TikTok Events SDK - iOS TikTok ID (blank until added manually)
+  static String get tiktokIosTikTokId {
+    return dotenv.env['TIKTOK_IOS_TIKTOK_ID'] ?? '';
+  }
+
+  /// TikTok Events SDK - Access Token / App Secret (blank until added manually)
+  static String get tiktokAccessToken {
+    return dotenv.env['TIKTOK_ACCESS_TOKEN'] ?? '';
+  }
+
+  /// True when all TikTok Events SDK keys are configured
+  static bool get isTikTokConfigured {
+    return tiktokAndroidAppId.isNotEmpty &&
+        tiktokAndroidTikTokId.isNotEmpty &&
+        tiktokIosAppId.isNotEmpty &&
+        tiktokIosTikTokId.isNotEmpty;
+  }
+
   /// Initialize environment variables
   /// Call this once in main() before runApp()
   static Future<void> initialize() async {
