@@ -63,6 +63,17 @@ class ApiConfig {
         tiktokIosTikTokId.isNotEmpty;
   }
 
+  /// True when iOS TikTok keys are configured (Android may be blank)
+  static bool get isTikTokIosConfigured {
+    return tiktokIosAppId.isNotEmpty && tiktokIosTikTokId.isNotEmpty;
+  }
+
+  /// True when Android TikTok keys are configured (iOS may be blank)
+  static bool get isTikTokAndroidConfigured {
+    return tiktokAndroidAppId.isNotEmpty &&
+        tiktokAndroidTikTokId.isNotEmpty;
+  }
+
   /// Initialize environment variables
   /// Call this once in main() before runApp()
   static Future<void> initialize() async {

@@ -15,12 +15,20 @@ class TikTokService {
   static bool get isInitialized => _initialized;
 
   /// Initialize the TikTok Events SDK. Safe to call with blank keys (skips).
+  ///
+  /// Only the current platform's keys are required — e.g. iOS initializes
+  /// with just TIKTOK_IOS_APP_ID + TIKTOK_IOS_TIKTOK_ID, Android IDs may
+  /// stay blank (and vice versa).
   static Future<void> initialize() async {
     if (_initialized) return;
 
-    if (!ApiConfig.isTikTokConfigured) {
+    final isIos = defaultTargetPlatform == TargetPlatform.iOS;
+    final ready =
+        isIos ? ApiConfig.isTikTokIosConfigured : ApiConfig.isTikTokAndroidConfigured;
+
+    if (!ready) {
       debugPrint(
-        '📊 TikTokService: keys blank, skipping init. '
+        '📊 TikTokService: ${isIos ? 'iOS' : 'Android'} keys blank, skipping init. '
         'Fill TIKTOK_* in .env to enable.',
       );
       return;
