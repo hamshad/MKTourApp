@@ -3,6 +3,8 @@ import '../../core/theme.dart';
 import '../../core/api_service.dart';
 import '../../core/services/socket_service.dart';
 import '../../core/widgets/custom_snackbar.dart';
+import '../../core/models/vehicle.dart';
+import '../../core/models/error_display_helper.dart';
 
 class RideCompleteScreen extends StatefulWidget {
   final Map<String, dynamic> rideData;
@@ -18,6 +20,42 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
   int _rating = 0;
   final TextEditingController _feedbackController = TextEditingController();
   bool _isSubmitting = false;
+  // Inline rating error (400-range, e.g. rating range) — rendered under the
+  // stars so the rider stays on the receipt instead of losing context.
+  String? _ratingError;
+  // Cash-collect success flash — drives the confirmation animation.
+  bool _cashJustConfirmed = false;
+
+  /// Fare breakdown straight from the API payload (base fare + accumulated
+  /// wait fees + actualFare total). Never hardcoded — all from backend data.
+  FareSummary get _summary => FareSummary.parse(widget.rideData);
+
+  List<RideStop> get _stops => parseRideStops(widget.rideData['stops']);
+
+  double get _congestionFee {
+    for (final key in ['congestionFee', 'congestionCharge', 'surgeFee']) {
+      final raw = widget.rideData[key];
+      if (raw is num && raw.toDouble() > 0) return raw.toDouble();
+    }
+    return 0.0;
+  }
+
+  double get _promoDiscount {
+    for (final key in ['promoDiscount', 'discount']) {
+      final raw = widget.rideData[key];
+      if (raw is num && raw.toDouble() > 0) return raw.toDouble();
+    }
+    return 0.0;
+  }
+
+  bool get _hasWaitData =>
+      _summary.totalWaitMinutes > 0 ||
+      _summary.totalWaitFee > 0 ||
+      widget.rideData.containsKey('actualFare');
+
+  /// Big total: actualFare (base + wait) when the backend provides wait
+  /// data, otherwise the legacy fare resolution below.
+  double get _displayTotal => _hasWaitData ? _summary.actualFare : _fare;
 
 
   // Get actual fare from ride data
@@ -126,12 +164,17 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
          // Verify rideId if needed
          setState(() {
            _isCashConfirmed = true;
+           _cashJustConfirmed = true;
          });
          CustomSnackbar.show(
-            context,
-            message: 'Cash payment confirmed!',
-            type: SnackbarType.success,
+           context,
+           message: 'Cash payment confirmed!',
+           type: SnackbarType.success,
          );
+         // Fade the success flash after a moment; the paid state persists.
+         Future.delayed(const Duration(seconds: 3), () {
+           if (mounted) setState(() => _cashJustConfirmed = false);
+         });
       }
     });
   }
@@ -162,6 +205,9 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
 
   Future<void> _submitRating() async {
     if (_rating == 0) {
+      setState(() {
+        _ratingError = 'Please select a rating from 1 to 5 stars.';
+      });
       CustomSnackbar.show(
         context,
         message: 'Please select a rating',
@@ -170,7 +216,10 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
       return;
     }
 
-    setState(() => _isSubmitting = true);
+    setState(() {
+      _isSubmitting = true;
+      _ratingError = null;
+    });
 
     debugPrint(
       '🔵 ------------------------------------------------------------------',
@@ -213,6 +262,15 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
           debugPrint(
             '🔴 [RideCompleteScreen] Rating submission failed: ${response['message']}',
           );
+          // 400-range errors render inline under the stars; the receipt
+          // stays visible so nothing is lost.
+          final info = RideErrorMapper.map(
+            response['message']?.toString() ?? 'Failed to submit rating',
+            response['errors'],
+          );
+          setState(() {
+            _ratingError = '${info.title}: ${info.copy}';
+          });
           CustomSnackbar.show(
             context,
             message: response['message'] ?? 'Failed to submit rating',
@@ -339,6 +397,98 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                         ),
                       ),
 
+                    // Cash-pending state: prominent pay-to-driver banner.
+                    // Resolves live via payment:cashCollected → success flash.
+                    if (!_isCashConfirmed &&
+                        _paymentMethodLabel().toLowerCase() == 'cash')
+                      Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(bottom: 20),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 14),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade50,
+                          borderRadius: BorderRadius.circular(14),
+                          border:
+                              Border.all(color: Colors.orange.shade200),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.payments_outlined,
+                              color: Colors.orange.shade700,
+                              size: 26,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Pay £${_displayTotal.toStringAsFixed(2)} cash to driver',
+                                    style: TextStyle(
+                                      color: Colors.orange.shade800,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                  Text(
+                                    'Hand the cash to your driver — this screen updates automatically.',
+                                    style: TextStyle(
+                                      color: Colors.orange.shade700,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                    // Cash-collected success animation.
+                    if (_cashJustConfirmed)
+                      TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0.6, end: 1.0),
+                        duration: const Duration(milliseconds: 450),
+                        curve: Curves.elasticOut,
+                        builder: (context, scale, child) => Transform.scale(
+                          scale: scale,
+                          child: child,
+                        ),
+                        child: Container(
+                          width: double.infinity,
+                          margin: const EdgeInsets.only(bottom: 20),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF22C55E),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(
+                                Icons.check_circle,
+                                color: Colors.white,
+                                size: 26,
+                              ),
+                              SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  'Cash payment confirmed — thank you!',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
                     // Payment Method Section
                     Container(
                       margin: const EdgeInsets.only(bottom: 24),
@@ -450,6 +600,38 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                               '£${_originalFare.toStringAsFixed(2)}',
                             ),
                           ],
+                          // Base fare + wait breakdown from API data (£ formatted,
+                          // rate from WaitFeePolicy — never hardcoded amounts).
+                          if (_hasWaitData) ...[
+                            _buildFareRow(
+                              'Base fare',
+                              '£${_summary.fare.toStringAsFixed(2)}',
+                            ),
+                            _buildFareRow(
+                              'Wait ${_summary.totalWaitMinutes} min × £${WaitFeePolicy.perMinuteRate.toStringAsFixed(2)}',
+                              '£${_summary.totalWaitFee.toStringAsFixed(2)}',
+                            ),
+                          ],
+                          // Per-stop wait rows.
+                          for (final stop in _stops)
+                            if (stop.waitTimeMinutes > 0)
+                              _buildFareRow(
+                                'Stop ${stop.stopOrder == 0 ? '' : '${stop.stopOrder} '}wait (${stop.waitTimeMinutes} min)',
+                                '£${stop.waitFee.toStringAsFixed(2)}',
+                              ),
+                          if (_congestionFee > 0) ...[
+                            _buildFareRow(
+                              'Congestion charge',
+                              '£${_congestionFee.toStringAsFixed(2)}',
+                            ),
+                          ],
+                          if (_promoDiscount > 0) ...[
+                            _buildFareRow(
+                              'Promo discount',
+                              '- £${_promoDiscount.toStringAsFixed(2)}',
+                              valueColor: const Color(0xFF22C55E),
+                            ),
+                          ],
                           // Scheduled Airport Rides fare logic
                           if (_isScheduled && _isAirportTransfer && _originalFare > 0) ...[
                              _buildFareRow(
@@ -508,7 +690,7 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                                   Text(
                                     _fare == 0 && _isPromoRide
                                         ? '£0.00 🎁'
-                                        : '£${_fare.toStringAsFixed(2)}',
+                                        : '£${_displayTotal.toStringAsFixed(2)}',
                                     style: TextStyle(
                                       fontSize: 24,
                                       fontWeight: FontWeight.bold,
@@ -571,8 +753,10 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: List.generate(5, (index) {
                           return IconButton(
-                            onPressed: () =>
-                                setState(() => _rating = index + 1),
+                            onPressed: () => setState(() {
+                              _rating = index + 1;
+                              _ratingError = null;
+                            }),
                             icon: Icon(
                               index < _rating ? Icons.star : Icons.star_border,
                               size: 44,
@@ -591,10 +775,40 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
 
                     const SizedBox(height: 24),
 
+                    // Inline rating error (400-range) — receipt stays visible.
+                    if (_ratingError != null)
+                      Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.red.shade200),
+                        ),
+                        child: Text(
+                          _ratingError!,
+                          style: TextStyle(
+                            color: Colors.red.shade700,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+
                     // Feedback
                     TextField(
                       controller: _feedbackController,
                       maxLines: 3,
+                      maxLength: 500,
+                      onChanged: (_) {
+                        if (_ratingError != null) {
+                          setState(() => _ratingError = null);
+                        }
+                      },
                       decoration: InputDecoration(
                         hintText: 'Add a compliment or feedback (optional)',
                         border: OutlineInputBorder(
