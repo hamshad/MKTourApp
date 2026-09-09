@@ -13,7 +13,6 @@ import '../../core/services/navigation_service.dart';
 import '../../core/services/places_service.dart';
 import '../../core/services/marker_interpolation_service.dart';
 import '../../core/services/payment_service.dart';
-import '../../core/services/stripe_service.dart';
 import '../../core/models/error_display_helper.dart';
 import '../../core/widgets/platform_map.dart';
 import '../../core/widgets/connection_status_banner.dart';
@@ -156,7 +155,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   int _paymentRetryCount = 0;
   static const int _maxPaymentRetries = 3;
   // In-flight guard: blocks double-tap on payment rows while a
-  // select-payment request (or Stripe sheet) is still running.
+  // select-payment request is still running.
   bool _isSelectingPayment = false;
   // Receipt navigation guard: completed events fan out from several sources
   // (socket, FCM, pay-later completion) — the receipt pushes exactly once.
@@ -3013,7 +3012,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                 // Cash option — close sheet with its own context first,
                 // then run selection (avoids popping the wrong route).
                 _buildPaymentOption(
-                  icon: Icons.money,
+                  icon: Icons.payments_outlined,
                   title: 'Cash',
                   subtitle:
                       'Pay £${fareHint.toStringAsFixed(2)} directly to driver · no fee',
@@ -3023,24 +3022,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                   },
                 ),
                 const SizedBox(height: 16),
-                // Card/Stripe option — clientSecret → Stripe sheet.
-                _buildPaymentOption(
-                  icon: Icons.credit_card,
-                  title: 'Card',
-                  subtitle:
-                      'Pay £${fareHint.toStringAsFixed(2)} now via Stripe · no fee',
-                  onTap: () {
-                    Navigator.pop(sheetContext);
-                    _handlePaymentSelection(
-                      'stripe',
-                      fromAutoSelect: true,
-                    );
-                  },
-                ),
-                const SizedBox(height: 16),
                 // Payment Link option - available on both iOS and Android
                 _buildPaymentOption(
-                  icon: Icons.link,
+                  icon: Icons.link_outlined,
                   title: 'Payment Link',
                   subtitle:
                       'Pay £${fareHint.toStringAsFixed(2)} via online link · no fee',
@@ -3257,66 +3241,22 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         final paymentMethod = rideData['paymentMethod'];
         debugPrint('💸 [Payment] Method from response: $paymentMethod');
 
-        if (paymentMethod == 'stripe') {
-          final clientSecret = rideData['clientSecret'];
-          debugPrint(
-            '💳 [Stripe] Client secret present: ${clientSecret != null}',
+        // Backend only supports `cash` and `payment_link` — any other echoed
+        // method is a version mismatch; surface it instead of branching into
+        // a client flow the server rejects.
+        if (paymentMethod != null &&
+            paymentMethod != 'cash' &&
+            paymentMethod != 'payment_link') {
+          _closePaymentLoading();
+          if (!mounted) return;
+          _showPaymentErrorDialog(
+            method: method,
+            serverMessage:
+                'Unsupported payment method "$paymentMethod" returned by server. Please update the app and try Cash.',
           );
-
-          if (clientSecret != null) {
-            try {
-              // Default fallback: Use Stripe Payment Sheet
-              await StripeService.processPayment(clientSecret);
-
-              // Close loading dialog after payment sheet completes
-              _closePaymentLoading();
-              _paymentRetryCount = 0;
-
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Payment Successful! You can now board.'),
-                  backgroundColor: Colors.green,
-                ),
-              );
-              setState(() {
-                _isPaymentMethodSelected = true;
-                _selectedPaymentMethodDisplay = Platform.isAndroid
-                    ? 'Paid Online'
-                    : 'Card';
-              });
-            } catch (e) {
-              debugPrint('❌ [Stripe] Payment failed: $e');
-
-              // Close loading dialog on error
-              _closePaymentLoading();
-
-              if (!mounted) return;
-              // Stripe failure → sheet reopens with error, ride stays intact.
-              setState(() {
-                _paymentSheetError =
-                    'Card payment failed: ${StripeService.getErrorMessage(e)}';
-              });
-              _showPaymentErrorDialog(
-                method: method,
-                serverMessage:
-                    'Online payment failed: ${StripeService.getErrorMessage(e)}',
-              );
-              return;
-            }
-          } else {
-            // Close loading dialog if no client secret — backend issue, explain it.
-            _closePaymentLoading();
-
-            if (!mounted) return;
-            _showPaymentErrorDialog(
-              method: method,
-              serverMessage:
-                  'Payment setup failed: server returned no client secret. The payment provider may be misconfigured.',
-            );
-            return;
-          }
-        } else if (paymentMethod == 'payment_link') {
+          return;
+        }
+        if (paymentMethod == 'payment_link') {
           final paymentUrl = rideData['paymentUrl'];
           debugPrint('🔗 [Payment Link] URL present: ${paymentUrl != null}');
           if (paymentUrl != null) {
