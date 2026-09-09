@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'api_error.dart';
+import 'error_display_helper.dart';
 
 /// Utility class for handling API responses and errors
 class ApiErrorHandler {
@@ -86,6 +87,29 @@ class ApiErrorHandler {
     }
     return 'Something went wrong. Please try again.';
   }
+
+  /// Map a ride failure to friendly copy + action — the one path ride
+  /// screens use instead of reading backend messages directly.
+  ///
+  /// Accepts an [Exception] (uses message/errors when it's an [ApiError])
+  /// or a raw backend `message` + `errors` pair.
+  static RideErrorInfo mapRideError(
+    Exception error, {
+    String? fallbackMessage,
+    dynamic fallbackErrors,
+  }) {
+    if (error is ApiError) {
+      return RideErrorMapper.map(error.message, error.errors);
+    }
+    return RideErrorMapper.map(
+      fallbackMessage ?? error.toString(),
+      fallbackErrors,
+    );
+  }
+
+  /// Friendly copy for a ride failure, for inline text (not snackbars).
+  static String getRideUserMessage(Exception error) =>
+      mapRideError(error).copy;
 
   /// Check if error is recoverable (user can retry)
   static bool isRecoverable(Exception error) {
