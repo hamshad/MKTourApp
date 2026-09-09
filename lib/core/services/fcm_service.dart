@@ -8,6 +8,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'audio_service.dart';
+import 'ride_event_dedupe.dart';
 import 'socket_service.dart';
 import 'location_service.dart';
 
@@ -328,6 +329,17 @@ class FcmService {
     if (data.type == NotificationType.healthCheck) {
       debugPrint('🛡️ [FCM] Health Check (Silent Nudge) received in foreground');
       _performHealthCheck();
+      return;
+    }
+
+    // FCM + socket deliver the same backend event twice. If the socket path
+    // already handled this (type, rideId) within the window, skip the banner,
+    // sound, and stream emission — and vice versa via the same guard.
+    if (!RideEventDedupe.shouldHandleEvent(
+      source: 'fcm',
+      type: data.type,
+      data: message.data,
+    )) {
       return;
     }
 

@@ -8,6 +8,7 @@ import '../../core/services/audio_service.dart';
 import '../../core/auth_provider.dart';
 import '../../core/theme.dart';
 import '../../core/services/socket_service.dart';
+import '../../core/services/ride_event_dedupe.dart';
 import '../../core/api_service.dart';
 import '../../core/services/navigation_service.dart';
 import '../../core/services/places_service.dart';
@@ -818,6 +819,16 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         return;
       }
 
+      // FCM ride_started lands the same moment — shared guard drives the
+      // in_progress UI exactly once.
+      if (!RideEventDedupe.shouldHandleEvent(
+        source: 'socket',
+        type: 'ride_started',
+        data: data,
+      )) {
+        return;
+      }
+
       // Stop tracking driver location updates (ride has started)
       if (_currentDriverId != null) {
         debugPrint(
@@ -856,6 +867,18 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     _socketService.on('ride:completed', (data) {
       if (!mounted) return;
       debugPrint('🏁 [RideAssignedScreen] Ride Completed: $data');
+
+      // FCM ride_completed / early_completed duplicates this — one receipt.
+      final completedType = data is Map && data['status'] == 'early_completed'
+          ? 'ride_early_completed'
+          : 'ride_completed';
+      if (!RideEventDedupe.shouldHandleEvent(
+        source: 'socket',
+        type: completedType,
+        data: data,
+      )) {
+        return;
+      }
 
       // If this is an early completion that's also triggering ride:completed,
       // we ignore it if we already have the adjusted fare data.

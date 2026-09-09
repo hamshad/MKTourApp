@@ -14,6 +14,7 @@ import '../../core/widgets/custom_snackbar.dart';
 import '../../core/models/error_display_helper.dart';
 import '../../core/models/vehicle.dart';
 import '../../core/services/socket_service.dart';
+import '../../core/services/ride_event_dedupe.dart';
 import '../../core/services/location_service.dart';
 import '../../core/services/navigation_service.dart';
 import '../../core/services/active_ride_storage.dart';
@@ -138,7 +139,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     _fcmSubscription = FcmService.instance.onNotificationTap.listen((data) {
       if (data.type == NotificationType.rideRequest) {
         debugPrint('🔔 [DriverHomeScreen] Received rideRequest via FCM tap');
-        if (mounted) {
+        if (mounted &&
+            RideEventDedupe.shouldHandleEvent(
+              source: 'fcm-tap',
+              type: data.type,
+              data: data.rawData,
+            )) {
           _handleNewRideRequest(data.rawData);
         }
       }
@@ -150,7 +156,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         FcmService.instance.onForegroundNotification.listen((data) {
       if (data.type == NotificationType.rideRequest) {
         debugPrint('🔔 [DriverHomeScreen] Received rideRequest via FCM foreground');
-        if (mounted) {
+        if (mounted &&
+            RideEventDedupe.shouldHandleEvent(
+              source: 'fcm',
+              type: data.type,
+              data: data.rawData,
+            )) {
           _handleNewRideRequest(data.rawData);
         }
       }
@@ -1169,6 +1180,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     _socketService.on('ride:newRequest', (data) {
       debugPrint('🔔 [DriverHomeScreen] New Ride Request Received: $data');
       if (mounted) {
+        // FCM delivers the same request — shared guard keeps one dialog.
+        if (!RideEventDedupe.shouldHandleEvent(
+          source: 'socket',
+          type: 'ride_request',
+          data: data,
+        )) {
+          return;
+        }
         debugPrint('🔔 [DriverHomeScreen] Triggering _handleNewRideRequest');
         _handleNewRideRequest(data);
       } else {

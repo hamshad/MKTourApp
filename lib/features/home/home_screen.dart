@@ -14,6 +14,7 @@ import '../../core/services/places_service.dart';
 import 'package:latlong2/latlong.dart' as lat_lng;
 import 'dart:async';
 import '../../core/services/socket_service.dart';
+import '../../core/services/ride_event_dedupe.dart';
 import '../../core/services/active_ride_storage.dart';
 import '../../core/api_service.dart';
 import '../ride/ride_assigned_screen.dart';
@@ -127,6 +128,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _activeRide == null;
 
       if (shouldHandle) {
+        // FCM ride_accepted duplicates this socket event — shared guard
+        // navigates to the assigned screen exactly once.
+        if (!RideEventDedupe.shouldHandleEvent(
+          source: 'socket',
+          type: 'ride_accepted',
+          data: data,
+        )) {
+          return;
+        }
         // New flow: no ride code — driver data passes through untouched.
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && context.mounted) {
@@ -417,6 +427,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       debugPrint('🔍 [HomeScreen] shouldHandle: $shouldHandle');
 
       if (shouldHandle) {
+        // FCM ride_accepted duplicates this socket event — shared guard
+        // navigates to the assigned screen exactly once.
+        if (!RideEventDedupe.shouldHandleEvent(
+          source: 'socket',
+          type: 'ride_accepted',
+          data: data,
+        )) {
+          return;
+        }
         // New flow: no ride code — driver data passes through untouched.
         // Use post-frame callback to ensure UI is ready for navigation
         WidgetsBinding.instance.addPostFrameCallback((_) {
