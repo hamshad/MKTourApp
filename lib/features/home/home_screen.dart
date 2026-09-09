@@ -8,7 +8,6 @@ import 'activity_screen.dart';
 import 'account_screen.dart';
 import '../../core/widgets/platform_map.dart';
 import '../../core/widgets/ride_searching_overlay.dart';
-import '../../core/widgets/connection_status_banner.dart';
 import '../../core/services/location_service.dart';
 import '../../core/services/places_service.dart';
 import 'package:latlong2/latlong.dart' as lat_lng;
@@ -1563,9 +1562,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             },
           ),
 
-        // Socket disconnect → visible "reconnecting" pill (queued emits
-        // flush via emitReliable on reconnect), never a silent freeze.
-        const ConnectionStatusBanner(),
       ],
     );
   }

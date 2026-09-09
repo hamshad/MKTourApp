@@ -16,7 +16,7 @@ import '../../core/services/marker_interpolation_service.dart';
 import '../../core/services/payment_service.dart';
 import '../../core/models/error_display_helper.dart';
 import '../../core/widgets/platform_map.dart';
-import '../../core/widgets/connection_status_banner.dart';
+import '../../core/widgets/ride_searching_overlay.dart';
 import 'ride_complete_screen.dart';
 import 'payment_webview_screen.dart';
 
@@ -2157,11 +2157,6 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
           // Status Panel
           Positioned(bottom: 0, left: 0, right: 0, child: _buildStatusPanel()),
-
-          // Socket disconnect → visible "reconnecting" pill (queued emits
-          // flush via emitReliable on reconnect), never a silent freeze.
-          // Suppressed on final states so it can't flash over the receipt.
-          ConnectionStatusBanner(suppress: _isFinalRideStatus),
         ],
       ),
     );
@@ -2814,15 +2809,6 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       ],
     );
   }
-
-  /// Final ride states: the reconnect pill/banner must not flash once the
-  /// trip is over (completed/early_completed/cancelled/expired).
-  bool get _isFinalRideStatus => const {
-    'completed',
-    'early_completed',
-    'cancelled',
-    'expired',
-  }.contains(_rideStatus);
 
   void _closePaymentLoading() {
     if (_isPaymentLoadingShowing && mounted) {
