@@ -2006,7 +2006,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           ElevatedButton(
             onPressed: () {
               if (otpController.text.length == 4) {
-                _verifyAndStartRide(otpController.text);
+                _verifyAndStartRide();
               } else {
                 CustomSnackbar.show(
                   context,
@@ -2033,15 +2033,15 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     );
   }
 
-  Future<void> _verifyAndStartRide(String otp) async {
-    // Mock OTP verification for now
-    // In real app, verify OTP with backend or check against ride data
+  Future<void> _verifyAndStartRide() async {
+    // No-OTP start: backend starts ride from driver_arrived state with empty body.
+    // OTP dialog UI strip-out happens in phase 03-01; this keeps the call path OTP-free.
 
     Navigator.pop(context); // Close dialog
     setState(() => _isLoading = true);
 
     try {
-      final response = await _apiService.startRide(_currentRideId!, otp);
+      final response = await _apiService.startRide(_currentRideId!);
       if (response['success'] == true) {
         setState(() {
           _status = 'in_progress';
@@ -2053,7 +2053,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         _persistActiveRide();
         CustomSnackbar.show(
           context,
-          message: 'OTP Verified! Trip Started.',
+          message: 'Trip Started.',
           type: SnackbarType.success,
         );
         // Fetch navigation route to dropoff

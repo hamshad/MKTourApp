@@ -732,13 +732,28 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> createRide(Map<String, dynamic> rideData) async {
+  Future<Map<String, dynamic>> createRide(
+    Map<String, dynamic> rideData, {
+    List<Map<String, dynamic>>? stops,
+  }) async {
     debugPrint(
       '🔵 ------------------------------------------------------------------',
     );
     debugPrint('🔵 [ApiService] createRide called');
     debugPrint('🔵 [Request] URL: ${ApiConstants.createRide}');
-    debugPrint('🔵 [Request] Body: $rideData');
+    final Map<String, dynamic> body = Map<String, dynamic>.from(rideData);
+    if (stops != null && stops.isNotEmpty) {
+      body['stops'] = stops
+          .map(
+            (stop) => {
+              'stopOrder': stop['stopOrder'],
+              'address': stop['address'],
+              'coordinates': stop['coordinates'],
+            },
+          )
+          .toList();
+    }
+    debugPrint('🔵 [Request] Body: $body');
 
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -750,7 +765,7 @@ class ApiService {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
-        body: jsonEncode(rideData),
+        body: jsonEncode(body),
       );
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
@@ -796,8 +811,26 @@ class ApiService {
     });
   }
 
-  Future<Map<String, dynamic>> startRide(String rideId, String otp) async {
-    return await _postRequest(ApiConstants.startRide(rideId), {'otp': otp});
+  Future<Map<String, dynamic>> startRide(String rideId) async {
+    return await _postRequest(ApiConstants.startRide(rideId), {});
+  }
+
+  /// Driver marks arrival at an intermediate stop (100m proximity enforced backend-side).
+  /// Returns decoded body untouched, including errors.distance/required on 400.
+  Future<Map<String, dynamic>> stopArrive(
+    String rideId,
+    double latitude,
+    double longitude,
+  ) async {
+    return await _postRequest(ApiConstants.stopArrive(rideId), {
+      'latitude': latitude,
+      'longitude': longitude,
+    });
+  }
+
+  /// Driver resumes journey from a stop; backend computes wait fee and returns totals.
+  Future<Map<String, dynamic>> stopResume(String rideId) async {
+    return await _postRequest(ApiConstants.stopResume(rideId), {});
   }
 
   Future<Map<String, dynamic>> completeRide(
@@ -824,7 +857,10 @@ class ApiService {
   /// Returns cancellation fee info and refund status
   /// - Within grace period (< 2 min after acceptance): Full refund
   /// - After grace period: 20% cancellation fee
-  Future<Map<String, dynamic>> cancelRideByUser(String rideId) async {
+  Future<Map<String, dynamic>> cancelRideByUser(
+    String rideId, {
+    String? reason,
+  }) async {
     debugPrint(
       '🔵 ------------------------------------------------------------------',
     );
@@ -845,7 +881,7 @@ class ApiService {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
-        body: jsonEncode({}),
+        body: jsonEncode({if (reason != null) 'reason': reason}),
       );
 
       debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
@@ -959,7 +995,7 @@ class ApiService {
   /// Valid reasons: user_requested, rider_misbehavior, safety_concern, wrong_destination, vehicle_issue
   ///
   /// Backend API: PATCH /api/v1/rides/{rideId}/end-early
-  /// Request body: { driverLat, driverLon, earlyEndReason }
+  /// Request body: { latitude, longitude, reason }
   /// Response: { status, actualDistance, fare, paymentStatus }
   Future<Map<String, dynamic>> endRideEarly(
     String rideId, {
@@ -973,7 +1009,7 @@ class ApiService {
     debugPrint('🔵 [ApiService] endRideEarly called');
     debugPrint('🔵 [Request] URL: ${ApiConstants.endRideEarly(rideId)}');
     debugPrint(
-      '🔵 [Request] Body: {driverLat: $latitude, driverLon: $longitude, earlyEndReason: $reason}',
+      '🔵 [Request] Body: {latitude: $latitude, longitude: $longitude, reason: $reason}',
     );
 
     try {
@@ -992,10 +1028,9 @@ class ApiService {
           'Authorization': 'Bearer $token',
         },
         body: jsonEncode({
-          'driverLat': latitude,
-          'driverLon': longitude,
-          'earlyEndReason':
-              reason, // Matches: user_requested, safety_concern, etc.
+          'latitude': latitude,
+          'longitude': longitude,
+          'reason': reason, // Matches: user_requested, safety_concern, etc.
         }),
       );
 
