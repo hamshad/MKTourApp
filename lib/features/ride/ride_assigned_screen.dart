@@ -16,6 +16,7 @@ import '../../core/services/payment_service.dart';
 import '../../core/services/stripe_service.dart';
 import '../../core/models/error_display_helper.dart';
 import '../../core/widgets/platform_map.dart';
+import '../../core/widgets/connection_status_banner.dart';
 import 'ride_complete_screen.dart';
 import 'payment_webview_screen.dart';
 
@@ -157,6 +158,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   // In-flight guard: blocks double-tap on payment rows while a
   // select-payment request (or Stripe sheet) is still running.
   bool _isSelectingPayment = false;
+  // Receipt navigation guard: completed events fan out from several sources
+  // (socket, FCM, pay-later completion) — the receipt pushes exactly once.
+  bool _didNavigateToReceipt = false;
   // Inline sheet error (e.g. invalid-method 400) — rendered inside the
   // bottom sheet so the rider stays on the sheet instead of dead-ending.
   String? _paymentSheetError;
@@ -524,7 +528,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     _socketService.off('ride:longRunning');
     _socketService.off('user:status');
     _socketService.off('ride:promoApplied');
-    _socketService.off('ride:driverReassigning');
+    _socketService.offDriverReassigning();
+    _socketService.offPaymentSelected();
 
     // Ensure we are joined to the driver room after socket init
     if (_currentDriverId != null) {
@@ -549,7 +554,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       debugPrint('📩 [RideAssignedScreen] User status: ${data['status']}');
     });
 
-    _socketService.on('ride:driverReassigning', (data) {
+    _socketService.onDriverReassigning((data) {
       debugPrint(
         '═══════════════════════════════════════════════════════',
       );
@@ -596,6 +601,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         );
       });
     });
+
+    _setupPaymentSelectedListener();
 
     _socketService.on('ride:accepted', (data) {
       debugPrint('═══════════════════════════════════════════════════════');
@@ -1304,6 +1311,25 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   }
 }
 
+  // Payment method selected by the passenger (`paymentMethod` + status).
+  // Updates the assigned screen live so trip start reflects the chosen
+  // method without a restart or a stale "select payment" prompt.
+  void _setupPaymentSelectedListener() {
+    _socketService.onPaymentSelected((data) {
+      if (!mounted || !context.mounted) return;
+      debugPrint('💳 [RideAssignedScreen] Payment selected: $data');
+      final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
+      final eventRideId =
+          map['rideId']?.toString() ?? map['bookingId']?.toString() ?? map['_id']?.toString();
+      if (eventRideId != null && eventRideId != widget.rideId) return;
+      final method = map['paymentMethod']?.toString() ?? '';
+      setState(() {
+        _isPaymentMethodSelected = true;
+        if (method.isNotEmpty) _selectedPaymentMethodDisplay = method;
+      });
+    });
+  }
+
   void _updateMarkers() {
     final List<MapMarker> newMarkers = [];
 
@@ -1738,6 +1764,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     _socketService.off('payment:failed');
     _socketService.off('ride:longRunning');
     _socketService.off('ride:promoApplied');
+    _socketService.offDriverReassigning();
+    _socketService.offPaymentSelected();
 
     // Clean up navigation
     _navigationService.dispose();
@@ -2086,6 +2114,10 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
           // Status Panel
           Positioned(bottom: 0, left: 0, right: 0, child: _buildStatusPanel()),
+
+          // Socket disconnect → visible "reconnecting" pill (queued emits
+          // flush via emitReliable on reconnect), never a silent freeze.
+          const ConnectionStatusBanner(),
         ],
       ),
     );
@@ -2124,6 +2156,11 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
   void _showPaymentSuccessScreen(Map<String, dynamic> rideData) {
     if (!mounted) return;
+
+    // Status-sequence navigation guard: completed/early-completed events can
+    // arrive twice (socket + FCM + pay-later path) — push receipt exactly once.
+    if (_didNavigateToReceipt) return;
+    _didNavigateToReceipt = true;
 
     _isAwaitingPaymentConfirmation = false;
 

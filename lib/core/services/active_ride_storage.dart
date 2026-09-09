@@ -28,6 +28,20 @@ class ActiveRideStorage {
   static const String _paymentMethodKey = 'active_ride_payment_method';
   static const String _paymentStatusKey = 'active_ride_payment_status';
   static const String _stopIndexKey = 'active_ride_stop_index';
+  static const String _savedAtKey = 'active_ride_saved_at';
+
+  /// Rides older than this are treated as stale on cold start and cleared.
+  static const Duration staleAfter = Duration(hours: 24);
+
+  /// Final statuses that must never restore — always clear + home.
+  static const Set<String> finalStatuses = {
+    'completed',
+    'early_completed',
+    'cancelled',
+    'cancelled_by_user',
+    'cancelled_by_driver',
+    'expired',
+  };
 
   /// Legacy ride-OTP key — no longer written. Removed on [clear] so stale
   /// values from older installs don't linger.
@@ -42,6 +56,7 @@ class ActiveRideStorage {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_idKey, rideId);
     await prefs.setString(_roleKey, role);
+    await prefs.setString(_savedAtKey, DateTime.now().toIso8601String());
     if (status != null) await prefs.setString(_statusKey, status);
   }
 
@@ -123,6 +138,20 @@ class ActiveRideStorage {
     return prefs.getString(_statusKey);
   }
 
+  /// True when the stored ride is older than [staleAfter] or missing a
+  /// timestamp (pre-timestamp installs) — caller should [clear] + home.
+  static Future<bool> isStale() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_savedAtKey);
+    if (raw == null || raw.isEmpty) return true;
+    try {
+      final savedAt = DateTime.parse(raw);
+      return DateTime.now().difference(savedAt) > staleAfter;
+    } catch (_) {
+      return true;
+    }
+  }
+
   static Future<void> clear() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_idKey);
@@ -135,6 +164,7 @@ class ActiveRideStorage {
     await prefs.remove(_paymentMethodKey);
     await prefs.remove(_paymentStatusKey);
     await prefs.remove(_stopIndexKey);
+    await prefs.remove(_savedAtKey);
     await prefs.remove(_legacyOtpKey);
   }
 }

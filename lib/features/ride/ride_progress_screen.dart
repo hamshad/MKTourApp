@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/platform_map.dart';
+import '../../core/widgets/connection_status_banner.dart';
 import '../../core/services/socket_service.dart';
 import '../../core/services/navigation_service.dart';
 import '../../core/services/places_service.dart';
 import '../../core/api_service.dart';
 import '../../core/models/vehicle.dart';
+import 'ride_complete_screen.dart';
 
 class RideProgressScreen extends StatefulWidget {
   final String? rideId;
@@ -65,6 +67,12 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
   // hydrates from the API when the socket goes quiet.
   DateTime? _lastSocketEventAt;
   Timer? _pollTimer;
+
+  // Status-sequence navigation guard: the completed event (socket + poll)
+  // must push the receipt exactly once — never the same route twice (the
+  // known payment-loop bug class).
+  String? _lastNavigatedStatus;
+  bool _isNavigatingToReceipt = false;
 
   @override
   void initState() {
@@ -132,14 +140,15 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
                 _status = 'Heading to destination';
                 _rideStatus = 'in_progress';
                 _progress = 0.8;
-             } else if (newStatus == 'completed') {
-                _status = 'You have arrived!';
-                _rideStatus = 'completed';
-                _progress = 1.0;
-             }
-          });
-       }
-    });
+              } else if (newStatus == 'completed') {
+                 _status = 'You have arrived!';
+                 _rideStatus = 'completed';
+                 _progress = 1.0;
+              }
+           });
+           if (newStatus == 'completed') _maybeNavigateToReceipt(data);
+        }
+     });
 
     // Stop arrival: backend sets status to at_stop with currentStopIndex +
     // stops[]. Drives the "Waiting at {address}" chip + live wait timer.
@@ -275,13 +284,58 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
           _totalWaitFee = _asDouble(map['totalWaitFee']);
         }
       });
+      if (status == 'completed') _maybeNavigateToReceipt(map);
     } catch (e) {
       debugPrint('⚠️ [RideProgressScreen] Poll fallback failed: $e');
     }
   }
 
-  void _startWaitTicker() {
-    _waitTickTimer?.cancel();
+  /// Guarded receipt navigation: fires exactly once per completed ride.
+  /// Both the socket `completed` event and the polling fallback converge
+  /// here; the status-sequence check drops every duplicate push.
+  Future<void> _maybeNavigateToReceipt(dynamic eventData) async {
+    if (!mounted) return;
+    if (_lastNavigatedStatus == 'completed' || _isNavigatingToReceipt) return;
+    _isNavigatingToReceipt = true;
+    try {
+      Map<String, dynamic> rideData = {};
+      if (eventData is Map<String, dynamic>) {
+        rideData = eventData;
+      } else if (eventData is Map) {
+        rideData = Map<String, dynamic>.from(eventData);
+      }
+      // Hydrate the full receipt payload when the event is status-only.
+      final rideId = widget.rideId;
+      if ((rideData['fare'] == null || rideData['actualFare'] == null) &&
+          rideId != null &&
+          rideId.isNotEmpty) {
+        try {
+          final response = await _apiService.getRideDetails(rideId);
+          if (response['success'] == true && response['data'] != null) {
+            final raw = response['data'];
+            rideData = raw is Map<String, dynamic>
+                ? raw
+                : raw is Map
+                    ? Map<String, dynamic>.from(raw)
+                    : rideData;
+          }
+        } catch (e) {
+          debugPrint('⚠️ [RideProgressScreen] Receipt hydrate failed: $e');
+        }
+      }
+      if (!mounted) return;
+      _lastNavigatedStatus = 'completed';
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => RideCompleteScreen(rideData: rideData),
+        ),
+      );
+    } finally {
+      _isNavigatingToReceipt = false;
+    }
+  }
+
+  void _startWaitTicker() {    _waitTickTimer?.cancel();
     _waitStartedAt ??= DateTime.now();
     _waitTickTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted || _waitStartedAt == null) return;
@@ -902,9 +956,13 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
                   ),
                 ],
               ),
-              ),
             ),
           ),
+          ),
+
+          // Socket disconnect → visible "reconnecting" pill (queued emits
+          // flush via emitReliable on reconnect), never a silent freeze.
+          const ConnectionStatusBanner(),
         ],
       ),
     );

@@ -8,6 +8,7 @@ import 'activity_screen.dart';
 import 'account_screen.dart';
 import '../../core/widgets/platform_map.dart';
 import '../../core/widgets/ride_searching_overlay.dart';
+import '../../core/widgets/connection_status_banner.dart';
 import '../../core/services/location_service.dart';
 import '../../core/services/places_service.dart';
 import 'package:latlong2/latlong.dart' as lat_lng;
@@ -51,6 +52,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Map<String, dynamic>? _activeRide;
   Map<String, dynamic>? _lastRideConfirmationData; // To support ride restart
   bool _isLoading = false;
+  // Driver-cancel auto-reassign: >0 keeps the searching overlay in its
+  // reassign state ("Finding you another driver…") instead of plain copy.
+  int _reassignmentCount = 0;
 
   // Promo status
   Map<String, dynamic>? _promoStatusData;
@@ -97,6 +101,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     _socketService.off('ride:accepted');
     _socketService.off('user:status');
+    _socketService.offDriverReassigning();
 
     _socketService.on('ride:accepted', (data) {
       debugPrint('═══════════════════════════════════════════════════════');
@@ -133,6 +138,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     _socketService.on('user:status', (data) {
       debugPrint('📩 [HomeScreen] User status: $data');
+    });
+
+    // Driver-cancel auto-reassign: backend puts the ride back in `requested`
+    // with `reassigned: true` — rider stays in flow, overlay flips to its
+    // reassign state with the backend attempt count.
+    _socketService.onDriverReassigning((data) {
+      debugPrint('🔄 [HomeScreen] Driver reassigning: $data');
+      if (!mounted) return;
+      final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
+      final nested = map['data'];
+      final count = map['reassignmentCount'] ??
+          (nested is Map ? (nested as Map)['reassignmentCount'] : null);
+      setState(() {
+        _isSearching = true;
+        _reassignmentCount = count is num ? count.toInt() : _reassignmentCount + 1;
+      });
     });
 
     debugPrint('✅ [HomeScreen] Socket listeners restored');
@@ -208,6 +229,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() {
       _isSearching = false;
       _activeRide = null;
+      _reassignmentCount = 0;
     });
 
     // Extract ride ID from multiple possible fields
@@ -351,6 +373,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _socketService.off('ride:depositTimeout');
     _socketService.off('ride:scheduledExpired');
     _socketService.off('ride:noShow');
+    _socketService.offDriverReassigning();
 
     // Listen for ride accepted event
     _socketService.on('ride:accepted', (data) {
@@ -427,9 +450,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         setState(() {
           _isSearching = false;
           _activeRide = null;
+          _reassignmentCount = 0;
         });
         ActiveRideStorage.clear();
       }
+    });
+
+    // Driver-cancel auto-reassign: ride stays alive in `requested` status —
+    // keep the overlay up in its reassign state, never drop to home.
+    _socketService.onDriverReassigning((data) {
+      debugPrint('🔄 [HomeScreen] Driver reassigning: $data');
+      if (!mounted) return;
+      final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
+      final nested = map['data'];
+      final count = map['reassignmentCount'] ??
+          (nested is Map ? (nested as Map)['reassignmentCount'] : null);
+      setState(() {
+        _isSearching = true;
+        _reassignmentCount = count is num ? count.toInt() : _reassignmentCount + 1;
+      });
     });
 
     _socketService.on('ride:depositConfirmed', (data) {
@@ -556,6 +595,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             _isSearching = false;
             _activeRide = null;
             _isLoading = false;
+            _reassignmentCount = 0;
           });
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -595,6 +635,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     debugPrint('⏰ [HomeScreen] Ride request expired - showing popup');
     setState(() {
       _isSearching = false;
+      _reassignmentCount = 0;
     });
 
     showDialog(
@@ -723,10 +764,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   /// Restore an in-progress passenger ride after app restart (kill + reopen).
+  /// Status drives the exact screen: searching → overlay, accepted/arrived →
+  /// assigned, in_progress/at_stop → trip progress. Stale (>24h) or final
+  /// statuses clear to home.
   Future<void> _restoreActiveRide() async {
     final id = await ActiveRideStorage.getRideId();
     final role = await ActiveRideStorage.getRole();
     if (id == null || role != 'passenger') return;
+
+    // Stale snapshot (older than ActiveRideStorage.staleAfter) → clear + home.
+    if (await ActiveRideStorage.isStale()) {
+      debugPrint('🧹 [HomeScreen] Stored ride is stale, clearing');
+      await ActiveRideStorage.clear();
+      return;
+    }
 
     try {
       final response = await _apiService.getRideDetails(id);
@@ -741,14 +792,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return;
       }
       final status = (ride['status'] ?? '').toString().toLowerCase();
-      if (const [
-        'completed',
-        'early_completed',
-        'cancelled',
-        'cancelled_by_user',
-        'cancelled_by_driver',
-        'expired',
-      ].contains(status)) {
+      if (ActiveRideStorage.finalStatuses.contains(status)) {
         await ActiveRideStorage.clear();
         return;
       }
@@ -757,8 +801,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (!mounted || !context.mounted) return;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || !context.mounted) return;
-        if (status == 'in_progress') {
+        if (status == 'in_progress' || status == 'at_stop') {
           Navigator.of(context).pushReplacementNamed('/ride-progress');
+        } else if (status == 'requested' ||
+            status == 'searching' ||
+            status == 'reassigning') {
+          // Back to the searching overlay with the live ride payload —
+          // the exact mid-flow screen, not home.
+          final rideMap =
+              ride is Map<String, dynamic> ? ride : Map<String, dynamic>.from(ride as Map);
+          setState(() {
+            _isSearching = true;
+            _activeRide = rideMap;
+          });
         } else {
           // New flow: no ride OTP anywhere — driver map passes through
           // untouched (auth OTP paths are separate and unchanged).
@@ -871,6 +926,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _socketService.off('ride:depositTimeout');
     _socketService.off('ride:scheduledExpired');
     _socketService.off('ride:noShow');
+    _socketService.offDriverReassigning();
 
     _pageController.dispose();
     _bannerTimer?.cancel();
@@ -950,6 +1006,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               onCancel: _cancelRide,
               onTimerEnd: _handleRideExpiration,
               isLoading: _isLoading,
+              reassignmentCount: _reassignmentCount,
             ),
           ),
 
@@ -1486,6 +1543,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               );
             },
           ),
+
+        // Socket disconnect → visible "reconnecting" pill (queued emits
+        // flush via emitReliable on reconnect), never a silent freeze.
+        const ConnectionStatusBanner(),
       ],
     );
   }
