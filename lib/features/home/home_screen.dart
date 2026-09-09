@@ -245,20 +245,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
 
     // Persist so the ride can be restored if the app is killed mid-ride.
+    // NOTE: no ride OTP is stored — the new backend flow starts rides
+    // without OTP verification.
     await ActiveRideStorage.save(
       rideId: rideId,
       role: 'passenger',
       status: 'accepted',
     );
-
-    // Persist the OTP independently — getRideDetails may not include it on
-    // restore, but we have it here (socket event / enriched driver map).
-    final String? otp = data['otp']?.toString() ??
-        data['verificationOTP']?.toString() ??
-        (data['driver'] is Map ? data['driver']['otp']?.toString() : null);
-    if (otp != null && otp.isNotEmpty) {
-      await ActiveRideStorage.saveOtp(otp);
-    }
 
     debugPrint(
       '✅ [HomeScreen] Navigating to RideAssignedScreen with rideId: $rideId',
@@ -761,8 +754,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final id = await ActiveRideStorage.getRideId();
     final role = await ActiveRideStorage.getRole();
     if (id == null || role != 'passenger') return;
-    // OTP captured at accept time — reliable even if getRideDetails omits it.
-    final storedOtp = await ActiveRideStorage.getOtp();
 
     try {
       final response = await _apiService.getRideDetails(id);
@@ -796,14 +787,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         if (status == 'in_progress') {
           Navigator.of(context).pushReplacementNamed('/ride-progress');
         } else {
-          // Inject OTP into the driver map — RideAssignedScreen reads the OTP
-          // from widget.driver['otp'], and the stored ride details keep it at the
-          // ride top-level, not inside the nested driver object.
+          // Inject OTP into the driver map when the backend still provides
+          // one — RideAssignedScreen reads the OTP from widget.driver['otp'].
+          // Nothing is read from device storage: the new flow has no ride OTP.
           final Map<String, dynamic> driverMap = Map<String, dynamic>.from(
             (ride['driver'] is Map) ? ride['driver'] as Map : {},
           );
-          final String? otp = storedOtp ??
-              ride['otp']?.toString() ??
+          final String? otp = ride['otp']?.toString() ??
               ride['verificationOTP']?.toString() ??
               ride['verification_otp']?.toString() ??
               (raw is Map ? raw['otp']?.toString() : null) ??

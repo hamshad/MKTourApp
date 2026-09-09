@@ -591,7 +591,71 @@ class SocketService with WidgetsBindingObserver {
   void emitRideAccept(String rideId) {
     if (rideId.isEmpty) return;
     emitReliable('ride:accept', {'rideId': rideId});
-    debugPrint('\u{1f697} [SocketService] Ride accepted: $rideId');
+    debugPrint('🔗 [SocketService] Ride accepted: $rideId');
+  }
+
+  // ── Ride-flow event subscriptions (new backend flow) ───────────────────────
+  // Thin passthroughs over on()/off() so ride UI observes at_stop, resume,
+  // reassign, and payment states without scattering raw event strings.
+  // No internal subscriptions are created here — the UI owns its handlers.
+  // Uses the existing on/off + emitReliable patterns only.
+
+  /// Stop arrival: backend sets status to `at_stop` with `currentStopIndex`
+  /// + `stops[]` (see `POST /rides/:id/stop/arrive`).
+  void onStopUpdate(void Function(dynamic) handler) {
+    on('ride:stopArrived', handler);
+    on('ride:at_stop', handler);
+  }
+
+  void offStopUpdate() {
+    off('ride:stopArrived');
+    off('ride:at_stop');
+  }
+
+  /// Trip resume: backend flips status back to `in_progress` with
+  /// `totalWaitMinutes`/`totalWaitFee` (see `POST /rides/:id/stop/resume`).
+  void onTripResumed(void Function(dynamic) handler) {
+    on('ride:tripResumed', handler);
+    on('ride:resumed', handler);
+  }
+
+  void offTripResumed() {
+    off('ride:tripResumed');
+    off('ride:resumed');
+  }
+
+  /// Driver reassign: backend emits `ride_driver_reassigning` with the ride
+  /// back in `requested` status + `reassigned: true` flag.
+  void onDriverReassigning(void Function(dynamic) handler) {
+    on('ride:driverReassigning', handler);
+    on('ride_driver_reassigning', handler);
+  }
+
+  void offDriverReassigning() {
+    off('ride:driverReassigning');
+    off('ride_driver_reassigning');
+  }
+
+  /// Payment method selected by the passenger (`paymentMethod` + status).
+  void onPaymentSelected(void Function(dynamic) handler) {
+    on('payment:selected', handler);
+    on('payment_selected', handler);
+  }
+
+  void offPaymentSelected() {
+    off('payment:selected');
+    off('payment_selected');
+  }
+
+  /// Cash collection confirmed. Passthrough only — `ride_complete_screen`
+  /// already owns the `payment:cashCollected` subscription; nothing is
+  /// subscribed internally here so the event is never double-handled.
+  void onCashCollected(void Function(dynamic) handler) {
+    on('payment:cashCollected', handler);
+  }
+
+  void offCashCollected() {
+    off('payment:cashCollected');
   }
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
