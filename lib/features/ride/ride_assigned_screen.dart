@@ -14,6 +14,7 @@ import '../../core/services/places_service.dart';
 import '../../core/services/marker_interpolation_service.dart';
 import '../../core/services/payment_service.dart';
 import '../../core/services/stripe_service.dart';
+import '../../core/models/error_display_helper.dart';
 import '../../core/widgets/platform_map.dart';
 import 'ride_complete_screen.dart';
 import 'payment_webview_screen.dart';
@@ -154,6 +155,12 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   bool _isPaymentLoadingShowing = false;
   int _paymentRetryCount = 0;
   static const int _maxPaymentRetries = 3;
+  // In-flight guard: blocks double-tap on payment rows while a
+  // select-payment request (or Stripe sheet) is still running.
+  bool _isSelectingPayment = false;
+  // Inline sheet error (e.g. invalid-method 400) — rendered inside the
+  // bottom sheet so the rider stays on the sheet instead of dead-ending.
+  String? _paymentSheetError;
 
   @override
   void initState() {
@@ -2948,6 +2955,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       return;
     }
     _isPaymentSheetOpen = true;
+    _paymentSheetError = null;
+    final fareHint = _currentFare ?? widget.fare;
     showModalBottomSheet(
       context: context,
       isDismissible: false,
@@ -3007,15 +3016,54 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                   ),
                 ],
                 const SizedBox(height: 24),
+                if (_paymentSheetError != null) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.red.shade200),
+                    ),
+                    child: Text(
+                      _paymentSheetError!,
+                      style: TextStyle(
+                        color: Colors.red.shade700,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 // Cash option — close sheet with its own context first,
                 // then run selection (avoids popping the wrong route).
                 _buildPaymentOption(
                   icon: Icons.money,
                   title: 'Cash',
-                  subtitle: 'Pay directly to driver',
+                  subtitle:
+                      'Pay £${fareHint.toStringAsFixed(2)} directly to driver · no fee',
                   onTap: () {
                     Navigator.pop(sheetContext);
                     _handlePaymentSelection('cash', fromAutoSelect: true);
+                  },
+                ),
+                const SizedBox(height: 16),
+                // Card/Stripe option — clientSecret → Stripe sheet.
+                _buildPaymentOption(
+                  icon: Icons.credit_card,
+                  title: 'Card',
+                  subtitle:
+                      'Pay £${fareHint.toStringAsFixed(2)} now via Stripe · no fee',
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _handlePaymentSelection(
+                      'stripe',
+                      fromAutoSelect: true,
+                    );
                   },
                 ),
                 const SizedBox(height: 16),
@@ -3023,7 +3071,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                 _buildPaymentOption(
                   icon: Icons.link,
                   title: 'Payment Link',
-                  subtitle: 'Pay via online link',
+                  subtitle:
+                      'Pay £${fareHint.toStringAsFixed(2)} via online link · no fee',
                   onTap: () {
                     Navigator.pop(sheetContext);
                     _handlePaymentSelection(
@@ -3108,6 +3157,23 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   }
 
   Future<void> _handlePaymentSelection(
+    String method, {
+    bool fromAutoSelect = false,
+  }) async {
+    // In-flight guard: ignore double-taps while a selection is running.
+    if (_isSelectingPayment) {
+      debugPrint('⚠️ [Payment] Selection already in flight — ignoring $method');
+      return;
+    }
+    _isSelectingPayment = true;
+    try {
+      await _runPaymentSelection(method, fromAutoSelect: fromAutoSelect);
+    } finally {
+      _isSelectingPayment = false;
+    }
+  }
+
+  Future<void> _runPaymentSelection(
     String method, {
     bool fromAutoSelect = false,
   }) async {
@@ -3255,6 +3321,11 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
               _closePaymentLoading();
 
               if (!mounted) return;
+              // Stripe failure → sheet reopens with error, ride stays intact.
+              setState(() {
+                _paymentSheetError =
+                    'Card payment failed: ${StripeService.getErrorMessage(e)}';
+              });
               _showPaymentErrorDialog(
                 method: method,
                 serverMessage:
@@ -3361,10 +3432,32 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         _closePaymentLoading();
 
         if (!mounted) return;
+        final serverMessage = (response['message']?.toString() ??
+            'Failed to select payment method');
+        // Invalid-method 400 → inline error via RideErrorMapper, stay on
+        // the sheet so the rider can pick another method (no dead-end).
+        if (serverMessage.toLowerCase().contains('invalid payment method')) {
+          final info = RideErrorMapper.map(
+            serverMessage,
+            response['errors'],
+          );
+          setState(() {
+            _paymentSheetError = '${info.title}: ${info.copy}';
+          });
+          if (mounted) {
+            ErrorDisplayHelper.showRideError(
+              context,
+              serverMessage,
+              errors: response['errors'],
+              onAction: _reopenPaymentSelectionModal,
+            );
+          }
+          _reopenPaymentSelectionModal();
+          return;
+        }
         _showPaymentErrorDialog(
           method: method,
-          serverMessage: (response['message']?.toString() ??
-              'Failed to select payment method'),
+          serverMessage: serverMessage,
         );
       }
     } catch (e) {
