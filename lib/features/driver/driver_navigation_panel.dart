@@ -13,6 +13,10 @@ class DriverNavigationPanel extends StatelessWidget {
   final NavigationState? navigationState;
   final bool isLoading;
 
+  /// Free-wait policy label shown after arrival (e.g. "5 min free ·
+  /// £0.35/min after"). Backend values via driver home, policy fallback.
+  final String? freeWaitLabel;
+
   const DriverNavigationPanel({
     super.key,
     required this.status,
@@ -22,6 +26,7 @@ class DriverNavigationPanel extends StatelessWidget {
     this.rideData,
     this.navigationState,
     this.isLoading = false,
+    this.freeWaitLabel,
   });
 
   String get _actionText {
@@ -179,6 +184,47 @@ class DriverNavigationPanel extends StatelessWidget {
                   ),
 
                   const SizedBox(height: 24),
+
+                  // Free-wait chip (arrived / at-stop)
+                  if (freeWaitLabel != null &&
+                      (status == 'arrived' ||
+                          status == 'at_stop')) ...[
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      margin: const EdgeInsets.only(bottom: 14),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.green.withOpacity(0.35),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.timer_outlined,
+                            color: Colors.green,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              freeWaitLabel!,
+                              style: const TextStyle(
+                                color: Colors.green,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
 
                   // Navigation Info Card (if navigation is active)
                   if (navigationState != null) ...[

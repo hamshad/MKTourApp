@@ -11,11 +11,14 @@ import '../../core/widgets/platform_map.dart';
 import 'driver_request_panel.dart';
 import 'driver_navigation_panel.dart';
 import '../../core/widgets/custom_snackbar.dart';
+import '../../core/models/error_display_helper.dart';
+import '../../core/models/vehicle.dart';
 import '../../core/services/socket_service.dart';
 import '../../core/services/location_service.dart';
 import '../../core/services/navigation_service.dart';
 import '../../core/services/active_ride_storage.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/services/audio_service.dart';
@@ -103,6 +106,17 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   // FCM notification subscriptions
   StreamSubscription<FcmNotificationData>? _fcmSubscription;
   StreamSubscription<FcmNotificationData>? _fcmForegroundSubscription;
+
+  // Proximity guidance: set on 400 distance errors (pickup or stop), cleared
+  // on success. Drives the persistent banner — never a dismiss-only toast.
+  int? _proximityDistance;
+  int? _proximityRequired;
+  String _proximityTarget = 'pickup';
+
+  // Free-wait policy from arrive/stop-arrive success (backend authoritative,
+  // WaitFeePolicy fallback). Shown as a chip once arrived/at-stop.
+  int? _freeWaitMinutes;
+  double? _freeWaitRate;
 
   @override
   void initState() {
@@ -339,10 +353,13 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             
             if (rideStatus == 'accepted') {
               _status = 'pickup';
-            } else if (rideStatus == 'arrived') {
+            } else if (rideStatus == 'arrived' ||
+                rideStatus == 'driver_arrived') {
               _status = 'arrived';
             } else if (rideStatus == 'in_progress') {
               _status = 'in_progress';
+            } else if (rideStatus == 'at_stop') {
+              _status = 'at_stop';
             } else {
               _status = 'online';
             }
@@ -378,6 +395,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       if (_currentRideId != null &&
           (_status == 'pickup' ||
               _status == 'arrived' ||
+              _status == 'driver_arrived' ||
+              _status == 'at_stop' ||
               _status == 'in_progress')) {
         debugPrint(
           '📍 [DriverHomeScreen] Restored active ride — starting location updates',
@@ -546,8 +565,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
 
     // Use ride tracking stream for active rides (more frequent updates)
     // or periodic stream for online status
-    final bool isActiveRide =
-        _status == 'in_progress' || _status == 'pickup' || _status == 'arrived';
+    final bool isActiveRide = _status == 'in_progress' ||
+        _status == 'pickup' ||
+        _status == 'arrived' ||
+        _status == 'driver_arrived' ||
+        _status == 'at_stop';
 
     if (isActiveRide) {
       // Use high-frequency tracking for active rides (every 3 seconds, 5m distance filter)
@@ -664,9 +686,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     _navigationService.routeUpdates.listen((state) {
       if (!mounted) return;
 
-      final bool isNavigationMode =
-          _status == 'pickup' ||
+      final bool isNavigationMode = _status == 'pickup' ||
           _status == 'arrived' ||
+          _status == 'driver_arrived' ||
+          _status == 'at_stop' ||
           _status == 'in_progress';
 
       // If the ride has ended (or driver is not navigating), ignore late route updates
@@ -746,10 +769,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           uiStatus = 'pickup';
           break;
         case 'arrived':
+        case 'driver_arrived':
           uiStatus = 'arrived';
           break;
         case 'in_progress':
           uiStatus = 'in_progress';
+          break;
+        case 'at_stop':
+          uiStatus = 'at_stop';
           break;
         default:
           uiStatus = 'pickup';
@@ -779,7 +806,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       // Navigate to pickup
       final coords = _rideData!['pickupLocation']?['coordinates'] ?? [0.0, 0.0];
       destination = LatLng(coords[1], coords[0]);
-    } else if (_status == 'in_progress') {
+    } else if (_status == 'in_progress' || _status == 'at_stop') {
       // Navigate to dropoff
       final coords =
           _rideData!['dropoffLocation']?['coordinates'] ?? [0.0, 0.0];
@@ -805,7 +832,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     if (_status == 'pickup' || _status == 'arrived') {
       final coords = _rideData!['pickupLocation']?['coordinates'] ?? [0.0, 0.0];
       destination = LatLng(coords[1], coords[0]);
-    } else if (_status == 'in_progress') {
+    } else if (_status == 'in_progress' || _status == 'at_stop') {
       final coords =
           _rideData!['dropoffLocation']?['coordinates'] ?? [0.0, 0.0];
       destination = LatLng(coords[1], coords[0]);
@@ -837,8 +864,149 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     }
   }
 
-  void _emitLocationUpdate(double lat, double lng) {
-    final user = Provider.of<AuthProvider>(context, listen: false).user;
+  /// Open external navigation to the current target (pickup or stop).
+  Future<void> _openExternalNavigation() async {
+    double? lat;
+    double? lng;
+    if (_proximityTarget.startsWith('stop') && _rideData != null) {
+      final stops = parseRideStops(_rideData!['stops']);
+      final idx = _rideData!['currentStopIndex'] is int
+          ? _rideData!['currentStopIndex'] as int
+          : 0;
+      final current = idx >= 0 && idx < stops.length ? stops[idx] : null;
+      if (current?.coordinates != null) {
+        lng = current!.coordinates![0];
+        lat = current.coordinates![1];
+      }
+    } else {
+      final coords = _rideData?['pickupLocation']?['coordinates'];
+      if (coords is List && coords.length >= 2) {
+        lng = (coords[0] as num).toDouble();
+        lat = (coords[1] as num).toDouble();
+      }
+    }
+    if (lat == null || lng == null) return;
+    final uri = Uri.parse(
+      'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng',
+    );
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  /// Persistent proximity banner — stays until arrival succeeds.
+  /// Never a dismiss-only toast: always offers Retry + Open navigation.
+  Widget _buildProximityBanner() {
+    final distance = _proximityDistance ?? 0;
+    final required = _proximityRequired ?? 100;
+    final target = _proximityTarget.startsWith('stop')
+        ? _proximityTarget
+        : 'pickup point';
+    // Stack below the GPS banner when both are visible.
+    final topOffset = _locationBannerMessage != null ? 84.0 : 0.0;
+    return Positioned(
+      top: topOffset,
+      left: 0,
+      right: 0,
+      child: SafeArea(
+        child: Container(
+          margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.orange[800],
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(
+                    Icons.nearby_error,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      "You're ${distance}m away — within ${required}m to confirm",
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Padding(
+                padding: const EdgeInsets.only(left: 28),
+                child: Text(
+                  'Drive closer to the $target, then retry arrival.',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.85),
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _isLoading ? null : _handleRideAction,
+                      icon: const Icon(Icons.refresh, size: 16),
+                      label: const Text('Retry'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: const BorderSide(color: Colors.white),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: _openExternalNavigation,
+                      icon: const Icon(Icons.navigation, size: 16),
+                      label: const Text('Open navigation'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: Colors.orange[800],
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Free-wait chip label after arrival (backend values, policy fallback).
+  String? get _freeWaitLabel {
+    if (_status != 'arrived' &&
+        _status != 'driver_arrived' &&
+        _status != 'at_stop') {
+      return null;
+    }
+    final mins = _freeWaitMinutes ?? WaitFeePolicy.freeMinutes;
+    final rate = _freeWaitRate ?? WaitFeePolicy.perMinuteRate;
+    return '$mins min free · £${rate.toStringAsFixed(2)}/min after';
+  }
+
+  void _emitLocationUpdate(double lat, double lng) {    final user = Provider.of<AuthProvider>(context, listen: false).user;
     if (user != null) {
       final driverId = user['_id'] ?? user['id'] ?? user['userId'];
 
@@ -1456,6 +1624,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       );
       return;
     }
+    // In-flight guard: both arrive and start buttons route here.
+    if (_isLoading) return;
 
     setState(() => _isLoading = true);
 
@@ -1519,8 +1689,25 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         );
 
         if (response['success'] == true) {
+          final data = response['data'] is Map<String, dynamic>
+              ? response['data'] as Map<String, dynamic>
+              : <String, dynamic>{};
           setState(() {
             _status = 'arrived';
+            // Proximity resolved — drop the banner.
+            _proximityDistance = null;
+            _proximityRequired = null;
+            // Backend-authoritative wait policy; WaitFeePolicy fallback.
+            final fm = data['freeMinutes'];
+            final rate = data['perMinuteRate'];
+            _freeWaitMinutes = fm is num
+                ? fm.toInt()
+                : int.tryParse(fm?.toString() ?? '') ??
+                      WaitFeePolicy.freeMinutes;
+            _freeWaitRate = rate is num
+                ? rate.toDouble()
+                : double.tryParse(rate?.toString() ?? '') ??
+                      WaitFeePolicy.perMinuteRate;
             if (response['data'] != null) {
               final newData = response['data'] as Map<String, dynamic>;
               _rideData = {...?_rideData, ...newData};
@@ -1533,20 +1720,35 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             type: SnackbarType.success,
           );
         } else {
-          String errorMessage = response['message'] ?? 'Failed to arrive';
-          if (response['errors'] != null &&
-              response['errors']['distance'] != null) {
-            errorMessage =
-                'You are ${response['errors']['distance'].toInt()}m away. Must be within ${response['errors']['required']}m.';
+          final errors = response['errors'];
+          final distance = errors is Map ? errors['distance'] : null;
+          if (distance != null) {
+            // Proximity error: persistent banner + mapper copy (never a
+            // dismiss-only toast — banner stays until arrival succeeds).
+            final distInt = distance is num
+                ? distance.toInt()
+                : int.tryParse(distance.toString()) ?? 0;
+            final reqRaw = errors is Map ? errors['required'] : null;
+            final reqInt = reqRaw is num
+                ? reqRaw.toInt()
+                : int.tryParse(reqRaw?.toString() ?? '') ?? 100;
+            setState(() {
+              _proximityDistance = distInt;
+              _proximityRequired = reqInt;
+              _proximityTarget = 'pickup';
+            });
           }
-          CustomSnackbar.show(
+          if (!mounted) return;
+          ErrorDisplayHelper.showRideError(
             context,
-            message: errorMessage,
-            type: SnackbarType.error,
+            response['message']?.toString() ?? 'Failed to arrive',
+            errors: response['errors'],
+            onAction: _handleRideAction,
           );
         }
-      } else if (_status == 'arrived') {
-        _showOtpDialog();
+      } else if (_status == 'arrived' || _status == 'driver_arrived') {
+        // One-tap no-OTP start — no code entry on the driver side.
+        await _startRideNoOtp();
       } else if (_status == 'in_progress') {
         // Complete Ride
         final pos = _currentLocation;
@@ -1972,73 +2174,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     }
   }
 
-  void _showOtpDialog() {
-    final TextEditingController otpController = TextEditingController();
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('Enter OTP'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Ask passenger for the 4-digit PIN'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: otpController,
-              keyboardType: TextInputType.number,
-              maxLength: 4,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 24, letterSpacing: 8),
-              decoration: const InputDecoration(
-                hintText: '0000',
-                counterText: '',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (otpController.text.length == 4) {
-                _verifyAndStartRide();
-              } else {
-                CustomSnackbar.show(
-                  context,
-                  message: 'Please enter a 4-digit OTP',
-                  type: SnackbarType.error,
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryColor,
-              foregroundColor: Colors.white,
-            ),
-            child: const FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                'Verify & Start',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _verifyAndStartRide() async {
-    // No-OTP start: backend starts ride from driver_arrived state with empty body.
-    // OTP dialog UI strip-out happens in phase 03-01; this keeps the call path OTP-free.
-
-    Navigator.pop(context); // Close dialog
-    setState(() => _isLoading = true);
+  /// One-tap no-OTP start: backend starts the ride from driver_arrived
+  /// state with an empty body. Wrong-state 400s go through RideErrorMapper.
+  Future<void> _startRideNoOtp() async {
+    if (_currentRideId == null) return;
 
     try {
       final response = await _apiService.startRide(_currentRideId!);
@@ -2059,10 +2198,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         // Fetch navigation route to dropoff
         _fetchNavigationRoute();
       } else {
-        CustomSnackbar.show(
+        if (!mounted) return;
+        ErrorDisplayHelper.showRideError(
           context,
-          message: 'Failed to start ride: ${response['message']}',
-          type: SnackbarType.error,
+          response['message']?.toString() ?? 'Failed to start ride',
+          errors: response['errors'],
+          onAction: _handleRideAction,
         );
       }
     } catch (e) {
@@ -2146,8 +2287,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       }
     }
 
-    bool isNavigationMode =
-        _status == 'pickup' || _status == 'in_progress' || _status == 'arrived';
+    bool isNavigationMode = _status == 'pickup' ||
+        _status == 'in_progress' ||
+        _status == 'arrived' ||
+        _status == 'driver_arrived' ||
+        _status == 'at_stop';
 
     return Stack(
       children: [
@@ -2261,6 +2405,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
 
         // Location-lost / GPS-health warning
         if (_locationBannerMessage != null) _buildGpsWarningBanner(),
+
+        // Proximity guidance — persistent until arrival succeeds
+        if (_proximityDistance != null &&
+            (_status == 'pickup' || _status == 'in_progress'))
+          _buildProximityBanner(),
 
         // Complete Trip Overlay
         if (_status == 'complete')
@@ -2383,17 +2532,22 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       );
     } else if (_status == 'pickup' ||
         _status == 'arrived' ||
+        _status == 'driver_arrived' ||
         _status == 'in_progress' ||
+        _status == 'at_stop' ||
         _status == 'awaiting_payment' ||
         _status == 'awaiting_cash_confirmation') {
       return DriverNavigationPanel(
-        status: _status,
+        // Backend may report driver_arrived; panel treats it as arrived
+        // (same one-tap Start Trip action).
+        status: _status == 'driver_arrived' ? 'arrived' : _status,
         rideData: _rideData,
         onAction: _handleRideAction,
         onCancel: _showCancellationReasonDialog,
         onEndEarly: _showEndRideEarlyDialog,
         navigationState: _navigationState,
         isLoading: _isLoading,
+        freeWaitLabel: _freeWaitLabel,
       );
     } else {
       return _buildOfflineOnlineContent();
