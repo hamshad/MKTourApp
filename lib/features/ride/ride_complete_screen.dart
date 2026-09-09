@@ -53,6 +53,16 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
       _summary.totalWaitFee > 0 ||
       widget.rideData.containsKey('actualFare');
 
+  /// Per-ride wait rate from the backend payload (`perMinuteRate`), falling
+  /// back to [WaitFeePolicy] only when the backend omits it.
+  double get _waitRate {
+    for (final key in ['perMinuteRate', 'waitRate', 'waitPerMinuteRate']) {
+      final raw = widget.rideData[key];
+      if (raw is num && raw.toDouble() > 0) return raw.toDouble();
+    }
+    return WaitFeePolicy.perMinuteRate;
+  }
+
   /// Big total: actualFare (base + wait) when the backend provides wait
   /// data, otherwise the legacy fare resolution below.
   double get _displayTotal => _hasWaitData ? _summary.actualFare : _fare;
@@ -608,7 +618,7 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                               '£${_summary.fare.toStringAsFixed(2)}',
                             ),
                             _buildFareRow(
-                              'Wait ${_summary.totalWaitMinutes} min × £${WaitFeePolicy.perMinuteRate.toStringAsFixed(2)}',
+                              'Wait ${_summary.totalWaitMinutes} min × £${_waitRate.toStringAsFixed(2)}',
                               '£${_summary.totalWaitFee.toStringAsFixed(2)}',
                             ),
                           ],

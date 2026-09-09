@@ -63,6 +63,12 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
   int _totalWaitMinutes = 0;
   double _totalWaitFee = 0.0;
 
+  // Per-ride wait policy from backend payloads (`freeMinutes` /
+  // `perMinuteRate` on stop-update / resume / ride-detail snapshots).
+  // Null → [WaitFeePolicy] defaults. Harvested wherever stops/totals are.
+  int? _freeWaitMinutes;
+  double? _freeWaitRate;
+
   // Socket freshness: last at_stop/resume/status event. Polling fallback
   // hydrates from the API when the socket goes quiet.
   DateTime? _lastSocketEventAt;
@@ -196,6 +202,7 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
         _status = 'Heading to destination';
         _progress = 0.9;
         if (stops.isNotEmpty) _stops = stops;
+        _harvestWaitPolicy(map);
         if (map['currentStopIndex'] != null) {
           _currentStopIndex = _asInt(map['currentStopIndex'], _currentStopIndex);
         }
@@ -230,6 +237,7 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
       _atStopAddress = _stopAddressAt(index);
       _waitStartedAt = DateTime.now();
       _elapsedWait = Duration.zero;
+      _harvestWaitPolicy(map);
       if (map['totalWaitMinutes'] != null) {
         _totalWaitMinutes = _asInt(map['totalWaitMinutes']);
       }
@@ -247,12 +255,29 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
     if (value is String) return int.tryParse(value) ?? fallback;
     return fallback;
   }
-
-  static double _asDouble(dynamic value, [double fallback = 0.0]) {    if (value == null) return fallback;
+  static double _asDouble(dynamic value, [double fallback = 0.0]) {
+    if (value == null) return fallback;
     if (value is double) return value;
     if (value is int) return value.toDouble();
     if (value is String) return double.tryParse(value) ?? fallback;
     return fallback;
+  }
+
+  /// Backend per-ride wait policy wins; [WaitFeePolicy] defaults apply only
+  /// when the payload omits them.
+  void _harvestWaitPolicy(Map<String, dynamic> map) {
+    final fm = map['freeMinutes'];
+    if (fm != null) {
+      _freeWaitMinutes = fm is num
+          ? fm.toInt()
+          : int.tryParse(fm.toString()) ?? WaitFeePolicy.freeMinutes;
+    }
+    final rate = map['perMinuteRate'];
+    if (rate != null) {
+      _freeWaitRate = rate is num
+          ? rate.toDouble()
+          : double.tryParse(rate.toString()) ?? WaitFeePolicy.perMinuteRate;
+    }
   }
 
   /// Final ride states: the reconnect pill/banner must not flash once the
@@ -303,6 +328,7 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
           }
         }
         if (stops.isNotEmpty) _stops = stops;
+        _harvestWaitPolicy(map);
         if (map['currentStopIndex'] != null) {
           _currentStopIndex = _asInt(map['currentStopIndex'], _currentStopIndex);
         }
@@ -735,8 +761,8 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            '${WaitFeePolicy.freeMinutes} min free · '
-                            '£${WaitFeePolicy.perMinuteRate.toStringAsFixed(2)}/min after',
+                            '${_freeWaitMinutes ?? WaitFeePolicy.freeMinutes} min free · '
+                            '£${(_freeWaitRate ?? WaitFeePolicy.perMinuteRate).toStringAsFixed(2)}/min after',
                             style: const TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,

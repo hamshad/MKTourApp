@@ -20,6 +20,12 @@ class DriverNavigationPanel extends StatelessWidget {
   /// £0.35/min after"). Backend values via driver home, policy fallback.
   final String? freeWaitLabel;
 
+  /// Backend per-ride wait policy (from arrive / stop-arrive responses).
+  /// Null → [WaitFeePolicy] defaults. Threaded into the live wait chip so
+  /// the fee preview matches the backend rule for THIS ride.
+  final int? freeWaitMinutes;
+  final double? perMinuteRate;
+
   /// Multi-stop trip state. Empty for direct trips.
   final List<RideStop> stops;
   final int currentStopIndex;
@@ -41,6 +47,8 @@ class DriverNavigationPanel extends StatelessWidget {
     this.navigationState,
     this.isLoading = false,
     this.freeWaitLabel,
+    this.freeWaitMinutes,
+    this.perMinuteRate,
     this.stops = const [],
     this.currentStopIndex = 0,
     this.onStopArrive,
@@ -701,7 +709,11 @@ class DriverNavigationPanel extends StatelessWidget {
           // Live wait timer once arrived at the stop.
           if (status == 'at_stop' && active != null) ...[
             const SizedBox(height: 10),
-            _StopWaitChip(arrivedAt: active.arrivedAt),
+            _StopWaitChip(
+              arrivedAt: active.arrivedAt,
+              freeMinutes: freeWaitMinutes,
+              perMinuteRate: perMinuteRate,
+            ),
           ],
           // Per-leg completed fee once known.
           if (active != null &&
@@ -832,7 +844,11 @@ class DriverNavigationPanel extends StatelessWidget {
 class _StopWaitChip extends StatefulWidget {
   final String? arrivedAt;
 
-  const _StopWaitChip({this.arrivedAt});
+  /// Backend per-ride policy; null → [WaitFeePolicy] defaults.
+  final int? freeMinutes;
+  final double? perMinuteRate;
+
+  const _StopWaitChip({this.arrivedAt, this.freeMinutes, this.perMinuteRate});
 
   @override
   State<_StopWaitChip> createState() => _StopWaitChipState();
@@ -869,10 +885,15 @@ class _StopWaitChipState extends State<_StopWaitChip> {
   @override
   Widget build(BuildContext context) {
     final elapsed = _elapsedMinutes;
-    final preview = WaitFeePolicy.feeFor(elapsed);
+    final window = widget.freeMinutes ?? WaitFeePolicy.freeMinutes;
+    final preview = WaitFeePolicy.feeFor(
+      elapsed,
+      freeMinutes: widget.freeMinutes,
+      perMinuteRate: widget.perMinuteRate,
+    );
     final text = preview > 0
         ? 'Waiting ${elapsed}m · £${preview.toStringAsFixed(2)} so far'
-        : 'Waiting ${elapsed}m · within ${WaitFeePolicy.freeMinutes} min free';
+        : 'Waiting ${elapsed}m · within $window min free';
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),

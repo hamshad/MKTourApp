@@ -370,22 +370,32 @@ class EndRideEarlyResponse {
 
 /// Single source of truth for wait-fee math (mirrors backend).
 ///
-/// Backend rule: 5-minute free window per stop/pickup, then £0.35/min.
+/// Backend rule (defaults): 5-minute free window per stop/pickup, then
+/// £0.35/min. The backend sends per-ride `freeMinutes`/`perMinuteRate`
+/// (arrive / stop-arrive responses, ride payloads) — thread those through
+/// [feeFor]/[billableMinutes] via the optional params. The static constants
+/// are FALLBACKS for when the backend omits them, never the primary source.
 /// UI must never hardcode these numbers — import from here.
 class WaitFeePolicy {
   static const int freeMinutes = 5;
   static const double perMinuteRate = 0.35;
 
   /// Billable minutes after the free window.
-  static int billableMinutes(int waitTimeMinutes) {
-    final billable = waitTimeMinutes - freeMinutes;
+  static int billableMinutes(int waitTimeMinutes, {int? freeMinutes}) {
+    final window = freeMinutes ?? WaitFeePolicy.freeMinutes;
+    final billable = waitTimeMinutes - window;
     return billable > 0 ? billable : 0;
   }
 
   /// Expected fee for a wait duration (for display/cross-check only —
   /// the backend-computed `waitFee` is authoritative).
-  static double feeFor(int waitTimeMinutes) =>
-      billableMinutes(waitTimeMinutes) * perMinuteRate;
+  static double feeFor(
+    int waitTimeMinutes, {
+    int? freeMinutes,
+    double? perMinuteRate,
+  }) =>
+      billableMinutes(waitTimeMinutes, freeMinutes: freeMinutes) *
+      (perMinuteRate ?? WaitFeePolicy.perMinuteRate);
 }
 
 /// Status of a single intermediate stop.

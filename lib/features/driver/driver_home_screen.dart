@@ -1017,6 +1017,21 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     return '$mins min free · £${rate.toStringAsFixed(2)}/min after';
   }
 
+  /// Harvest per-ride wait policy from a backend payload (arrive /
+  /// stop-arrive / ride snapshots carry `freeMinutes` + `perMinuteRate`).
+  /// Falls back to [WaitFeePolicy] defaults only when the backend omits them.
+  void _harvestWaitPolicy(Map<String, dynamic> data) {
+    final fm = data['freeMinutes'];
+    _freeWaitMinutes = fm is num
+        ? fm.toInt()
+        : int.tryParse(fm?.toString() ?? '') ?? WaitFeePolicy.freeMinutes;
+    final rate = data['perMinuteRate'];
+    _freeWaitRate = rate is num
+        ? rate.toDouble()
+        : double.tryParse(rate?.toString() ?? '') ??
+              WaitFeePolicy.perMinuteRate;
+  }
+
   void _emitLocationUpdate(double lat, double lng) {    final user = Provider.of<AuthProvider>(context, listen: false).user;
     if (user != null) {
       final driverId = user['_id'] ?? user['id'] ?? user['userId'];
@@ -1717,16 +1732,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             _proximityDistance = null;
             _proximityRequired = null;
             // Backend-authoritative wait policy; WaitFeePolicy fallback.
-            final fm = data['freeMinutes'];
-            final rate = data['perMinuteRate'];
-            _freeWaitMinutes = fm is num
-                ? fm.toInt()
-                : int.tryParse(fm?.toString() ?? '') ??
-                      WaitFeePolicy.freeMinutes;
-            _freeWaitRate = rate is num
-                ? rate.toDouble()
-                : double.tryParse(rate?.toString() ?? '') ??
-                      WaitFeePolicy.perMinuteRate;
+            _harvestWaitPolicy(data);
             if (response['data'] != null) {
               final newData = response['data'] as Map<String, dynamic>;
               _rideData = {...?_rideData, ...newData};
@@ -2029,6 +2035,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           _status = 'at_stop';
           _proximityDistance = null;
           _proximityRequired = null;
+          // Stop-arrive may carry an updated per-ride policy — harvest it.
+          _harvestWaitPolicy(data);
           _rideData = {...?_rideData, ...data};
         });
         _persistActiveRide();
@@ -3019,6 +3027,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         navigationState: _navigationState,
         isLoading: _isLoading,
         freeWaitLabel: _freeWaitLabel,
+        freeWaitMinutes: _freeWaitMinutes,
+        perMinuteRate: _freeWaitRate,
         stops: stops,
         currentStopIndex: stopIndex,
         onStopArrive: _handleStopArrive,
