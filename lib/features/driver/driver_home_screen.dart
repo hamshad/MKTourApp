@@ -1747,7 +1747,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           );
         }
       } else if (_status == 'arrived' || _status == 'driver_arrived') {
-        // One-tap no-OTP start — no code entry on the driver side.
+        // One-tap start — no code entry on the driver side.
         await _startRideNoOtp();
       } else if (_status == 'at_stop') {
         // Main action mirrors the per-stop card: resume the trip.
@@ -2617,7 +2617,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     );
   }
 
-  /// One-tap no-OTP start: backend starts the ride from driver_arrived
+  /// One-tap start: backend starts the ride from driver_arrived
   /// state with an empty body. Wrong-state 400s go through RideErrorMapper.
   Future<void> _startRideNoOtp() async {
     if (_currentRideId == null) return;

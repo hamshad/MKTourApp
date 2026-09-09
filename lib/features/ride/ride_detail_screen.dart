@@ -275,7 +275,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                   ],
 
                   // Intermediate stops + wait-fee chip (new flow).
-                  // No OTP is shown anywhere in the ride flow.
+                  // No verification codes are shown anywhere in the ride flow.
                   Builder(
                     builder: (context) {
                       final stops = parseRideStops(_rideDetails!['stops']);

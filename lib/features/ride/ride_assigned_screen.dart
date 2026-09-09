@@ -2522,7 +2522,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                 ),
               ),
 
-            // No-code boarding — no OTP in the new flow. Once payment is
+            // No-code boarding in the new flow. Once payment is
             // selected, the rider just boards; driver starts without a code.
             if ((_rideStatus == 'accepted' ||
                     _rideStatus == 'driver_arrived') &&

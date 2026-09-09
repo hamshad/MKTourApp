@@ -127,7 +127,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _activeRide == null;
 
       if (shouldHandle) {
-        // New flow: no ride OTP — driver data passes through untouched.
+        // New flow: no ride code — driver data passes through untouched.
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && context.mounted) {
             _handleRideAccepted(data);
@@ -258,8 +258,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
 
     // Persist so the ride can be restored if the app is killed mid-ride.
-    // NOTE: no ride OTP is stored — the new backend flow starts rides
-    // without OTP verification.
+    // NOTE: no ride code is stored — the new backend flow starts rides
+    // without code verification.
     await ActiveRideStorage.save(
       rideId: rideId,
       role: 'passenger',
@@ -417,7 +417,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       debugPrint('🔍 [HomeScreen] shouldHandle: $shouldHandle');
 
       if (shouldHandle) {
-        // New flow: no ride OTP — driver data passes through untouched.
+        // New flow: no ride code — driver data passes through untouched.
         // Use post-frame callback to ensure UI is ready for navigation
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && context.mounted) {
@@ -815,8 +815,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             _activeRide = rideMap;
           });
         } else {
-          // New flow: no ride OTP anywhere — driver map passes through
-          // untouched (auth OTP paths are separate and unchanged).
+          // New flow: no ride code anywhere — driver map passes through
+          // untouched (auth code paths are separate and unchanged).
           final Map<String, dynamic> driverMap = Map<String, dynamic>.from(
             (ride['driver'] is Map) ? ride['driver'] as Map : {},
           );

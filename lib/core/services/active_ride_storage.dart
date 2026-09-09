@@ -14,8 +14,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Migration-tolerant: every getter falls back to a default when its key is
 /// missing (older installs), and JSON decoding never throws.
 ///
-/// NOTE: ride verification OTP is intentionally NOT persisted here. The new
-/// backend flow starts rides without OTP, so no ride OTP is stored on device.
+/// NOTE: ride verification code is intentionally NOT persisted here. The new
+/// backend flow starts rides without code verification, so no ride code is
+/// stored on device.
 /// (Auth/login OTP uses the API send/verify endpoints and is untouched.)
 class ActiveRideStorage {
   static const String _idKey = 'active_ride_id';
@@ -43,7 +44,7 @@ class ActiveRideStorage {
     'expired',
   };
 
-  /// Legacy ride-OTP key — no longer written. Removed on [clear] so stale
+  /// Legacy ride-code key — no longer written. Removed on [clear] so stale
   /// values from older installs don't linger.
   static const String _legacyOtpKey = 'active_ride_otp';
 

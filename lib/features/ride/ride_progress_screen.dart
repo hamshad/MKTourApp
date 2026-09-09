@@ -709,7 +709,7 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
                         ),
                         Text(
                           _totalWaitMinutes > 0 || _totalWaitFee > 0
-                              ? '$_totalWaitMinutes min · £${_totalWaitFee.toStringAsFixed(2)}'
+                              ? '⏳ $_totalWaitMinutes min · £${_totalWaitFee.toStringAsFixed(2)}'
                               : 'No wait yet',
                           style: const TextStyle(
                             fontSize: 12,
@@ -765,9 +765,9 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                            if (stop.waitTimeMinutes > 0)
-                              Text(
-                                '${stop.waitTimeMinutes} min · £${stop.waitFee.toStringAsFixed(2)}',
+                             if (stop.waitTimeMinutes > 0)
+                               Text(
+                                 '⏳ ${stop.waitTimeMinutes} min · £${stop.waitFee.toStringAsFixed(2)}',
                                 style: const TextStyle(
                                   fontSize: 12,
                                   color: AppTheme.textSecondary,

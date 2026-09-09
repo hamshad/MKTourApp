@@ -87,6 +87,7 @@ class _RideSearchingOverlayState extends State<RideSearchingOverlay>
 
   @override
   Widget build(BuildContext context) {
+    final hasData = widget.rideData != null;
     final pickupAddress =
         widget.rideData?['pickupLocation']?['address'] ?? 'Pickup';
     final dropoffAddress =
@@ -248,7 +249,40 @@ class _RideSearchingOverlayState extends State<RideSearchingOverlay>
 
                           const Spacer(),
 
-                          // Trip summary card with glassmorphism
+                          // Trip summary card with glassmorphism.
+                          // No data yet → loading skeleton (never a bare
+                          // spinner or empty card).
+                          if (!hasData)
+                            Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 24),
+                              padding: const EdgeInsets.all(24),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(24),
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.12),
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  _buildSkeletonRow(),
+                                  _buildSkeletonRow(),
+                                  const Padding(
+                                    padding: EdgeInsets.symmetric(vertical: 20),
+                                    child: Divider(color: Colors.white12),
+                                  ),
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      _buildSkeletonBox(110),
+                                      _buildSkeletonBox(80),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            )
+                          else
                           Container(
                             margin: const EdgeInsets.symmetric(horizontal: 24),
                             padding: const EdgeInsets.all(24),
@@ -278,15 +312,16 @@ class _RideSearchingOverlayState extends State<RideSearchingOverlay>
                                   child: Divider(color: Colors.white12),
                                 ),
 
-                                // Fare and distance
+                                // Fare and distance (£, 2 decimals — same
+                                // language as receipt + progress screens)
                                 Row(
                                   mainAxisAlignment:
                                       MainAxisAlignment.spaceBetween,
                                   children: [
                                     _buildInfoColumn('Estimated Fare',
-                                        '£${fare.toStringAsFixed(2)}'),
+                                        '£${_asDouble(fare).toStringAsFixed(2)}'),
                                     _buildInfoColumn('Distance',
-                                        '${distance.toStringAsFixed(1)} mi'),
+                                        '${_asDouble(distance).toStringAsFixed(1)} mi'),
                                   ],
                                 ),
                               ],
@@ -327,18 +362,43 @@ class _RideSearchingOverlayState extends State<RideSearchingOverlay>
                                           ),
                                         ),
                                       ),
-                                      child: const FittedBox(
-                                        fit: BoxFit.scaleDown,
-                                        child: Text(
-                                          'Try Again',
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ),
+                                      child: widget.isLoading
+                                          ? const Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                SizedBox(
+                                                  width: 20,
+                                                  height: 20,
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                    color: Colors.white,
+                                                    strokeWidth: 2,
+                                                  ),
+                                                ),
+                                                SizedBox(width: 10),
+                                                Text(
+                                                  'Retrying…',
+                                                  style: TextStyle(
+                                                    fontSize: 16,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ],
+                                            )
+                                          : const FittedBox(
+                                              fit: BoxFit.scaleDown,
+                                              child: Text(
+                                                'Try Again',
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ),
                                     ),
                                   ),
                                 if (widget.isExpired) const SizedBox(height: 12),
@@ -398,8 +458,46 @@ class _RideSearchingOverlayState extends State<RideSearchingOverlay>
     );
   }
 
-  Widget _buildLocationRow(Color color, String address, {bool isLast = false}) {
-    return Row(
+  static double _asDouble(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? 0.0;
+    return 0.0;
+  }
+
+  /// Loading skeleton row — shimmering placeholder while ride data loads.
+  Widget _buildSkeletonRow() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(child: _buildSkeletonBox(double.infinity)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSkeletonBox(double width) {
+    return Container(
+      width: width == double.infinity ? null : width,
+      height: 16,
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(8),
+      ),
+    );
+  }
+
+  Widget _buildLocationRow(Color color, String address, {bool isLast = false}) {    return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Column(
