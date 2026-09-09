@@ -2126,77 +2126,136 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     });
   }
 
+  /// Driver-cancel reasons (flow doc example uses vehicle_breakdown;
+  /// ApiService historically sent vehicle_issue — both offered).
+  static const List<Map<String, String>> _driverCancelReasons = [
+    {'value': 'rider_no_show', 'label': 'Rider no-show'},
+    {'value': 'rider_unreachable', 'label': 'Rider unreachable'},
+    {'value': 'safety_concern', 'label': 'Safety concern'},
+    {'value': 'vehicle_breakdown', 'label': 'Vehicle breakdown'},
+    {'value': 'vehicle_issue', 'label': 'Vehicle issue'},
+    {'value': 'driver_no_show', 'label': "Can't make it"},
+  ];
+
+  /// End-early reasons per the ride-flow contract.
+  static const List<Map<String, String>> _endEarlyReasons = [
+    {'value': 'user_requested', 'label': 'Rider requested'},
+    {'value': 'wrong_destination', 'label': 'Wrong destination'},
+    {'value': 'rider_misbehavior', 'label': 'Rider misbehavior'},
+    {'value': 'safety_concern', 'label': 'Safety concern'},
+    {'value': 'vehicle_issue', 'label': 'Vehicle issue'},
+  ];
+
   /// Show cancellation reason picker and cancel the ride
   void _showCancellationReasonDialog() {
     String? selectedReason;
+    bool showReasonError = false;
+    bool sheetLoading = false;
+    String? sheetError;
 
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: const Text('Cancel Ride'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Select a reason for cancellation:'),
-              const SizedBox(height: 16),
-              _buildCancellationReasonOption(
-                'rider_no_show',
-                'Rider No Show',
-                selectedReason,
-                (value) => setDialogState(() => selectedReason = value),
-              ),
-              _buildCancellationReasonOption(
-                'rider_unreachable',
-                'Rider Unreachable',
-                selectedReason,
-                (value) => setDialogState(() => selectedReason = value),
-              ),
-              _buildCancellationReasonOption(
-                'safety_concern',
-                'Safety Concern',
-                selectedReason,
-                (value) => setDialogState(() => selectedReason = value),
-              ),
-              _buildCancellationReasonOption(
-                'vehicle_issue',
-                'Vehicle Issue',
-                selectedReason,
-                (value) => setDialogState(() => selectedReason = value),
-              ),
-              _buildCancellationReasonOption(
-                'driver_no_show',
-                'Cannot Make It',
-                selectedReason,
-                (value) => setDialogState(() => selectedReason = value),
-              ),
-            ],
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Select a reason for cancellation:'),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _driverCancelReasons
+                      .map(
+                        (reason) => ChoiceChip(
+                          label: Text(reason['label']!),
+                          selected: selectedReason == reason['value'],
+                          onSelected: sheetLoading
+                              ? null
+                              : (selected) => setDialogState(() {
+                                    selectedReason =
+                                        selected ? reason['value'] : null;
+                                    showReasonError = false;
+                                  }),
+                        ),
+                      )
+                      .toList(),
+                ),
+                if (showReasonError) ...[
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Please select a reason to continue.',
+                    style: TextStyle(color: Colors.red, fontSize: 12),
+                  ),
+                ],
+                if (sheetError != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    sheetError!,
+                    style: const TextStyle(color: Colors.red, fontSize: 12),
+                  ),
+                ],
+              ],
+            ),
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: sheetLoading ? null : () => Navigator.pop(context),
               child: const Text('Back'),
             ),
             ElevatedButton(
-              onPressed: selectedReason != null
-                  ? () {
+              onPressed: sheetLoading
+                  ? null
+                  : () async {
+                      if (selectedReason == null) {
+                        // Required selection — inline guidance, never raw 400.
+                        setDialogState(() => showReasonError = true);
+                        return;
+                      }
+                      setDialogState(() {
+                        sheetLoading = true;
+                        sheetError = null;
+                      });
+                      final outcome = await _performDriverCancel(
+                        selectedReason!,
+                      );
+                      if (!mounted) return;
+                      if (!outcome['ok']) {
+                        // Failure stays on the sheet with mapper copy.
+                        setDialogState(() {
+                          sheetLoading = false;
+                          sheetError = outcome['message'];
+                        });
+                        return;
+                      }
                       Navigator.pop(context);
-                      _cancelRideByDriver(selectedReason!);
-                    }
-                  : null,
+                      _resolveDriverCancelOutcome(outcome);
+                    },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red,
                 foregroundColor: Colors.white,
               ),
-              child: const FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  'Cancel Ride',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
+              child: sheetLoading
+                  ? const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        'Cancel Ride',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
             ),
           ],
         ),
@@ -2204,29 +2263,17 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     );
   }
 
-  Widget _buildCancellationReasonOption(
-    String value,
-    String label,
-    String? selectedValue,
-    ValueChanged<String?> onChanged,
-  ) {
-    return RadioListTile<String>(
-      title: Text(label),
-      value: value,
-      groupValue: selectedValue,
-      onChanged: onChanged,
-      contentPadding: EdgeInsets.zero,
-      dense: true,
-    );
-  }
-
-  /// Cancel ride by driver with a reason
-  Future<void> _cancelRideByDriver(String reason) async {
-    if (_currentRideId == null) return;
+  /// Cancel ride by driver with a reason.
+  ///
+  /// Returns an outcome map instead of touching UI directly so the sheet
+  /// can stay open on failure: `{ok, reassigned, penalty, message}`.
+  Future<Map<String, dynamic>> _performDriverCancel(String reason) async {
+    if (_currentRideId == null) {
+      return {'ok': false, 'message': 'No active ride.'};
+    }
 
     final isScheduled = _rideData?['isScheduled'] == true;
 
-    setState(() => _isLoading = true);
     try {
       Map<String, dynamic> response;
       if (isScheduled) {
@@ -2241,128 +2288,191 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         );
       }
 
-      setState(() {
-        _status = 'online';
-        _currentRideId = null;
-        _rideData = null;
-      });
-
-      if (response['success'] == true) {
-        // Pre-pickup cancel auto-reassigns: the ride lives on without this
-        // driver. That's an outcome, not an error.
-        final data = response['data'];
-        final reassigned = response['reassigned'] == true ||
-            (data is Map && data['reassigned'] == true);
-        String message = 'Ride cancelled.';
-        SnackbarType type = SnackbarType.success;
-        if (reassigned) {
-          message = 'Reassigned to another driver — you are back in the queue.';
-          type = SnackbarType.info;
-        } else if (isScheduled &&
-            response['data']?['driverPenaltyAmount'] != null) {
-          final penalty = response['data']['driverPenaltyAmount'];
-          message += ' A £${penalty.toStringAsFixed(2)} penalty was applied.';
-        }
-        CustomSnackbar.show(
-          context,
-          message: message,
-          type: type,
+      if (response['success'] != true) {
+        final info = RideErrorMapper.map(
+          response['message']?.toString() ?? 'Failed to cancel ride',
+          response['errors'],
         );
-      } else {
-        CustomSnackbar.show(
-          context,
-          message: response['message'] ?? 'Failed to cancel ride',
-          type: SnackbarType.error,
-        );
+        return {'ok': false, 'message': '${info.title}: ${info.copy}'};
       }
+
+      // Pre-pickup cancel auto-reassigns: the ride lives on without this
+      // driver. That's an outcome, not an error.
+      final data = response['data'];
+      final reassigned = response['reassigned'] == true ||
+          (data is Map && data['reassigned'] == true);
+      final penalty = isScheduled && data is Map
+          ? data['driverPenaltyAmount']
+          : null;
+      return {
+        'ok': true,
+        'reassigned': reassigned,
+        'penalty': penalty is num ? penalty.toDouble() : null,
+      };
     } catch (e) {
       debugPrint('Error cancelling ride: $e');
+      return {
+        'ok': false,
+        'message':
+            'Error cancelling ride: ${e.toString().replaceAll('Exception: ', '')}',
+      };
+    }
+  }
+
+  /// Apply a successful driver-cancel outcome: reassigned → info + queue,
+  /// full cancel → confirmation + exit.
+  void _resolveDriverCancelOutcome(Map<String, dynamic> outcome) {
+    final reassigned = outcome['reassigned'] == true;
+    final penalty = outcome['penalty'] as double?;
+    if (!mounted) return;
+    setState(() {
+      _status = 'online';
+      _currentRideId = null;
+      _rideData = null;
+      _clearNavigationUi();
+      _clearActiveRideStorage();
+    });
+
+    if (reassigned) {
       CustomSnackbar.show(
         context,
-        message: 'Error cancelling ride: ${e.toString().replaceAll('Exception: ', '')}',
-        type: SnackbarType.error,
+        message: 'Reassigned to another driver — you are back in the queue.',
+        type: SnackbarType.info,
       );
-    } finally {
-      setState(() => _isLoading = false);
+      return;
     }
+
+    var message = 'Ride cancelled.';
+    if (penalty != null) {
+      message += ' A £${penalty.toStringAsFixed(2)} penalty was applied.';
+    }
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Ride cancelled'),
+        content: Text('$message\nYou are back online.'),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Show end ride early dialog with reason selection
   void _showEndRideEarlyDialog() {
     String? selectedReason;
+    bool showReasonError = false;
+    bool sheetLoading = false;
+    String? sheetError;
 
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: const Text('End Ride Early'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'The fare will be adjusted based on actual distance traveled.',
-                style: TextStyle(color: Colors.grey),
-              ),
-              const SizedBox(height: 16),
-              const Text('Select a reason:'),
-              const SizedBox(height: 8),
-              _buildCancellationReasonOption(
-                'user_requested',
-                'User Requested',
-                selectedReason,
-                (value) => setDialogState(() => selectedReason = value),
-              ),
-              _buildCancellationReasonOption(
-                'wrong_destination',
-                'Wrong Destination',
-                selectedReason,
-                (value) => setDialogState(() => selectedReason = value),
-              ),
-              _buildCancellationReasonOption(
-                'rider_misbehavior',
-                'Rider Misbehavior',
-                selectedReason,
-                (value) => setDialogState(() => selectedReason = value),
-              ),
-              _buildCancellationReasonOption(
-                'safety_concern',
-                'Safety Concern',
-                selectedReason,
-                (value) => setDialogState(() => selectedReason = value),
-              ),
-              _buildCancellationReasonOption(
-                'vehicle_issue',
-                'Vehicle Issue',
-                selectedReason,
-                (value) => setDialogState(() => selectedReason = value),
-              ),
-            ],
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'The fare will be adjusted based on actual distance traveled.',
+                  style: TextStyle(color: Colors.grey),
+                ),
+                const SizedBox(height: 12),
+                const Text('Select a reason:'),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _endEarlyReasons
+                      .map(
+                        (reason) => ChoiceChip(
+                          label: Text(reason['label']!),
+                          selected: selectedReason == reason['value'],
+                          onSelected: sheetLoading
+                              ? null
+                              : (selected) => setDialogState(() {
+                                    selectedReason =
+                                        selected ? reason['value'] : null;
+                                    showReasonError = false;
+                                  }),
+                        ),
+                      )
+                      .toList(),
+                ),
+                if (showReasonError) ...[
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Please select a reason to continue.',
+                    style: TextStyle(color: Colors.red, fontSize: 12),
+                  ),
+                ],
+                if (sheetError != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    sheetError!,
+                    style: const TextStyle(color: Colors.red, fontSize: 12),
+                  ),
+                ],
+              ],
+            ),
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: sheetLoading ? null : () => Navigator.pop(context),
               child: const Text('Back'),
             ),
             ElevatedButton(
-              onPressed: selectedReason != null
-                  ? () {
+              onPressed: sheetLoading
+                  ? null
+                  : () async {
+                      if (selectedReason == null) {
+                        setDialogState(() => showReasonError = true);
+                        return;
+                      }
+                      setDialogState(() {
+                        sheetLoading = true;
+                        sheetError = null;
+                      });
+                      final outcome = await _performEndEarly(selectedReason!);
+                      if (!mounted) return;
+                      if (!outcome['ok']) {
+                        // Failure stays on the sheet with mapper copy.
+                        setDialogState(() {
+                          sheetLoading = false;
+                          sheetError = outcome['message'];
+                        });
+                        return;
+                      }
                       Navigator.pop(context);
-                      _endRideEarly(selectedReason!);
-                    }
-                  : null,
+                      _resolveEndEarlyOutcome(outcome);
+                    },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.orange,
                 foregroundColor: Colors.white,
               ),
-              child: const FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  'End Ride',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
+              child: sheetLoading
+                  ? const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        'End Ride',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
             ),
           ],
         ),
@@ -2370,11 +2480,15 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     );
   }
 
-  /// End the ride early with adjusted fare
-  Future<void> _endRideEarly(String reason) async {
-    if (_currentRideId == null) return;
+  /// End the ride early with adjusted fare.
+  ///
+  /// Returns an outcome map so the sheet can stay open on failure:
+  /// `{ok, adjustedFare, actualDistance, paymentMethod, message}`.
+  Future<Map<String, dynamic>> _performEndEarly(String reason) async {
+    if (_currentRideId == null) {
+      return {'ok': false, 'message': 'No active ride.'};
+    }
 
-    setState(() => _isLoading = true);
     try {
       final response = await _apiService.endRideEarly(
         _currentRideId!,
@@ -2383,55 +2497,124 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         reason: reason,
       );
 
-      if (response['success'] == true) {
-        final adjustedFare = response['data']?['adjustedFare'] ?? 0.0;
-
-        final paymentMethod = _rideData?['paymentMethod'];
-
-        if (paymentMethod == 'cash') {
-          setState(() {
-            _status = 'awaiting_cash_confirmation';
-          });
-          CustomSnackbar.show(
-            context,
-            message:
-                'Ride ended early (£${adjustedFare.toStringAsFixed(2)}). Collect cash from passenger.',
-            type: SnackbarType.warning,
-          );
-        } else {
-          setState(() {
-            _status = 'online';
-            _currentRideId = null;
-            _rideData = null;
-            _clearNavigationUi();
-            _clearActiveRideStorage();
-          });
-          _fetchRideHistory();
-          CustomSnackbar.show(
-            context,
-            message:
-                'Ride completed successfully (£${adjustedFare.toStringAsFixed(2)}).',
-            type: SnackbarType.success,
-          );
-          // payment:succeeded socket will finalize
-        }
-      } else {
-        CustomSnackbar.show(
-          context,
-          message: response['message'] ?? 'Failed to end ride',
-          type: SnackbarType.error,
+      if (response['success'] != true) {
+        final info = RideErrorMapper.map(
+          response['message']?.toString() ?? 'Failed to end ride',
+          response['errors'],
         );
+        return {'ok': false, 'message': '${info.title}: ${info.copy}'};
       }
+
+      final data = response['data'] is Map<String, dynamic>
+          ? Map<String, dynamic>.from(response['data'] as Map)
+          : <String, dynamic>{};
+      final ride = data['ride'] is Map
+          ? Map<String, dynamic>.from(data['ride'] as Map)
+          : <String, dynamic>{};
+      double asDouble(dynamic v) =>
+          v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
+      return {
+        'ok': true,
+        'adjustedFare': asDouble(
+          data['adjustedFare'] ?? data['fare'] ?? ride['fare'],
+        ),
+        'actualDistance': asDouble(
+          data['actualDistance'] ?? ride['actualDistance'],
+        ),
+        'paymentMethod': _rideData?['paymentMethod'],
+      };
     } catch (e) {
       debugPrint('Error ending ride early: $e');
-      CustomSnackbar.show(
-        context,
-        message: 'Error ending ride',
-        type: SnackbarType.error,
-      );
-    } finally {
-      setState(() => _isLoading = false);
+      return {'ok': false, 'message': 'Error ending ride'};
     }
+  }
+
+  /// Apply a successful end-early outcome: show adjusted fare + distance,
+  /// then route cash rides to collection, others back online.
+  void _resolveEndEarlyOutcome(Map<String, dynamic> outcome) {
+    final adjustedFare = (outcome['adjustedFare'] as num?)?.toDouble() ?? 0.0;
+    final actualDistance =
+        (outcome['actualDistance'] as num?)?.toDouble() ?? 0.0;
+    final paymentMethod = outcome['paymentMethod'];
+    if (!mounted) return;
+
+    if (paymentMethod == 'cash') {
+      setState(() {
+        _status = 'awaiting_cash_confirmation';
+      });
+      _persistActiveRide();
+      _showEndEarlySummary(
+        adjustedFare: adjustedFare,
+        actualDistance: actualDistance,
+        subline: 'Collect cash from the passenger.',
+      );
+    } else {
+      setState(() {
+        _status = 'online';
+        _currentRideId = null;
+        _rideData = null;
+        _clearNavigationUi();
+        _clearActiveRideStorage();
+      });
+      _fetchRideHistory();
+      // payment:succeeded socket will finalize
+      _showEndEarlySummary(
+        adjustedFare: adjustedFare,
+        actualDistance: actualDistance,
+        subline: null,
+      );
+    }
+  }
+
+  /// Outcome dialog: adjusted fare + actual distance, never a bare toast.
+  void _showEndEarlySummary({
+    required double adjustedFare,
+    required double actualDistance,
+    String? subline,
+  }) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Ride ended early'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Adjusted fare'),
+                Text(
+                  '£${adjustedFare.toStringAsFixed(2)}',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.primaryColor,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Distance traveled ${actualDistance.toStringAsFixed(1)} mi',
+            ),
+            if (subline != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                subline,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
+    );
   }
 
   /// One-tap no-OTP start: backend starts the ride from driver_arrived
