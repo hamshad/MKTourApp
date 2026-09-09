@@ -465,12 +465,23 @@ class PlacesService {
     required double dropoffLat,
     required double dropoffLon,
     required double distance,
+    List<Map<String, dynamic>>? stops,
   }) async {
     try {
       final headers = await ApiConfig.getAuthHeaders();
+      final queryParams = <String, String>{
+        'pickupLat': '$pickupLat',
+        'pickupLon': '$pickupLon',
+        'dropoffLat': '$dropoffLat',
+        'dropoffLon': '$dropoffLon',
+        'distance': '$distance',
+      };
+      if (stops != null && stops.isNotEmpty) {
+        queryParams['stops'] = json.encode(stops);
+      }
       final url = Uri.parse(
-        '${ApiConstants.fareEstimate}?pickupLat=$pickupLat&pickupLon=$pickupLon&dropoffLat=$dropoffLat&dropoffLon=$dropoffLon&distance=$distance',
-      );
+        ApiConstants.fareEstimate,
+      ).replace(queryParameters: queryParams);
 
       debugPrint('💷 ─────────────────────────────────────────────');
       debugPrint('💷 PlacesService.getFareEstimate()');

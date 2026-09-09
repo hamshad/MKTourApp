@@ -28,6 +28,7 @@ class VehicleSelectionWidget extends StatefulWidget {
   final double? distance;
   final String? durationText;
   final Map<String, double>? fixedFareByCategory;
+  final List<Map<String, dynamic>>? stops;
 
   const VehicleSelectionWidget({
     super.key,
@@ -42,6 +43,7 @@ class VehicleSelectionWidget extends StatefulWidget {
     this.distance,
     this.durationText,
     this.fixedFareByCategory,
+    this.stops,
   });
 
   @override
@@ -140,6 +142,7 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
         dropoffLat: widget.dropoffLat!,
         dropoffLon: widget.dropoffLng!,
         distance: widget.distance ?? 0.0,
+        stops: widget.stops,
       );
 
       if (mounted && promoData != null) {
