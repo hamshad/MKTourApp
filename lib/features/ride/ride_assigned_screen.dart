@@ -2116,7 +2116,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
           // Socket disconnect → visible "reconnecting" pill (queued emits
           // flush via emitReliable on reconnect), never a silent freeze.
-          const ConnectionStatusBanner(),
+          // Suppressed on final states so it can't flash over the receipt.
+          ConnectionStatusBanner(suppress: _isFinalRideStatus),
         ],
       ),
     );
@@ -2769,6 +2770,15 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       ],
     );
   }
+
+  /// Final ride states: the reconnect pill/banner must not flash once the
+  /// trip is over (completed/early_completed/cancelled/expired).
+  bool get _isFinalRideStatus => const {
+    'completed',
+    'early_completed',
+    'cancelled',
+    'expired',
+  }.contains(_rideStatus);
 
   void _closePaymentLoading() {
     if (_isPaymentLoadingShowing && mounted) {

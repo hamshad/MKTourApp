@@ -21,7 +21,13 @@ class ConnectionStatusBanner extends StatefulWidget {
   /// Position from top (to account for app bars, safe area, etc.)
   final double topOffset;
 
-  const ConnectionStatusBanner({super.key, this.topOffset = 0});
+  /// When true the banner never shows. Ride screens set this once the ride
+  /// reaches a final state (completed/early_completed/cancelled/expired) so
+  /// a reconnect race can't flash "Reconnecting..."/"Reconnected" over the
+  /// receipt or after the flow ended.
+  final bool suppress;
+
+  const ConnectionStatusBanner({super.key, this.topOffset = 0, this.suppress = false});
 
   @override
   State<ConnectionStatusBanner> createState() => _ConnectionStatusBannerState();
@@ -106,6 +112,7 @@ class _ConnectionStatusBannerState extends State<ConnectionStatusBanner>
 
   @override
   Widget build(BuildContext context) {
+    if (widget.suppress) return const SizedBox.shrink();
     return Positioned(
       top: widget.topOffset,
       left: 0,

@@ -226,8 +226,16 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
     return fallback;
   }
 
-  String? _stopAddressAt(int index) {
-    if (_stops.isEmpty) return null;
+  /// Final ride states: the reconnect pill/banner must not flash once the
+  /// trip is over (completed/early_completed/cancelled/expired).
+  bool get _isFinalRideStatus => const {
+    'completed',
+    'early_completed',
+    'cancelled',
+    'expired',
+  }.contains(_rideStatus);
+
+  String? _stopAddressAt(int index) {    if (_stops.isEmpty) return null;
     final idx = index.clamp(0, _stops.length - 1);
     final address = _stops[idx].address;
     return address.isEmpty ? null : address;
@@ -962,7 +970,8 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
 
           // Socket disconnect → visible "reconnecting" pill (queued emits
           // flush via emitReliable on reconnect), never a silent freeze.
-          const ConnectionStatusBanner(),
+          // Suppressed on final states so the receipt isn't covered.
+          ConnectionStatusBanner(suppress: _isFinalRideStatus),
         ],
       ),
     );
