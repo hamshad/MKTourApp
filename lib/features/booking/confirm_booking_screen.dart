@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../../core/theme.dart';
 import '../../core/services/payment_service.dart';
+import 'widgets/stops_editor_widget.dart';
 
 class ConfirmBookingScreen extends StatefulWidget {
   const ConfirmBookingScreen({super.key});
@@ -15,6 +16,7 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
   bool _isLoading = false;
   final TextEditingController _notesController = TextEditingController();
   PaymentTiming _paymentTiming = PaymentTiming.payLater;
+  List<Map<String, dynamic>> _stops = [];
 
   Future<void> _confirmBooking(
     Map<String, dynamic> vehicle,
@@ -58,6 +60,7 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
         fare: (vehicle['basePrice'] as num?)?.toDouble() ?? 15.0,
         paymentTiming: _paymentTiming,
         notes: _notesController.text.isNotEmpty ? _notesController.text : null,
+        stops: _stops.isNotEmpty ? _stops : null,
       );
 
       setState(() => _isLoading = false);
@@ -283,6 +286,18 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
                   ),
 
                   const SizedBox(height: 32),
+                  const Divider(),
+                  const SizedBox(height: 16),
+
+                  // Intermediate stops (max 3) — passed into fare +
+                  // createRide so stops are priced and visible in-trip.
+                  StopsEditorWidget(
+                    onChanged: (stops) {
+                      setState(() => _stops = stops);
+                    },
+                  ),
+
+                  const SizedBox(height: 16),
                   const Divider(),
                   const SizedBox(height: 16),
 

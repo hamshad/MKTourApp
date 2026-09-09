@@ -27,6 +27,7 @@ class RideConfirmationScreen extends StatefulWidget {
   final List<dynamic>? polyline; // Added polyline
   final bool isScheduled; // Set to true to enable scheduling flow
   final DateTime? scheduledDateTime; // The scheduled ride time (if prebooked)
+  final List<Map<String, dynamic>>? stops; // Intermediate stops (max 3)
 
   const RideConfirmationScreen({
     super.key,
@@ -38,6 +39,7 @@ class RideConfirmationScreen extends StatefulWidget {
     this.polyline,
     this.isScheduled = false,
     this.scheduledDateTime,
+    this.stops,
   });
 
   @override
@@ -443,6 +445,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
         paymentTiming: timing,
         scheduledAt: scheduledAt,
         notes: notes,
+        stops: widget.stops?.isNotEmpty == true ? widget.stops : null,
       );
 
       if (mounted) {
@@ -745,6 +748,70 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
               ],
             ),
           ),
+
+          // Intermediate stops (visible in fare + trip)
+          if (widget.stops?.isNotEmpty == true)
+            ...widget.stops!.asMap().entries.map((entry) {
+              final i = entry.key;
+              final stop = entry.value;
+              return Column(
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 22,
+                        height: 22,
+                        decoration: const BoxDecoration(
+                          color: AppTheme.primaryColor,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Center(
+                          child: Text(
+                            '${i + 1}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          stop['address']?.toString() ?? 'Stop ${i + 1}',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: AppTheme.textPrimary,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 5),
+                    child: Row(
+                      children: [
+                        Column(
+                          children: List.generate(
+                            3,
+                            (index) => Container(
+                              width: 2,
+                              height: 6,
+                              margin: const EdgeInsets.symmetric(vertical: 2),
+                              color: Colors.grey[300],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            }),
 
           // Dropoff
           Row(

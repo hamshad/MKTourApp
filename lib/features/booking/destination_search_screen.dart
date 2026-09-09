@@ -11,6 +11,7 @@ import '../../core/widgets/platform_map.dart';
 import '../../core/services/location_cache_service.dart';
 import 'dart:async';
 import 'widgets/vehicle_selection_widget.dart';
+import 'widgets/stops_editor_widget.dart';
 import 'widgets/schedule_ride_sheet.dart';
 import 'ride_confirmation_screen.dart';
 
@@ -60,6 +61,9 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
   List<LatLng> _polylines = [];
   fmap.LatLngBounds? _mapBounds;
   bool _isRouteView = false;
+
+  // Intermediate stops (max 3) — priced into fare estimates + sent on create.
+  List<Map<String, dynamic>> _stops = [];
 
   final List<Map<String, String>> _savedPlaces = [
     // {'icon': '🏠', 'title': 'Home', 'subtitle': 'Add home', 'type': 'add'},
@@ -637,6 +641,7 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
           categoryName: categoryName,
           fareData: fareData,
           polyline: _polylines, // Pass the drawn polyline
+          stops: _stops.isNotEmpty ? _stops : null,
         ),
       ),
     );
@@ -802,6 +807,7 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
                 polyline: _polylines, // Pass the drawn polyline
                 isScheduled: true, // Mark as scheduled
                 scheduledDateTime: selectedDateTime, // Pass the selected time
+                stops: _stops.isNotEmpty ? _stops : null,
               ),
             ),
           );
@@ -818,19 +824,35 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
 
   Widget _buildPanelContent() {
     if (_isRouteView) {
-      return VehicleSelectionWidget(
-        onVehicleSelected: (vehicle) {
-          debugPrint('🚗 DestinationSearchScreen: Vehicle tapped: $vehicle');
-        },
-        onSelectVehicle: _handleSelectVehicle,
-        onPrebookVehicle: _handlePrebookVehicle,
-        isLoading: _isLoading,
-        pickupLat: _pickupLocation?.latitude ?? _center.latitude,
-        pickupLng: _pickupLocation?.longitude ?? _center.longitude,
-        dropoffLat: _markers.length > 1 ? _markers[1].lat : null,
-        dropoffLng: _markers.length > 1 ? _markers[1].lng : null,
-        distance: _routeDistanceValue,
-        durationText: _routeDuration,
+      return Column(
+        children: [
+          // Intermediate stops editor — refetches fare estimates per stop.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: StopsEditorWidget(
+              onChanged: (stops) {
+                setState(() => _stops = stops);
+              },
+            ),
+          ),
+          Expanded(
+            child: VehicleSelectionWidget(
+              onVehicleSelected: (vehicle) {
+                debugPrint('🚗 DestinationSearchScreen: Vehicle tapped: $vehicle');
+              },
+              onSelectVehicle: _handleSelectVehicle,
+              onPrebookVehicle: _handlePrebookVehicle,
+              isLoading: _isLoading,
+              pickupLat: _pickupLocation?.latitude ?? _center.latitude,
+              pickupLng: _pickupLocation?.longitude ?? _center.longitude,
+              dropoffLat: _markers.length > 1 ? _markers[1].lat : null,
+              dropoffLng: _markers.length > 1 ? _markers[1].lng : null,
+              distance: _routeDistanceValue,
+              durationText: _routeDuration,
+              stops: _stops.isNotEmpty ? _stops : null,
+            ),
+          ),
+        ],
       );
     }
 

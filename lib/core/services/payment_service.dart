@@ -129,6 +129,7 @@ class PaymentService {
     PaymentTiming paymentTiming = PaymentTiming.payLater,
     DateTime? scheduledAt,
     String? notes,
+    List<Map<String, dynamic>>? stops,
   }) async {
     String? rideId;
     final bool shouldPresentPaymentSheet =
@@ -163,6 +164,16 @@ class PaymentService {
           'scheduledPickupTime': scheduledAt.toUtc().toIso8601String(),
         if (notes != null && notes.isNotEmpty)
           isScheduled ? 'preBookingNote' : 'notes': notes,
+        if (stops != null && stops.isNotEmpty)
+          'stops': stops
+              .map(
+                (stop) => {
+                  'stopOrder': stop['stopOrder'],
+                  'address': stop['address'],
+                  'coordinates': stop['coordinates'],
+                },
+              )
+              .toList(),
         // Include Google Places IDs for airport detection if available
         if (pickupLocation['placeId'] != null)
           'pickupPlaceId': pickupLocation['placeId'],
