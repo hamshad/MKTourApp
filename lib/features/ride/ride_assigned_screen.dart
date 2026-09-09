@@ -158,12 +158,22 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   // In-flight guard: blocks double-tap on payment rows while a
   // select-payment request is still running.
   bool _isSelectingPayment = false;
+  // Selection generation: each new payment attempt bumps this. Stale async
+  // callbacks (e.g. a cancelled payment_link WebView resolving after the
+  // rider already picked cash) compare their captured value and bail out
+  // instead of reopening sheets or popping the wrong route over the newer
+  // flow — the "stuck on loader" race.
+  int _paymentSelectionSeq = 0;
   // Receipt navigation guard: completed events fan out from several sources
   // (socket, FCM, pay-later completion) — the receipt pushes exactly once.
   bool _didNavigateToReceipt = false;
   // Inline sheet error (e.g. invalid-method 400) — rendered inside the
   // bottom sheet so the rider stays on the sheet instead of dead-ending.
   String? _paymentSheetError;
+  // Method of the last successful selection. Late failure callbacks for a
+  // superseded method (e.g. a cancelled payment_link resolving after cash
+  // succeeded) are ignored once this is set.
+  String? _completedPaymentMethod;
 
   @override
   void initState() {
@@ -1017,6 +1027,17 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
       final eventRideId = data['rideId']?.toString();
       if (eventRideId != null && eventRideId != widget.rideId) return;
+
+      // Stale callback for a superseded method: the trip is already underway
+      // (e.g. cash picked after a payment_link cancel) — never pop failure
+      // UI over the live trip.
+      if (_rideStatus == 'in_progress' ||
+          (_isPaymentMethodSelected && _completedPaymentMethod == 'cash')) {
+        debugPrint(
+          '⚠️ [RideAssignedScreen] Ignoring stale payment:failed for superseded method',
+        );
+        return;
+      }
 
       final message = data['message'] ?? 'Payment failed. Please try again.';
 
@@ -3080,10 +3101,19 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     });
   }
 
-  void _reopenPaymentSelectionModal() {
+  void _reopenPaymentSelectionModal({int? seq}) {
     if (!mounted) return;
+    final captured = seq ?? _paymentSelectionSeq;
     scheduleMicrotask(() {
       if (!mounted) return;
+      // Superseded by a newer payment attempt (e.g. cash picked after a
+      // payment_link cancel) — never reopen over the newer flow.
+      if (captured != _paymentSelectionSeq) {
+        debugPrint(
+          '⚠️ [Payment] Ignoring stale sheet reopen (seq $captured < $_paymentSelectionSeq)',
+        );
+        return;
+      }
       _showPaymentSelectionModal();
     });
   }
@@ -3154,8 +3184,14 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       return;
     }
     _isSelectingPayment = true;
+    // New attempt supersedes any pending callbacks from an earlier one.
+    _paymentSelectionSeq++;
     try {
-      await _runPaymentSelection(method, fromAutoSelect: fromAutoSelect);
+      await _runPaymentSelection(
+        method,
+        fromAutoSelect: fromAutoSelect,
+        seq: _paymentSelectionSeq,
+      );
     } finally {
       _isSelectingPayment = false;
     }
@@ -3164,6 +3200,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   Future<void> _runPaymentSelection(
     String method, {
     bool fromAutoSelect = false,
+    required int seq,
   }) async {
     debugPrint('═══════════════════════════════════════════════════════════');
     debugPrint(
@@ -3199,6 +3236,16 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         widget.rideId,
         method,
       );
+
+      // Superseded while the request was in flight (a newer attempt started)
+      // — dismiss our loader and bail; the newer flow owns the UI now.
+      if (!mounted || seq != _paymentSelectionSeq) {
+        _closePaymentLoading();
+        debugPrint(
+          '⚠️ [Payment] Ignoring stale $method response (seq $seq < $_paymentSelectionSeq)',
+        );
+        return;
+      }
 
       debugPrint('💸 [Payment] 📥 Received response from backend');
       debugPrint('💸 [Payment] Response: $response');
@@ -3312,9 +3359,20 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
               ),
             );
 
+            // The WebView may resolve after the rider moved on (cancelled the
+            // link, then picked cash and the trip started) — a stale success
+            // or cancel here must not touch the newer flow.
+            if (!mounted || seq != _paymentSelectionSeq) {
+              debugPrint(
+                '⚠️ [Payment] Ignoring stale payment_link WebView result (seq $seq < $_paymentSelectionSeq)',
+              );
+              return;
+            }
+
             if (result != null && result['success'] == true) {
               debugPrint('✅ [Payment Link] Payment completed successfully');
               _paymentRetryCount = 0;
+              _completedPaymentMethod = 'payment_link';
               if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
@@ -3339,7 +3397,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                   backgroundColor: Colors.orange,
                 ),
               );
-              _reopenPaymentSelectionModal();
+              _reopenPaymentSelectionModal(seq: seq);
             }
           } else {
             debugPrint('❌ [Payment Link] URL missing in response');
@@ -3351,9 +3409,12 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
             );
           }
         } else {
-          // Cash payment
+          // Cash payment — always dismiss the loader first, then drive the
+          // status forward: the backend may have already started the ride,
+          // so sync immediately instead of waiting on the socket event.
           _closePaymentLoading();
           _paymentRetryCount = 0;
+          _completedPaymentMethod = 'cash';
 
           debugPrint('💵 [Cash] Payment method selected');
           if (!mounted) return;
@@ -3367,6 +3428,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
             _isPaymentMethodSelected = true;
             _selectedPaymentMethodDisplay = 'Cash';
           });
+          // Pull the authoritative status — flips to in_progress UI when the
+          // server already started the trip.
+          _syncRideStatus();
         }
       } else {
         debugPrint('❌ [Payment] Response success = false');
@@ -3396,7 +3460,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
               onAction: _reopenPaymentSelectionModal,
             );
           }
-          _reopenPaymentSelectionModal();
+          _reopenPaymentSelectionModal(seq: seq);
           return;
         }
         _showPaymentErrorDialog(
