@@ -126,6 +126,20 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
        if (mounted) {
           _lastSocketEventAt = DateTime.now();
           final newStatus = data['status'];
+          if (newStatus == 'at_stop') {
+            // Backend may broadcast the stop wait over the generic status
+            // channel instead of the stop-specific events — drive the same
+            // waiting-at-stop chip, checklist, and totals. Handled outside
+            // the setState below (it manages its own).
+            _applyStopState(
+              data is Map<String, dynamic>
+                  ? data
+                  : data is Map
+                      ? Map<String, dynamic>.from(data)
+                      : <String, dynamic>{},
+            );
+            return;
+          }
           setState(() {
              if (newStatus == 'accepted') {
                 _status = 'Driver is on the way';
@@ -156,24 +170,13 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
       if (!mounted) return;
       debugPrint('🛑 [RideProgressScreen] Stop update: $data');
       _lastSocketEventAt = DateTime.now();
-      final map = data is Map<String, dynamic>
-          ? data
-          : data is Map
-              ? Map<String, dynamic>.from(data)
-              : <String, dynamic>{};
-      final stops = parseRideStops(map['stops']);
-      final index = _asInt(map['currentStopIndex'], _currentStopIndex);
-      setState(() {
-        _rideStatus = 'at_stop';
-        _status = 'Waiting at stop';
-        _progress = 0.85;
-        if (stops.isNotEmpty) _stops = stops;
-        _currentStopIndex = index;
-        _atStopAddress = _stopAddressAt(index);
-        _waitStartedAt = DateTime.now();
-        _elapsedWait = Duration.zero;
-      });
-      _startWaitTicker();
+      _applyStopState(
+        data is Map<String, dynamic>
+            ? data
+            : data is Map
+                ? Map<String, dynamic>.from(data)
+                : <String, dynamic>{},
+      );
     });
 
     // Trip resume: backend flips back to in_progress with accumulated
@@ -210,6 +213,33 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
     });
   }
 
+  /// Shared at_stop applier: stop-specific socket events, the generic
+  /// `ride:statusUpdate` channel, and the polling fallback all converge here
+  /// so the waiting-at-stop chip, stop checklist, and live totals always
+  /// reflect the same backend payload.
+  void _applyStopState(Map<String, dynamic> map) {
+    if (!mounted) return;
+    final stops = parseRideStops(map['stops']);
+    final index = _asInt(map['currentStopIndex'], _currentStopIndex);
+    setState(() {
+      _rideStatus = 'at_stop';
+      _status = 'Waiting at stop';
+      _progress = 0.85;
+      if (stops.isNotEmpty) _stops = stops;
+      _currentStopIndex = index;
+      _atStopAddress = _stopAddressAt(index);
+      _waitStartedAt = DateTime.now();
+      _elapsedWait = Duration.zero;
+      if (map['totalWaitMinutes'] != null) {
+        _totalWaitMinutes = _asInt(map['totalWaitMinutes']);
+      }
+      if (map['totalWaitFee'] != null) {
+        _totalWaitFee = _asDouble(map['totalWaitFee']);
+      }
+    });
+    _startWaitTicker();
+  }
+
   static int _asInt(dynamic value, [int fallback = 0]) {
     if (value == null) return fallback;
     if (value is int) return value;
@@ -218,8 +248,7 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
     return fallback;
   }
 
-  static double _asDouble(dynamic value, [double fallback = 0.0]) {
-    if (value == null) return fallback;
+  static double _asDouble(dynamic value, [double fallback = 0.0]) {    if (value == null) return fallback;
     if (value is double) return value;
     if (value is int) return value.toDouble();
     if (value is String) return double.tryParse(value) ?? fallback;
