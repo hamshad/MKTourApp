@@ -92,7 +92,6 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
   // Driver Data
   Map<String, dynamic> _driver = {};
-  String _otp = '';
   String? _currentDriverId; // Track current driver ID for room management
 
   // Detailed Addresses
@@ -168,7 +167,6 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     WidgetsBinding.instance.addObserver(this);
     _initializeLocations();
     _setupInitialState();
-    _fetchOtp();
     _setupSocketListeners();
     _setupConnectionListener();
     _fetchDetailedAddresses();
@@ -212,33 +210,6 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     }
   }
 
-  /// Fetch the OTP from the backend. The socket payload may omit the OTP for
-  /// the passenger, but [getRideDetails] returns it (as ride_detail_screen
-  /// demonstrates), so this is the reliable source.
-  Future<void> _fetchOtp() async {
-    try {
-      final response = await _apiService.getRideDetails(widget.rideId);
-      if (response['success'] == true && response['data'] != null) {
-        final data = response['data'];
-        final String? otp = data['otp']?.toString() ??
-            data['verificationOTP']?.toString() ??
-            data['verification_otp']?.toString() ??
-            (data['ride'] is Map ? data['ride']['otp']?.toString() : null) ??
-            (data['ride'] is Map
-                ? data['ride']['verificationOTP']?.toString()
-                : null);
-        if (otp != null && otp.isNotEmpty && mounted) {
-          setState(() {
-            _otp = otp;
-          });
-          debugPrint('🔐 [RideAssignedScreen] OTP fetched from API: "$_otp"');
-        }
-      }
-    } catch (e) {
-      debugPrint('⚠️ [RideAssignedScreen] Error fetching OTP: $e');
-    }
-  }
-
   /// Sync ride status with backend when app resumes
   Future<void> _syncRideStatus() async {
     try {
@@ -249,17 +220,6 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
       if (response['success'] == true && response['data'] != null) {
         final rideData = response['data'];
-
-        // Always hydrate OTP from the API — the socket payload may omit it for
-        // the passenger even though getRideDetails returns it.
-        final String? apiOtp = rideData['otp']?.toString() ??
-            rideData['verificationOTP']?.toString() ??
-            rideData['verification_otp']?.toString();
-        if (apiOtp != null && apiOtp.isNotEmpty && mounted) {
-          setState(() {
-            _otp = apiOtp;
-          });
-        }
 
         // Capture promo info from sync
         final bool isPromo = rideData['isPromoRide'] == true;
@@ -349,14 +309,6 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       _rideStatus = 'accepted';
       _driver = widget.driver as Map<String, dynamic>;
 
-      // Try multiple possible OTP field names from initial data
-      _otp =
-          widget.driver!['otp']?.toString() ??
-          widget.driver!['verificationOTP']?.toString() ??
-          widget.driver!['verification_otp']?.toString() ??
-          '';
-
-      debugPrint('🔐 [RideAssignedScreen] Initial OTP: "$_otp"');
       debugPrint('👤 [RideAssignedScreen] Initial driver: $_driver');
 
       // Extract driver ID and join their location room
@@ -562,7 +514,6 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     _socketService.off('ride:started');
     _socketService.off('ride:completed');
     _socketService.off('ride:driverArrived');
-    _socketService.off('ride:otpExpired');
     _socketService.off('ride:cancelled');
     _socketService.off('ride:cancelledByDriver');
     _socketService.off('ride:earlyCompleted');
@@ -622,7 +573,6 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
           _rideStatus = 'searching';
           _driver = {};
           _driverLocation = null;
-          _otp = '';
           _currentDriverId = null;
           _reassignMessage = message;
         });
@@ -657,10 +607,6 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       // Log individual fields for debugging
       debugPrint('🔑 [RideAssignedScreen] rideId: ${data['rideId']}');
       debugPrint('🔑 [RideAssignedScreen] status: ${data['status']}');
-      debugPrint('🔑 [RideAssignedScreen] otp field: ${data['otp']}');
-      debugPrint(
-        '🔑 [RideAssignedScreen] verificationOTP field: ${data['verificationOTP']}',
-      );
       debugPrint('🔑 [RideAssignedScreen] message: ${data['message']}');
       debugPrint('👤 [RideAssignedScreen] driver object: ${data['driver']}');
 
@@ -714,14 +660,6 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
           _driver = driverData as Map<String, dynamic>;
           _reassignMessage = null;
 
-          // Try multiple possible OTP field names
-          _otp =
-              data['otp']?.toString() ??
-              data['verificationOTP']?.toString() ??
-              data['verification_otp']?.toString() ??
-              data['code']?.toString() ??
-              '';
-
           // Capture fare & promo info eagerly so we don't need an extra
           // API call when the driver arrives.
           if (data['fare'] != null) {
@@ -737,7 +675,6 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
             _promoOriginalFare = (data['originalFare'] as num).toDouble();
           }
 
-          debugPrint('🔐 [RideAssignedScreen] Extracted OTP: "$_otp"');
           debugPrint('👤 [RideAssignedScreen] Extracted driver: $_driver');
 
           // Extract driver ID and join their location room for real-time updates
@@ -779,7 +716,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
         debugPrint('═══════════════════════════════════════════════════════');
         debugPrint(
-          '✅ [RideAssignedScreen] State updated - Status: $_rideStatus, OTP: $_otp',
+          '✅ [RideAssignedScreen] State updated - Status: $_rideStatus',
         );
         debugPrint('═══════════════════════════════════════════════════════');
       });
@@ -1131,29 +1068,6 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       _handleDriverArrival(data);
     });
 
-    _socketService.on('ride:otpExpired', (data) {
-      debugPrint('🔄 [RideAssignedScreen] OTP Expired: $data');
-
-      if (!mounted || !context.mounted) return;
-
-      debugPrint(
-        '📍 [RideAssignedScreen] Scheduling OTP expired state update...',
-      );
-      scheduleMicrotask(() {
-        if (!mounted || !context.mounted) return;
-
-        setState(() {
-          _otp = data['newOTP'] ?? _otp;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('New OTP: $_otp'),
-            backgroundColor: Colors.blue,
-          ),
-        );
-      });
-    });
-
     _socketService.on('ride:cancelled', (data) {
       if (mounted) {
         debugPrint('❌ [RideAssignedScreen] Ride Cancelled: $data');
@@ -1182,6 +1096,38 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     _socketService.on('ride:cancelledByDriver', (data) {
       if (mounted) {
         debugPrint('❌ [RideAssignedScreen] Ride Cancelled By Driver: $data');
+        // Reassigned path: backend keeps the ride alive (`reassigned: true`,
+        // status back to `requested`) — rider stays in flow with a banner,
+        // no refund panic.
+        final nested = data['data'];
+        final reassigned = data['reassigned'] == true ||
+            (nested is Map && nested['reassigned'] == true);
+        if (reassigned) {
+          final count = data['reassignmentCount'] ??
+              (nested is Map ? nested['reassignmentCount'] : null);
+          setState(() {
+            _rideStatus = 'searching';
+            _driver = {};
+            _driverLocation = null;
+            _currentDriverId = null;
+            _reassignMessage = data['message']?.toString() ??
+                'Your driver cancelled — finding you another driver…';
+            if (count is num) {
+              debugPrint(
+                '🔄 [RideAssignedScreen] Reassignment count: $count',
+              );
+            }
+          });
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(_reassignMessage!),
+              duration: const Duration(seconds: 5),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          return;
+        }
         final reason = data['reason'] ?? 'Unknown reason';
         final refundStatus = data['refundStatus'] ?? 'processing';
         showDialog(
@@ -1785,7 +1731,6 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     _socketService.off('ride:started');
     _socketService.off('ride:completed');
     _socketService.off('ride:driverArrived');
-    _socketService.off('ride:otpExpired');
     _socketService.off('ride:cancelledByDriver');
     _socketService.off('ride:earlyCompleted');
     _socketService.off('payment:succeeded');
@@ -2540,7 +2485,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                 ),
               ),
 
-            // OTP Display - Show prominently when driver accepted or arrived AND payment is selected
+            // No-code boarding — no OTP in the new flow. Once payment is
+            // selected, the rider just boards; driver starts without a code.
             if ((_rideStatus == 'accepted' ||
                     _rideStatus == 'driver_arrived') &&
                 _isPaymentMethodSelected)
@@ -2551,10 +2497,10 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                   vertical: 16,
                 ),
                 decoration: BoxDecoration(
-                  color: AppTheme.accentColor.withValues(alpha: 0.1),
+                  color: AppTheme.successColor.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: AppTheme.accentColor.withValues(alpha: 0.3),
+                    color: AppTheme.successColor.withValues(alpha: 0.3),
                   ),
                 ),
                 child: Column(
@@ -2563,14 +2509,16 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(
-                          Icons.lock_outline,
-                          color: AppTheme.accentColor,
+                          Icons.check_circle_outline,
+                          color: AppTheme.successColor,
                           size: 18,
                         ),
                         const SizedBox(width: 8),
-                        const Text(
-                          'YOUR RIDE OTP',
-                          style: TextStyle(
+                        Text(
+                          _rideStatus == 'driver_arrived'
+                              ? 'DRIVER ARRIVED — HOP IN'
+                              : 'DRIVER CONFIRMED — NO CODE NEEDED',
+                          style: const TextStyle(
                             color: AppTheme.textSecondary,
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -2580,22 +2528,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                       ],
                     ),
                     const SizedBox(height: 8),
-                    Text(
-                      _otp.isNotEmpty ? _otp : '------',
-                      style: TextStyle(
-                        fontSize: 36,
-                        fontWeight: FontWeight.bold,
-                        color: _otp.isNotEmpty
-                            ? AppTheme.accentColor
-                            : Colors.grey,
-                        letterSpacing: 8,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _otp.isNotEmpty
-                          ? 'Share this code with your driver when boarding'
-                          : 'Waiting for OTP...',
+                    const Text(
+                      'No code needed — your driver starts the trip when you board.',
                       style: TextStyle(
                         color: AppTheme.textSecondary,
                         fontSize: 12,
@@ -3304,7 +3238,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
               if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('Payment Successful! Share OTP with driver.'),
+                  content: Text('Payment Successful! You can now board.'),
                   backgroundColor: Colors.green,
                 ),
               );
@@ -3374,7 +3308,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
               if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('Payment successful! Share OTP with driver.'),
+                  content: Text('Payment successful! You can now board.'),
                   backgroundColor: Colors.green,
                 ),
               );
@@ -3415,7 +3349,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Cash payment selected. Share OTP with driver.'),
+              content: Text('Cash payment selected. You can now board.'),
               backgroundColor: Colors.green,
             ),
           );

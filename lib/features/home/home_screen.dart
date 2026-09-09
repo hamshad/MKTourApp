@@ -122,19 +122,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _activeRide == null;
 
       if (shouldHandle) {
-        final String otp =
-            data['otp']?.toString() ??
-            data['verificationOTP']?.toString() ??
-            '';
-        final Map<String, dynamic> driverWithOtp = {
-          ...?(data['driver'] as Map<String, dynamic>?),
-          'otp': otp,
-        };
-        final enrichedData = {...data, 'driver': driverWithOtp};
-
+        // New flow: no ride OTP — driver data passes through untouched.
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && context.mounted) {
-            _handleRideAccepted(enrichedData);
+            _handleRideAccepted(data);
           }
         });
       }
@@ -368,8 +359,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       debugPrint('═══════════════════════════════════════════════════════');
       debugPrint('📦 [HomeScreen] Full data: $data');
       debugPrint('🔑 [HomeScreen] rideId: ${data['rideId'] ?? data['_id']}');
-      debugPrint('🔑 [HomeScreen] otp: ${data['otp']}');
-      debugPrint('🔑 [HomeScreen] verificationOTP: ${data['verificationOTP']}');
       debugPrint('👤 [HomeScreen] driver: ${data['driver']}');
       debugPrint('📍 [HomeScreen] pickupLocation: ${data['pickupLocation']}');
       debugPrint('📍 [HomeScreen] dropoffLocation: ${data['dropoffLocation']}');
@@ -405,27 +394,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       debugPrint('🔍 [HomeScreen] shouldHandle: $shouldHandle');
 
       if (shouldHandle) {
-        // Extract OTP from data (it's a separate field, not in driver object)
-        final String otp =
-            data['otp']?.toString() ??
-            data['verificationOTP']?.toString() ??
-            '';
-        debugPrint('🔐 [HomeScreen] Extracted OTP to pass: "$otp"');
-
-        // Build driver data with OTP included
-        final Map<String, dynamic> driverWithOtp = {
-          ...?(data['driver'] as Map<String, dynamic>?),
-          'otp': otp,
-        };
-        debugPrint('👤 [HomeScreen] Driver data with OTP: $driverWithOtp');
-
-        // Update driver in data object
-        final enrichedData = {...data, 'driver': driverWithOtp};
-
+        // New flow: no ride OTP — driver data passes through untouched.
         // Use post-frame callback to ensure UI is ready for navigation
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && context.mounted) {
-            _handleRideAccepted(enrichedData);
+            _handleRideAccepted(data);
           }
         });
       } else {
@@ -787,21 +760,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         if (status == 'in_progress') {
           Navigator.of(context).pushReplacementNamed('/ride-progress');
         } else {
-          // Inject OTP into the driver map when the backend still provides
-          // one — RideAssignedScreen reads the OTP from widget.driver['otp'].
-          // Nothing is read from device storage: the new flow has no ride OTP.
+          // New flow: no ride OTP anywhere — driver map passes through
+          // untouched (auth OTP paths are separate and unchanged).
           final Map<String, dynamic> driverMap = Map<String, dynamic>.from(
             (ride['driver'] is Map) ? ride['driver'] as Map : {},
           );
-          final String? otp = ride['otp']?.toString() ??
-              ride['verificationOTP']?.toString() ??
-              ride['verification_otp']?.toString() ??
-              (raw is Map ? raw['otp']?.toString() : null) ??
-              (raw is Map ? raw['verificationOTP']?.toString() : null);
-          if (otp != null) {
-            driverMap['otp'] = otp;
-            driverMap['verificationOTP'] = otp;
-          }
 
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(

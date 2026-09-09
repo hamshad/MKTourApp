@@ -3,12 +3,26 @@ import 'package:google_fonts/google_fonts.dart';
 import 'dart:async';
 
 /// A full-screen overlay shown when searching for a driver
-/// Displays animated searching indicator, ride details, and cancel button
+/// Displays animated searching indicator, ride details, and cancel button.
+///
+/// Three states (new ride flow):
+/// - searching: animated pulse + cancel CTA (default, [reassignmentCount] == 0)
+/// - reassigning: info banner "Finding you another driver…" with
+///   [reassignmentCount], keeps the cancel CTA, rider stays in flow
+/// - expired: no driver found → retry CTA ([isExpired] + [onRetry])
 class RideSearchingOverlay extends StatefulWidget {
   final Map<String, dynamic>? rideData;
   final VoidCallback onCancel;
   final VoidCallback? onTimerEnd; // Added callback for expiration
   final bool isLoading;
+
+  /// > 0 while the backend auto-reassigns after a driver cancel.
+  /// Shows the reassigning banner instead of the plain searching copy.
+  final int reassignmentCount;
+
+  /// True when the request expired with no driver — shows retry CTA.
+  final bool isExpired;
+  final VoidCallback? onRetry;
 
   const RideSearchingOverlay({
     super.key,
@@ -16,6 +30,9 @@ class RideSearchingOverlay extends StatefulWidget {
     required this.onCancel,
     this.onTimerEnd,
     this.isLoading = false,
+    this.reassignmentCount = 0,
+    this.isExpired = false,
+    this.onRetry,
   });
 
   @override
@@ -76,6 +93,7 @@ class _RideSearchingOverlayState extends State<RideSearchingOverlay>
         widget.rideData?['dropoffLocation']?['address'] ?? 'Destination';
     final fare = widget.rideData?['fare'] ?? 0;
     final distance = widget.rideData?['distance'] ?? 0;
+    final isReassigning = widget.reassignmentCount > 0 && !widget.isExpired;
 
     return Container(
       color: Colors.black.withOpacity(0.7),
@@ -154,26 +172,79 @@ class _RideSearchingOverlayState extends State<RideSearchingOverlay>
                           const SizedBox(height: 40),
 
                           // Finding driver text
-                          Text(
-                            'Finding your driver${'.' * _dotCount}',
-                            style: GoogleFonts.outfit(
-                              color: Colors.white,
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: -0.5,
+                          if (widget.isExpired)
+                            Text(
+                              'No driver found',
+                              style: GoogleFonts.outfit(
+                                color: Colors.white,
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: -0.5,
+                              ),
+                            )
+                          else
+                            Text(
+                              isReassigning
+                                  ? 'Finding you another driver${'.' * _dotCount}'
+                                  : 'Finding your driver${'.' * _dotCount}',
+                              style: GoogleFonts.outfit(
+                                color: Colors.white,
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: -0.5,
+                              ),
                             ),
-                          ),
 
                           const SizedBox(height: 12),
 
-                          Text(
-                            'Connecting you with nearby drivers',
-                            style: GoogleFonts.outfit(
-                              color: Colors.white.withOpacity(0.7),
-                              fontSize: 16,
-                              fontWeight: FontWeight.w400,
+                          if (isReassigning)
+                            Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 32),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 10,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.2),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(
+                                    Icons.autorenew,
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Flexible(
+                                    child: Text(
+                                      'Your driver cancelled — attempt ${widget.reassignmentCount}. Stay here, matching continues.',
+                                      style: GoogleFonts.outfit(
+                                        color: Colors.white.withOpacity(0.9),
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          else
+                            Text(
+                              widget.isExpired
+                                  ? 'No nearby drivers accepted in time'
+                                  : 'Connecting you with nearby drivers',
+                              style: GoogleFonts.outfit(
+                                color: Colors.white.withOpacity(0.7),
+                                fontSize: 16,
+                                fontWeight: FontWeight.w400,
+                              ),
                             ),
-                          ),
 
                           const Spacer(),
 
@@ -232,12 +303,52 @@ class _RideSearchingOverlayState extends State<RideSearchingOverlay>
                               top: 24,
                               bottom: 32 + MediaQuery.of(context).padding.bottom,
                             ),
-                            child: SizedBox(
-                              width: double.infinity,
-                              height: 56,
-                              child: OutlinedButton(
-                                onPressed:
-                                    widget.isLoading ? null : widget.onCancel,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // Expired → retry CTA (keeps cancel below)
+                                if (widget.isExpired)
+                                  SizedBox(
+                                    width: double.infinity,
+                                    height: 56,
+                                    child: ElevatedButton(
+                                      onPressed: widget.isLoading
+                                          ? null
+                                          : (widget.onRetry ??
+                                              widget.onTimerEnd),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(
+                                          0xFFFF6B35,
+                                        ),
+                                        foregroundColor: Colors.white,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            16,
+                                          ),
+                                        ),
+                                      ),
+                                      child: const FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        child: Text(
+                                          'Try Again',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                if (widget.isExpired) const SizedBox(height: 12),
+                                SizedBox(
+                                  width: double.infinity,
+                                  height: 56,
+                                  child: OutlinedButton(
+                                    onPressed: widget.isLoading
+                                        ? null
+                                        : widget.onCancel,
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: Colors.white,
                                   side: BorderSide(
@@ -269,9 +380,11 @@ class _RideSearchingOverlayState extends State<RideSearchingOverlay>
                                           ),
                                         ),
                                       ),
+                                ),
                               ),
-                            ),
+                            ],
                           ),
+                        ),
                         ],
                       ),
                     ),

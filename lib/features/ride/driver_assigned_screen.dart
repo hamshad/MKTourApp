@@ -8,7 +8,16 @@ import '../../core/widgets/custom_snackbar.dart';
 class DriverAssignedScreen extends StatefulWidget {
   final Map<String, dynamic> bookingData;
 
-  const DriverAssignedScreen({super.key, required this.bookingData});
+  /// Fired when the rider taps "Select payment to begin" after driver
+  /// arrival. Wired to the payment sheet (03-02) by the caller — the screen
+  /// keeps working when no callback is provided.
+  final VoidCallback? onSelectPayment;
+
+  const DriverAssignedScreen({
+    super.key,
+    required this.bookingData,
+    this.onSelectPayment,
+  });
 
   @override
   State<DriverAssignedScreen> createState() => _DriverAssignedScreenState();
@@ -21,11 +30,15 @@ class _DriverAssignedScreenState extends State<DriverAssignedScreen> {
   int _eta = 5;
   final SocketService _socketService = SocketService();
 
+  /// Set while the backend auto-reassigns after a driver cancel —
+  /// rider stays in flow with a calm banner, no panic dialog.
+  int _reassignmentCount = 0;
+  String? _reassignMessage;
+
   @override
   void initState() {
     super.initState();
     print('🚕 DRIVER ASSIGNED: Screen loaded');
-    print('🚕 DRIVER ASSIGNED: OTP = ${widget.bookingData['otp']}');
     print(
       '🚕 DRIVER ASSIGNED: Driver = ${widget.bookingData['driver']?['name']}',
     );
@@ -55,6 +68,20 @@ class _DriverAssignedScreenState extends State<DriverAssignedScreen> {
       if (!mounted) return;
       if (data['rideId'] == rideId) {
         _handleDriverCancellation(data);
+      }
+    });
+
+    // Backend auto-reassign channel (driver cancelled pre-pickup, ride alive)
+    _socketService.onDriverReassigning((data) {
+      if (!mounted) return;
+      final Map<String, dynamic> typed = data is Map<String, dynamic>
+          ? data
+          : data is Map
+              ? Map<String, dynamic>.from(data)
+              : <String, dynamic>{};
+      final dataRideId = typed['rideId'] ?? typed['_id'];
+      if (dataRideId == null || dataRideId.toString() == rideId?.toString()) {
+        _handleDriverReassigning(typed);
       }
     });
 
@@ -94,14 +121,54 @@ class _DriverAssignedScreenState extends State<DriverAssignedScreen> {
     });
   }
 
+  /// Driver cancelled pre-pickup but the backend reassigned the ride
+  /// (`reassigned: true`) — stay in flow with a calm banner, no panic.
+  void _handleDriverReassigning(Map<String, dynamic> data) {
+    final nested = data['data'];
+    final reassigned = data['reassigned'] == true ||
+        (nested is Map && nested['reassigned'] == true);
+    if (!reassigned) {
+      _handleDriverCancellation(data);
+      return;
+    }
+    final count = data['reassignmentCount'] ??
+        (nested is Map ? nested['reassignmentCount'] : null);
+    if (!mounted) return;
+    setState(() {
+      _reassignmentCount =
+          (count is num) ? count.toInt() : _reassignmentCount + 1;
+      _reassignMessage = data['message']?.toString() ??
+          'Your driver had to cancel. Finding you another driver…';
+      _currentStatus = 'driver_assigned';
+      _statusText = 'Finding you another driver…';
+    });
+    CustomSnackbar.show(
+      context,
+      message: _reassignMessage!,
+      type: SnackbarType.info,
+    );
+  }
+
   void _handleDriverCancellation(Map<String, dynamic> data) {
+    // Reassigned path keeps the rider in flow — handled above.
+    final nested = data['data'];
+    final reassigned = data['reassigned'] == true ||
+        (nested is Map && nested['reassigned'] == true);
+    if (reassigned) {
+      _handleDriverReassigning(
+        data is Map<String, dynamic> ? data : Map<String, dynamic>.from(data),
+      );
+      return;
+    }
+    final refundStatus =
+        data['refundStatus']?.toString() ?? 'processing';
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         title: const Text('Ride Cancelled'),
-        content: const Text(
-          'The driver had to cancel the ride. A full refund has been issued to your original payment method.',
+        content: Text(
+          'The driver had to cancel the ride. A full refund is $refundStatus.',
         ),
         actions: [
           TextButton(
@@ -147,6 +214,7 @@ class _DriverAssignedScreenState extends State<DriverAssignedScreen> {
     _socketService.off('ride:statusUpdate');
     _socketService.off('ride:cancelledByDriver');
     _socketService.off('ride:earlyCompleted');
+    _socketService.offDriverReassigning();
     super.dispose();
   }
 
@@ -183,7 +251,6 @@ class _DriverAssignedScreenState extends State<DriverAssignedScreen> {
   @override
   Widget build(BuildContext context) {
     final driver = widget.bookingData['driver'] ?? {};
-    final otp = widget.bookingData['otp'] ?? '0000';
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -238,7 +305,7 @@ class _DriverAssignedScreenState extends State<DriverAssignedScreen> {
               ),
             ),
 
-            // Bottom section with driver info and OTP
+            // Bottom section with driver info and trip actions
             Container(
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -270,84 +337,86 @@ class _DriverAssignedScreenState extends State<DriverAssignedScreen> {
 
                   const SizedBox(height: 24),
 
-                  // OTP Display (PROMINENT - Uber-style)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: AppTheme.accentColor.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: AppTheme.accentColor.withValues(alpha: 0.3),
-                          width: 1,
+                  // Reassign banner — driver cancelled, matching continues.
+                  if (_reassignmentCount > 0 && _reassignMessage != null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.blue.shade200),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.autorenew,
+                              color: Colors.blue.shade700,
+                              size: 22,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Finding you another driver…',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.blue.shade800,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Attempt $_reassignmentCount. Stay on this screen.',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.blue.shade600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: AppTheme.accentColor,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Icon(
-                              Icons.security,
-                              color: Colors.white,
-                              size: 28,
-                            ),
+                    ),
+
+                  if (_reassignmentCount > 0) const SizedBox(height: 16),
+
+                  // Driver-arrived → payment selection CTA (sheet from 03-02
+                  // via callback; falls back to an info note when absent).
+                  if (_currentStatus == 'driver_arrived')
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            if (widget.onSelectPayment != null) {
+                              widget.onSelectPayment!();
+                            } else {
+                              CustomSnackbar.show(
+                                context,
+                                message:
+                                    'Driver has arrived — select a payment method to begin.',
+                                type: SnackbarType.info,
+                              );
+                            }
+                          },
+                          icon: const Icon(Icons.payments_outlined, size: 20),
+                          label: const Text('Select payment to begin'),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
                           ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Your PIN',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: AppTheme.textSecondary,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  otp,
-                                  style: TextStyle(
-                                    fontSize: 36,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppTheme.accentColor,
-                                    letterSpacing: 4,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                'Share with',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: AppTheme.textSecondary,
-                                ),
-                              ),
-                              Text(
-                                'driver',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: AppTheme.textSecondary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
+                        ),
                       ),
                     ),
-                  ),
 
-                  const SizedBox(height: 24),
+                  if (_currentStatus == 'driver_arrived')
+                    const SizedBox(height: 16),
 
                   // Driver Card
                   Padding(

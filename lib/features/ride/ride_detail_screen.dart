@@ -4,6 +4,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../../core/widgets/platform_map.dart';
 import '../../core/services/places_service.dart';
+import '../../core/models/vehicle.dart';
 
 class RideDetailScreen extends StatefulWidget {
   final String rideId;
@@ -273,47 +274,114 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                     const SizedBox(height: 16),
                   ],
 
-                  // OTP
-                  if ((_rideDetails!['status'] == 'driver_assigned' ||
-                          _rideDetails!['status'] == 'driver_arrived') &&
-                      (_rideDetails!['verificationOTP'] != null ||
-                          _rideDetails!['otp'] != null)) ...[
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 12,
-                        horizontal: 16,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.blue.shade100),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  // Intermediate stops + wait-fee chip (new flow).
+                  // No OTP is shown anywhere in the ride flow.
+                  Builder(
+                    builder: (context) {
+                      final stops = parseRideStops(_rideDetails!['stops']);
+                      final totalWaitFee =
+                          ((_rideDetails!['totalWaitFee'] as num?) ?? 0)
+                              .toDouble();
+                      final totalWaitMinutes =
+                          ((_rideDetails!['totalWaitMinutes'] as num?) ?? 0)
+                              .toInt();
+                      if (stops.isEmpty && totalWaitFee <= 0) {
+                        return const SizedBox.shrink();
+                      }
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'OTP',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blue,
+                          if (totalWaitFee > 0)
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.amber.shade50,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: Colors.amber.shade200,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.timer_outlined,
+                                    size: 18,
+                                    color: Colors.amber.shade800,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Wait $totalWaitMinutes min (${WaitFeePolicy.freeMinutes} free) · £${totalWaitFee.toStringAsFixed(2)}',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.amber.shade800,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ...stops.map(
+                            (stop) => Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 22,
+                                    height: 22,
+                                    decoration: BoxDecoration(
+                                      color: stop.isCompleted
+                                          ? Colors.green
+                                          : stop.isArrived
+                                              ? Colors.blue
+                                              : Colors.grey.shade400,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        '${stop.stopOrder}',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      stop.address.isNotEmpty
+                                          ? stop.address
+                                          : 'Stop ${stop.stopOrder}',
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  Text(
+                                    stop.status,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                          Text(
-                            _rideDetails!['verificationOTP'] ??
-                                _rideDetails!['otp'] ??
-                                '',
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 4,
-                              color: Colors.blue,
-                            ),
-                          ),
+                          const SizedBox(height: 8),
                         ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
+                      );
+                    },
+                  ),
 
                   // Driver & Vehicle Info
                   if (_rideDetails!['driver'] != null) ...[
