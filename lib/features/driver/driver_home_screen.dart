@@ -1749,8 +1749,15 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       } else if (_status == 'arrived' || _status == 'driver_arrived') {
         // One-tap no-OTP start — no code entry on the driver side.
         await _startRideNoOtp();
+      } else if (_status == 'at_stop') {
+        // Main action mirrors the per-stop card: resume the trip.
+        await _handleStopResume();
       } else if (_status == 'in_progress') {
-        // Complete Ride
+        // Complete Ride — GPS is mandatory, never a silent fail.
+        if (!_gpsOkForCompletion()) {
+          _showGpsBlockedDialog();
+          return;
+        }
         final pos = _currentLocation;
         final response = await _apiService.completeRide(
           _currentRideId!,
@@ -1760,6 +1767,13 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         if (response['success'] == true) {
           final paymentMethod = _rideData?['paymentMethod'];
           final rideResult = response['data'] as Map<String, dynamic>? ?? {};
+          final summary = FareSummary.fromJson({
+            ...?_rideData,
+            ...rideResult,
+          });
+          setState(() {
+            _rideData = {...?_rideData, ...rideResult};
+          });
           final bool isPromoFreeRide =
               rideResult['isPromoRide'] == true &&
               (rideResult['fare'] is num
@@ -1780,16 +1794,18 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
                 _clearNavigationUi();
               });
               _fetchRideHistory();
-              CustomSnackbar.show(
-                context,
-                message: 'Promotional ride complete — no cash to collect.',
-                type: SnackbarType.success,
+              if (!mounted) return;
+              _showFareSummary(
+                summary: summary,
+                headline: 'Promotional ride complete',
+                subline: 'No cash to collect.',
               );
             } else {
-              CustomSnackbar.show(
+              if (!mounted) return;
+              ErrorDisplayHelper.showRideError(
                 context,
-                message: 'Failed to finalize: ${confirmResponse['message']}',
-                type: SnackbarType.error,
+                confirmResponse['message']?.toString() ?? 'Failed to finalize',
+                errors: confirmResponse['errors'],
               );
             }
           } else if (paymentMethod == 'cash') {
@@ -1797,11 +1813,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             _status = 'awaiting_cash_confirmation';
           });
           _persistActiveRide();
-          CustomSnackbar.show(
-            context,
-            message: 'Ride completed. Collect cash from passenger.',
-              type: SnackbarType.warning,
-            );
+          if (!mounted) return;
+          _showFareSummary(
+            summary: summary,
+            headline: 'Ride completed',
+            subline: 'Collect cash from the passenger.',
+          );
           } else {
             setState(() {
               _status = 'online';
@@ -1810,17 +1827,20 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
               _clearNavigationUi();
             });
             _fetchRideHistory();
-            CustomSnackbar.show(
-              context,
-              message: 'Ride completed successfully.',
-              type: SnackbarType.success,
+            if (!mounted) return;
+            _showFareSummary(
+              summary: summary,
+              headline: 'Ride completed successfully',
+              subline: null,
             );
           }
         } else {
-          CustomSnackbar.show(
+          if (!mounted) return;
+          ErrorDisplayHelper.showRideError(
             context,
-            message: 'Failed to complete: ${response['message']}',
-            type: SnackbarType.error,
+            response['message']?.toString() ?? 'Failed to complete',
+            errors: response['errors'],
+            onAction: _handleRideAction,
           );
         }
       } else if (_status == 'awaiting_cash_confirmation') {
@@ -1844,10 +1864,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           });
           _fetchRideHistory();
         } else {
-          CustomSnackbar.show(
+          if (!mounted) return;
+          ErrorDisplayHelper.showRideError(
             context,
-            message: 'Failed to confirm cash: ${response['message']}',
-            type: SnackbarType.error,
+            response['message']?.toString() ?? 'Failed to confirm cash',
+            errors: response['errors'],
+            onAction: _handleRideAction,
           );
         }
       }
@@ -1859,6 +1881,234 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       );
     } finally {
       setState(() => _isLoading = false);
+    }
+  }
+
+  /// GPS must be healthy to complete — a silent fail would strand payment.
+  bool _gpsOkForCompletion() {
+    return _gpsServiceProblem == null && !_noGpsSignal;
+  }
+
+  /// Blocking guidance when GPS is unavailable at completion time.
+  void _showGpsBlockedDialog() {
+    final detail = _gpsServiceProblem ??
+        'No GPS signal received. Completion needs your current location.';
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Location needed to complete'),
+        content: Text(
+          '$detail\n\nMove somewhere with a clear signal, then retry. '
+          'The trip stays open — nothing is lost.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              try {
+                await Geolocator.openLocationSettings();
+              } catch (_) {
+                // Settings can't be opened on some platforms — ignore.
+              }
+            },
+            child: const Text('Open settings'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _handleRideAction();
+            },
+            child: const Text('Retry'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Fare receipt after completion: actualFare + accumulated wait totals.
+  void _showFareSummary({
+    required FareSummary summary,
+    required String headline,
+    String? subline,
+  }) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(headline),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Trip total'),
+                Text(
+                  '£${summary.actualFare.toStringAsFixed(2)}',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.primaryColor,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text('Base fare £${summary.fare.toStringAsFixed(2)}'),
+            Text(
+              'Wait ${summary.totalWaitMinutes} min · '
+              '£${summary.totalWaitFee.toStringAsFixed(2)} fees',
+            ),
+            if (subline != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                subline,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Current stop label for proximity guidance ("stop #2").
+  String get _currentStopLabel {
+    final stops = parseRideStops(_rideData?['stops']);
+    final idx = (_rideData?['currentStopIndex'] as num?)?.toInt() ?? 0;
+    final active = stops.firstWhere(
+      (s) => !s.isCompleted,
+      orElse: () => const RideStop(),
+    );
+    final order = active.stopOrder != 0 ? active.stopOrder : idx + 1;
+    return 'stop #$order';
+  }
+
+  /// Mark arrival at the current intermediate stop (100m enforced backend).
+  /// Proximity errors reuse the persistent banner pattern from pickup.
+  Future<void> _handleStopArrive() async {
+    if (_currentRideId == null) return;
+    final manageLoading = !_isLoading;
+    if (manageLoading) setState(() => _isLoading = true);
+    try {
+      final response = await _apiService.stopArrive(
+        _currentRideId!,
+        _currentLocation.latitude,
+        _currentLocation.longitude,
+      );
+      if (response['success'] == true) {
+        final data = response['data'] is Map<String, dynamic>
+            ? Map<String, dynamic>.from(response['data'] as Map)
+            : <String, dynamic>{};
+        setState(() {
+          _status = 'at_stop';
+          _proximityDistance = null;
+          _proximityRequired = null;
+          _rideData = {...?_rideData, ...data};
+        });
+        _persistActiveRide();
+        if (!mounted) return;
+        CustomSnackbar.show(
+          context,
+          message: 'Arrived at ${_currentStopLabel} — waiting time started.',
+          type: SnackbarType.success,
+        );
+        _fetchNavigationRoute();
+      } else {
+        final errors = response['errors'];
+        final distance = errors is Map ? errors['distance'] : null;
+        if (distance != null) {
+          final distInt = distance is num
+              ? distance.toInt()
+              : int.tryParse(distance.toString()) ?? 0;
+          final reqRaw = errors is Map ? errors['required'] : null;
+          final reqInt = reqRaw is num
+              ? reqRaw.toInt()
+              : int.tryParse(reqRaw?.toString() ?? '') ?? 100;
+          setState(() {
+            _proximityDistance = distInt;
+            _proximityRequired = reqInt;
+            _proximityTarget = _currentStopLabel;
+          });
+        }
+        if (!mounted) return;
+        ErrorDisplayHelper.showRideError(
+          context,
+          response['message']?.toString() ?? 'Failed to arrive at stop',
+          errors: response['errors'],
+          onAction: _handleStopArrive,
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      CustomSnackbar.show(
+        context,
+        message: 'Error: $e',
+        type: SnackbarType.error,
+      );
+    } finally {
+      if (manageLoading && mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  /// Resume from the stop — backend accrues the leg wait fee into totals.
+  Future<void> _handleStopResume() async {
+    if (_currentRideId == null) return;
+    final manageLoading = !_isLoading;
+    if (manageLoading) setState(() => _isLoading = true);
+    try {
+      final response = await _apiService.stopResume(_currentRideId!);
+      if (response['success'] == true) {
+        final data = response['data'] is Map<String, dynamic>
+            ? Map<String, dynamic>.from(response['data'] as Map)
+            : <String, dynamic>{};
+        final totalFee = data['totalWaitFee'] is num
+            ? (data['totalWaitFee'] as num).toDouble()
+            : null;
+        final totalMins = data['totalWaitMinutes'] is num
+            ? (data['totalWaitMinutes'] as num).toInt()
+            : null;
+        setState(() {
+          _status = 'in_progress';
+          _proximityDistance = null;
+          _proximityRequired = null;
+          _rideData = {...?_rideData, ...data};
+        });
+        _persistActiveRide();
+        if (!mounted) return;
+        CustomSnackbar.show(
+          context,
+          message: totalFee != null
+              ? 'Trip resumed — wait total £${totalFee.toStringAsFixed(2)}'
+                  '${totalMins != null ? ' ($totalMins min)' : ''}.'
+              : 'Trip resumed.',
+          type: SnackbarType.success,
+        );
+        _fetchNavigationRoute();
+      } else {
+        if (!mounted) return;
+        ErrorDisplayHelper.showRideError(
+          context,
+          response['message']?.toString() ?? 'Failed to resume trip',
+          errors: response['errors'],
+          onAction: _handleStopResume,
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      CustomSnackbar.show(
+        context,
+        message: 'Error: $e',
+        type: SnackbarType.error,
+      );
+    } finally {
+      if (manageLoading && mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -1998,15 +2248,25 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       });
 
       if (response['success'] == true) {
+        // Pre-pickup cancel auto-reassigns: the ride lives on without this
+        // driver. That's an outcome, not an error.
+        final data = response['data'];
+        final reassigned = response['reassigned'] == true ||
+            (data is Map && data['reassigned'] == true);
         String message = 'Ride cancelled.';
-        if (isScheduled && response['data']?['driverPenaltyAmount'] != null) {
+        SnackbarType type = SnackbarType.success;
+        if (reassigned) {
+          message = 'Reassigned to another driver — you are back in the queue.';
+          type = SnackbarType.info;
+        } else if (isScheduled &&
+            response['data']?['driverPenaltyAmount'] != null) {
           final penalty = response['data']['driverPenaltyAmount'];
           message += ' A £${penalty.toStringAsFixed(2)} penalty was applied.';
         }
         CustomSnackbar.show(
           context,
           message: message,
-          type: SnackbarType.success,
+          type: type,
         );
       } else {
         CustomSnackbar.show(
@@ -2537,6 +2797,15 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         _status == 'at_stop' ||
         _status == 'awaiting_payment' ||
         _status == 'awaiting_cash_confirmation') {
+      final stops = parseRideStops(_rideData?['stops']);
+      final stopIndex =
+          (_rideData?['currentStopIndex'] as num?)?.toInt() ?? 0;
+      final waitMinutes =
+          (_rideData?['totalWaitMinutes'] as num?)?.toInt();
+      final waitFee = _rideData?['totalWaitFee'] is num
+          ? (_rideData!['totalWaitFee'] as num).toDouble()
+          : null;
+      final farePreview = FareSummary.parse(_rideData).actualFare;
       return DriverNavigationPanel(
         // Backend may report driver_arrived; panel treats it as arrived
         // (same one-tap Start Trip action).
@@ -2548,6 +2817,13 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         navigationState: _navigationState,
         isLoading: _isLoading,
         freeWaitLabel: _freeWaitLabel,
+        stops: stops,
+        currentStopIndex: stopIndex,
+        onStopArrive: _handleStopArrive,
+        onStopResume: _handleStopResume,
+        totalWaitMinutes: waitMinutes,
+        totalWaitFee: waitFee,
+        farePreview: farePreview > 0 ? farePreview : null,
       );
     } else {
       return _buildOfflineOnlineContent();
