@@ -4,7 +4,8 @@
 /// - [requested] - Initial state when rider requests a ride
 /// - [accepted] - Driver has accepted the ride request
 /// - [arrived] - Driver has arrived at pickup location
-/// - [inProgress] - Ride is in progress (started after OTP verification)
+/// - [inProgress] - Ride is in progress (started, no OTP required)
+/// - [atStop] - Driver is waiting at an intermediate stop
 /// - [completed] - Ride completed normally
 /// - [earlyCompleted] - Ride ended early by driver with recalculated fare
 /// - [cancelled] - Ride was cancelled
@@ -14,6 +15,7 @@ enum RideStatus {
   accepted,
   arrived,
   inProgress,
+  atStop,
   completed,
   earlyCompleted,
   cancelled,
@@ -30,6 +32,8 @@ enum RideStatus {
         return 'arrived';
       case RideStatus.inProgress:
         return 'in_progress';
+      case RideStatus.atStop:
+        return 'at_stop';
       case RideStatus.completed:
         return 'completed';
       case RideStatus.earlyCompleted:
@@ -56,11 +60,15 @@ enum RideStatus {
       case 'in_progress':
       case 'started': // Legacy support
         return RideStatus.inProgress;
+      case 'at_stop':
+        return RideStatus.atStop;
       case 'completed':
         return RideStatus.completed;
       case 'early_completed':
         return RideStatus.earlyCompleted;
       case 'cancelled':
+      case 'cancelled_by_user':
+      case 'cancelled_by_driver':
         return RideStatus.cancelled;
       case 'expired':
         return RideStatus.expired;
@@ -80,6 +88,8 @@ enum RideStatus {
         return 'Driver Arrived';
       case RideStatus.inProgress:
         return 'In Progress';
+      case RideStatus.atStop:
+        return 'At Stop';
       case RideStatus.completed:
         return 'Completed';
       case RideStatus.earlyCompleted:
@@ -96,7 +106,8 @@ enum RideStatus {
     return this == RideStatus.requested ||
         this == RideStatus.accepted ||
         this == RideStatus.arrived ||
-        this == RideStatus.inProgress;
+        this == RideStatus.inProgress ||
+        this == RideStatus.atStop;
   }
 
   /// Check if ride is in a final state

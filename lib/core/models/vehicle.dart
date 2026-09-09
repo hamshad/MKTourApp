@@ -367,3 +367,254 @@ class EndRideEarlyResponse {
     return 'EndRideEarlyResponse(status: $status, actualDistance: $actualDistance, fare: $fare, paymentStatus: $paymentStatus)';
   }
 }
+
+/// Single source of truth for wait-fee math (mirrors backend).
+///
+/// Backend rule: 5-minute free window per stop/pickup, then £0.35/min.
+/// UI must never hardcode these numbers — import from here.
+class WaitFeePolicy {
+  static const int freeMinutes = 5;
+  static const double perMinuteRate = 0.35;
+
+  /// Billable minutes after the free window.
+  static int billableMinutes(int waitTimeMinutes) {
+    final billable = waitTimeMinutes - freeMinutes;
+    return billable > 0 ? billable : 0;
+  }
+
+  /// Expected fee for a wait duration (for display/cross-check only —
+  /// the backend-computed `waitFee` is authoritative).
+  static double feeFor(int waitTimeMinutes) =>
+      billableMinutes(waitTimeMinutes) * perMinuteRate;
+}
+
+/// Status of a single intermediate stop.
+class RideStopStatus {
+  static const String pending = 'pending';
+  static const String arrived = 'arrived';
+  static const String completed = 'completed';
+}
+
+double _asDouble(dynamic value, [double fallback = 0.0]) {
+  if (value == null) return fallback;
+  if (value is double) return value;
+  if (value is int) return value.toDouble();
+  if (value is String) return double.tryParse(value) ?? fallback;
+  return fallback;
+}
+
+int _asInt(dynamic value, [int fallback = 0]) {
+  if (value == null) return fallback;
+  if (value is int) return value;
+  if (value is double) return value.round();
+  if (value is String) return int.tryParse(value) ?? fallback;
+  return fallback;
+}
+
+List<double>? _asCoordinates(dynamic value) {
+  if (value is! List || value.length < 2) return null;
+  final lng = _asDouble(value[0], double.nan);
+  final lat = _asDouble(value[1], double.nan);
+  if (lng.isNaN || lat.isNaN) return null;
+  return [lng, lat];
+}
+
+/// One intermediate stop on a multi-stop trip.
+///
+/// Tolerant of partial backend payloads: every field falls back to a
+/// sensible default so `fromJson` never throws.
+class RideStop {
+  final int stopOrder;
+  final String address;
+  final List<double>? coordinates; // [longitude, latitude]
+  final String status; // pending | arrived | completed
+  final String? arrivedAt;
+  final String? departedAt;
+  final int waitTimeMinutes;
+  final double waitFee;
+
+  const RideStop({
+    this.stopOrder = 0,
+    this.address = '',
+    this.coordinates,
+    this.status = RideStopStatus.pending,
+    this.arrivedAt,
+    this.departedAt,
+    this.waitTimeMinutes = 0,
+    this.waitFee = 0.0,
+  });
+
+  factory RideStop.fromJson(Map<String, dynamic> json) {
+    final rawStatus = (json['status'] ?? RideStopStatus.pending).toString();
+    final status = {
+      RideStopStatus.pending,
+      RideStopStatus.arrived,
+      RideStopStatus.completed,
+    }.contains(rawStatus)
+        ? rawStatus
+        : RideStopStatus.pending;
+    return RideStop(
+      stopOrder: _asInt(json['stopOrder']),
+      address: (json['address'] ?? '').toString(),
+      coordinates: _asCoordinates(json['coordinates']),
+      status: status,
+      arrivedAt: json['arrivedAt']?.toString(),
+      departedAt: json['departedAt']?.toString(),
+      waitTimeMinutes: _asInt(json['waitTimeMinutes']),
+      waitFee: _asDouble(json['waitFee']),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'stopOrder': stopOrder,
+      'address': address,
+      if (coordinates != null) 'coordinates': coordinates,
+      'status': status,
+      if (arrivedAt != null) 'arrivedAt': arrivedAt,
+      if (departedAt != null) 'departedAt': departedAt,
+      'waitTimeMinutes': waitTimeMinutes,
+      'waitFee': waitFee,
+    };
+  }
+
+  bool get isPending => status == RideStopStatus.pending;
+  bool get isArrived => status == RideStopStatus.arrived;
+  bool get isCompleted => status == RideStopStatus.completed;
+
+  RideStop copyWith({
+    int? stopOrder,
+    String? address,
+    List<double>? coordinates,
+    String? status,
+    String? arrivedAt,
+    String? departedAt,
+    int? waitTimeMinutes,
+    double? waitFee,
+  }) {
+    return RideStop(
+      stopOrder: stopOrder ?? this.stopOrder,
+      address: address ?? this.address,
+      coordinates: coordinates ?? this.coordinates,
+      status: status ?? this.status,
+      arrivedAt: arrivedAt ?? this.arrivedAt,
+      departedAt: departedAt ?? this.departedAt,
+      waitTimeMinutes: waitTimeMinutes ?? this.waitTimeMinutes,
+      waitFee: waitFee ?? this.waitFee,
+    );
+  }
+
+  @override
+  String toString() =>
+      'RideStop(order: $stopOrder, status: $status, wait: ${waitTimeMinutes}min/£$waitFee)';
+}
+
+/// Parse a stops array from any ride payload — returns [] on missing/malformed.
+List<RideStop> parseRideStops(dynamic raw) {
+  if (raw is! List) return [];
+  final stops = <RideStop>[];
+  for (final item in raw) {
+    if (item is Map<String, dynamic>) {
+      stops.add(RideStop.fromJson(item));
+    } else if (item is Map) {
+      stops.add(RideStop.fromJson(Map<String, dynamic>.from(item)));
+    }
+  }
+  return stops;
+}
+
+/// Pickup wait details returned by `POST /rides/:id/start`.
+class PickupWait {
+  final String? arrivedAt;
+  final String? startedAt;
+  final int waitTimeMinutes;
+  final double waitFee;
+
+  const PickupWait({
+    this.arrivedAt,
+    this.startedAt,
+    this.waitTimeMinutes = 0,
+    this.waitFee = 0.0,
+  });
+
+  factory PickupWait.fromJson(Map<String, dynamic> json) {
+    return PickupWait(
+      arrivedAt: json['arrivedAt']?.toString(),
+      startedAt: json['startedAt']?.toString(),
+      waitTimeMinutes: _asInt(json['waitTimeMinutes']),
+      waitFee: _asDouble(json['waitFee']),
+    );
+  }
+
+  /// Tolerant: non-map input yields an empty (zero-wait) instance.
+  factory PickupWait.parse(dynamic raw) {
+    if (raw is Map<String, dynamic>) return PickupWait.fromJson(raw);
+    if (raw is Map) return PickupWait.fromJson(Map<String, dynamic>.from(raw));
+    return const PickupWait();
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (arrivedAt != null) 'arrivedAt': arrivedAt,
+      if (startedAt != null) 'startedAt': startedAt,
+      'waitTimeMinutes': waitTimeMinutes,
+      'waitFee': waitFee,
+    };
+  }
+
+  @override
+  String toString() =>
+      'PickupWait(${waitTimeMinutes}min, £$waitFee)';
+}
+
+/// Fare breakdown returned by complete/resume payloads.
+class FareSummary {
+  final double fare;
+  final int totalWaitMinutes;
+  final double totalWaitFee;
+  final double actualFare;
+
+  const FareSummary({
+    this.fare = 0.0,
+    this.totalWaitMinutes = 0,
+    this.totalWaitFee = 0.0,
+    this.actualFare = 0.0,
+  });
+
+  /// Tolerant: missing `actualFare` is derived as fare + wait fee.
+  factory FareSummary.fromJson(Map<String, dynamic> json) {
+    final fare = _asDouble(json['fare'] ?? json['estimatedFare']);
+    final totalWaitMinutes = _asInt(json['totalWaitMinutes']);
+    final totalWaitFee = _asDouble(json['totalWaitFee']);
+    final rawActual = json['actualFare'];
+    final actualFare = rawActual == null
+        ? fare + totalWaitFee
+        : _asDouble(rawActual);
+    return FareSummary(
+      fare: fare,
+      totalWaitMinutes: totalWaitMinutes,
+      totalWaitFee: totalWaitFee,
+      actualFare: actualFare,
+    );
+  }
+
+  /// Tolerant: non-map input yields a zero summary.
+  factory FareSummary.parse(dynamic raw) {
+    if (raw is Map<String, dynamic>) return FareSummary.fromJson(raw);
+    if (raw is Map) return FareSummary.fromJson(Map<String, dynamic>.from(raw));
+    return const FareSummary();
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'fare': fare,
+      'totalWaitMinutes': totalWaitMinutes,
+      'totalWaitFee': totalWaitFee,
+      'actualFare': actualFare,
+    };
+  }
+
+  @override
+  String toString() =>
+      'FareSummary(fare: £$fare, wait: ${totalWaitMinutes}min/£$totalWaitFee, actual: £$actualFare)';
+}
