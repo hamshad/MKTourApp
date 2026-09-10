@@ -13,6 +13,7 @@
 - 04-01: Driver trip execution — proximity banner arrive, no-OTP start, stops + totals, fare dialog, reasoned sheets (`89234e6`, `a652414`, `d72fcd4`)
 - 04-02: Cross-flow polish — live sync + restore, visual sweep, cash/link-only sheet, FCM/socket dedupe, cash-race fix, rider at_stop, backend wait policy (`95fc87d`, `ad064eb`, `6b7b7fc`, `a35a7e6`, `cca97c0`, `d83cac9`, `197c86d`, `1c93f38`)
 - 05-01: Scheduled ride endpoints — pool, driver list, user/driver cancel (`d23f16b`)
+- 05-02: Models + error mapping + persistence — ScheduledRide, booking-window errors, storage keys (`077d3e1`, `1da279f`)
 
 ## Decisions
 - [02-01] OTP dialog UI left in place; only API call path made OTP-free (UI strip-out in 03-01)
@@ -31,10 +32,12 @@
 - [04-02] Payment attempts carry generation counter; stale link-cancel callbacks never touch newer flows
 - [04-02] Cash success syncs authoritative status immediately; backend wait policy wins, constants fallback-only
 - [05-01] Cancel methods return decoded backend errors (no throw) — callers display conflict messages
+- [05-02] AddressLocation defined in scheduled_ride.dart (no existing location model in codebase)
+- [05-02] ScheduledPayment.fromMap tolerates both Map and Map<String, dynamic>
 
 ## Blockers
 - None
 
 ## Session
-- Last session: Completed 05-01-PLAN.md (2026-09-10, 1 feat commit, SUMMARY at phases/05-prebook-foundation/05-01-SUMMARY.md). Stopped after plan completion.
-- Previous: Completed 04-02-PLAN.md (2026-09-09, 8 feat commits, SUMMARY at phases/04-driver-flow-polish/04-02-SUMMARY.md).
+- Last session: Completed 05-02-PLAN.md (2026-09-10, 2 feat commits, SUMMARY at phases/05-prebook-foundation/05-02-SUMMARY.md). Stopped after plan completion.
+- Previous: Completed 05-01-PLAN.md (2026-09-10, 1 feat commit, SUMMARY at phases/05-prebook-foundation/05-01-SUMMARY.md).
