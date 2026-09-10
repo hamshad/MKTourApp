@@ -1,9 +1,9 @@
 # MK Tours - Project State
 
 ## Current Position
-- **Phase:** 05-prebook-foundation — In Progress (2/2 plans)
-- **Plan:** 05-02 — Complete (2026-09-10)
-- **Next:** Phase transition / milestone review
+- **Phase:** 06-rider-prebook — In Progress (1/2 plans)
+- **Plan:** 06-01 — Complete (2026-09-10)
+- **Next:** 06-02 — Scheduled ride list and status management
 
 ## Completed Plans
 - 02-01: Ride-flow API layer — no-OTP startRide, stopArrive/stopResume, stops-aware fare/create, reason cancel, fixed end-early (`c0c7d26`, `0e95c3b`)
@@ -14,6 +14,7 @@
 - 04-02: Cross-flow polish — live sync + restore, visual sweep, cash/link-only sheet, FCM/socket dedupe, cash-race fix, rider at_stop, backend wait policy (`95fc87d`, `ad064eb`, `6b7b7fc`, `a35a7e6`, `cca97c0`, `d83cac9`, `197c86d`, `1c93f38`)
 - 05-01: Scheduled ride endpoints — pool, driver list, user/driver cancel (`d23f16b`)
 - 05-02: Models + error mapping + persistence — ScheduledRide, booking-window errors, storage keys (`077d3e1`, `1da279f`)
+- 06-01: Schedule creation + payment routing — SchedulePayload, 2h-30d constraint, paymentUrl/clientSecret routing (`ef8920b`, `76c38fc`)
 
 ## Decisions
 - [02-01] OTP dialog UI left in place; only API call path made OTP-free (UI strip-out in 03-01)
@@ -34,10 +35,14 @@
 - [05-01] Cancel methods return decoded backend errors (no throw) — callers display conflict messages
 - [05-02] AddressLocation defined in scheduled_ride.dart (no existing location model in codebase)
 - [05-02] ScheduledPayment.fromMap tolerates both Map and Map<String, dynamic>
+- [06-01] SchedulePayload struct replaces raw DateTime+notes callback for type safety
+- [06-01] ISO8601 UTC pickupTime built from local DateTime in sheet, not at API call site
+- [06-01] Payment routing reuses PaymentService.bookRideWithPayment with scheduledAt param
+- [06-01] Schedule button placed alongside Confirm Booking as outlined secondary action
 
 ## Blockers
 - None
 
 ## Session
-- Last session: Completed 05-02-PLAN.md (2026-09-10, 2 feat commits, SUMMARY at phases/05-prebook-foundation/05-02-SUMMARY.md). Stopped after plan completion.
-- Previous: Completed 05-01-PLAN.md (2026-09-10, 1 feat commit, SUMMARY at phases/05-prebook-foundation/05-01-SUMMARY.md).
+- Last session: Completed 06-01-PLAN.md (2026-09-10, 2 feat commits, SUMMARY at phases/06-rider-prebook/06-01-SUMMARY.md). Stopped after plan completion.
+- Previous: Completed 05-02-PLAN.md (2026-09-10, 2 feat commits, SUMMARY at phases/05-prebook-foundation/05-02-SUMMARY.md).

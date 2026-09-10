@@ -8,8 +8,8 @@
 | 02 | Ride Flow Foundation | Complete | 2 | RIDE-01..04, RIDE-06, RIDE-09..12 |
 | 03 | Rider Ride Flow | Complete | 2 | RIDE-01, RIDE-02, RIDE-05, RIDE-07..09 |
 | 04 | Driver Flow + Polish | Complete | 2 | RIDE-03, RIDE-04, RIDE-06, RIDE-07..12 |
-| 05 | Prebook Flow Foundation | In Progress | 2 | PREBOOK-01..04 |
-| 06 | Rider Prebook Flow | Planned | 2 | PREBOOK-01..06 |
+| 05 | Prebook Flow Foundation | Complete    | 2026-09-10 | PREBOOK-01..04 |
+| 06 | 1/2 | In Progress|  | PREBOOK-01..06 |
 | 07 | Driver Prebook Flow | Planned | 2 | PREBOOK-03..07 |
 
 ---
@@ -127,7 +127,7 @@
 - **PREBOOK-04**: Accept scheduled ride with schedule-conflict error paths
 
 **Plans:**
-1/? plans complete
+2/2 plans complete
 - [x] `05-01-PLAN.md` — Scheduled ride endpoints (pool, driver list, user/driver cancel)
 - [ ] `05-02-PLAN.md` — (next plan)
 
