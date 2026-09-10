@@ -459,8 +459,9 @@ class PaymentService {
 
   /// Cancel a scheduled ride as user
   static Future<Map<String, dynamic>> cancelScheduledRideUser(
-    String rideId,
-  ) async {
+    String rideId, {
+    String? reason,
+  }) async {
     try {
       debugPrint(
         '📅 PaymentService: Cancelling scheduled ride (user): $rideId',
@@ -469,7 +470,13 @@ class PaymentService {
 
       final response = await http.post(
         Uri.parse(ApiConstants.cancelScheduledRideUser(rideId)),
-        headers: headers,
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          if (reason != null) 'cancellationReason': reason,
+        }),
       );
 
       debugPrint('📅 PaymentService: Cancel response: ${response.statusCode}');

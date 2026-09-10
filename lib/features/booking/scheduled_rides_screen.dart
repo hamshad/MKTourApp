@@ -71,59 +71,113 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
 
   void _showCancelDialog(ScheduledRide ride) {
     final depositStr = '£${ride.depositAmount.toStringAsFixed(2)}';
+    String? selectedReason;
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Cancel Scheduled Ride?'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Cancellation policy:'),
-            const SizedBox(height: 12),
-            _policyRow(
-              Icons.check_circle,
-              Colors.green,
-              'Within 4 hours of booking — free cancel',
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Cancel Scheduled Ride?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Cancellation policy:'),
+              const SizedBox(height: 12),
+              _policyRow(
+                Icons.check_circle,
+                Colors.green,
+                'Within 4 hours of booking — free cancel',
+              ),
+              const SizedBox(height: 6),
+              _policyRow(
+                Icons.check_circle,
+                Colors.green,
+                'Pickup ≥ 2 hours away — free cancel',
+              ),
+              const SizedBox(height: 6),
+              _policyRow(
+                Icons.cancel,
+                Colors.red,
+                'Otherwise — deposit $depositStr forfeited',
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Reason (optional):',
+                style: TextStyle(fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  _reasonChip('Plan changed', selectedReason, (v) {
+                    setDialogState(() => selectedReason = v);
+                  }),
+                  _reasonChip('Found alternative', selectedReason, (v) {
+                    setDialogState(() => selectedReason = v);
+                  }),
+                  _reasonChip('No longer needed', selectedReason, (v) {
+                    setDialogState(() => selectedReason = v);
+                  }),
+                  _reasonChip('Emergency', selectedReason, (v) {
+                    setDialogState(() => selectedReason = v);
+                  }),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Keep Ride'),
             ),
-            const SizedBox(height: 6),
-            _policyRow(
-              Icons.check_circle,
-              Colors.green,
-              'Pickup ≥ 2 hours away — free cancel',
-            ),
-            const SizedBox(height: 6),
-            _policyRow(
-              Icons.cancel,
-              Colors.red,
-              'Otherwise — deposit $depositStr forfeited',
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _cancelRide(ride, reason: selectedReason);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: const Text(
+                'Cancel Ride',
+                style: TextStyle(color: Colors.white),
+              ),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Keep Ride'),
+      ),
+    );
+  }
+
+  Widget _reasonChip(String label, String? selected, ValueChanged<String> onTap) {
+    final isSelected = selected == label;
+    return GestureDetector(
+      onTap: () => onTap(isSelected ? '' : label),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppTheme.primaryColor.withValues(alpha: 0.1)
+              : Colors.grey[100],
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? AppTheme.primaryColor : Colors.grey[300]!,
           ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              _cancelRide(ride);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-            child: const Text(
-              'Cancel Ride',
-              style: TextStyle(color: Colors.white),
-            ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            color: isSelected ? AppTheme.primaryColor : Colors.grey[700],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -187,7 +241,7 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
     }
   }
 
-  Future<void> _cancelRide(ScheduledRide ride) async {
+  Future<void> _cancelRide(ScheduledRide ride, {String? reason}) async {
     final rideId = ride.id;
 
     // Optimistic UI — update status immediately
@@ -216,7 +270,10 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
     });
 
     try {
-      final response = await PaymentService.cancelScheduledRideUser(rideId);
+      final response = await PaymentService.cancelScheduledRideUser(
+        rideId,
+        reason: reason,
+      );
 
       if (!mounted) return;
 
