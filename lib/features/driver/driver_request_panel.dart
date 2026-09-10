@@ -11,6 +11,7 @@ class DriverRequestPanel extends StatefulWidget {
   final VoidCallback onDecline;
   final Map<String, dynamic>? rideData;
   final bool isLoading;
+  final String? acceptError;
 
   const DriverRequestPanel({
     super.key,
@@ -18,6 +19,7 @@ class DriverRequestPanel extends StatefulWidget {
     required this.onDecline,
     this.rideData,
     this.isLoading = false,
+    this.acceptError,
   });
 
   @override
@@ -472,6 +474,36 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
               ),
             ],
           ),
+
+          // Accept Error Banner
+          if (widget.acceptError != null) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.red[200]!),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.error_outline, color: Colors.red[700], size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      widget.acceptError!,
+                      style: TextStyle(
+                        color: Colors.red[800],
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
 
           // Action Buttons
           Padding(

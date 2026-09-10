@@ -108,6 +108,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   StreamSubscription<FcmNotificationData>? _fcmSubscription;
   StreamSubscription<FcmNotificationData>? _fcmForegroundSubscription;
 
+  // Scheduled pool state
+  List<dynamic> _scheduledPool = [];
+  bool _isPoolLoading = false;
+  String? _acceptError;
+
   // Proximity guidance: set on 400 distance errors (pickup or stop), cleared
   // on success. Drives the persistent banner — never a dismiss-only toast.
   int? _proximityDistance;
@@ -394,6 +399,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       
       debugPrint('🚖 [DriverHomeScreen] Initializing Socket and listeners...');
       await _initSocketAndListeners();
+
+      // If online, fetch scheduled pool
+      if (_status == 'online') {
+        _fetchScheduledPool();
+      }
 
       // Restore an active ride from local storage (accept -> kill app -> reopen).
       await _restoreActiveRideFromStorage();
@@ -1005,31 +1015,32 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     );
   }
 
-  /// Free-wait chip label after arrival (backend values, policy fallback).
+  /// Free-wait chip label after arrival. Null unless the backend actually
+  /// sent a per-ride policy — never show invented defaults.
   String? get _freeWaitLabel {
     if (_status != 'arrived' &&
         _status != 'driver_arrived' &&
         _status != 'at_stop') {
       return null;
     }
-    final mins = _freeWaitMinutes ?? WaitFeePolicy.freeMinutes;
-    final rate = _freeWaitRate ?? WaitFeePolicy.perMinuteRate;
+    final mins = _freeWaitMinutes;
+    final rate = _freeWaitRate;
+    if (mins == null || rate == null) return null;
     return '$mins min free · £${rate.toStringAsFixed(2)}/min after';
   }
 
   /// Harvest per-ride wait policy from a backend payload (arrive /
   /// stop-arrive / ride snapshots carry `freeMinutes` + `perMinuteRate`).
-  /// Falls back to [WaitFeePolicy] defaults only when the backend omits them.
+  /// Missing keys stay null so no wait UI is shown — no silent defaults.
   void _harvestWaitPolicy(Map<String, dynamic> data) {
     final fm = data['freeMinutes'];
     _freeWaitMinutes = fm is num
         ? fm.toInt()
-        : int.tryParse(fm?.toString() ?? '') ?? WaitFeePolicy.freeMinutes;
+        : int.tryParse(fm?.toString() ?? '');
     final rate = data['perMinuteRate'];
     _freeWaitRate = rate is num
         ? rate.toDouble()
-        : double.tryParse(rate?.toString() ?? '') ??
-              WaitFeePolicy.perMinuteRate;
+        : double.tryParse(rate?.toString() ?? '');
   }
 
   void _emitLocationUpdate(double lat, double lng) {    final user = Provider.of<AuthProvider>(context, listen: false).user;
@@ -1374,6 +1385,69 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     return m;
   }
 
+  /// Fetch scheduled pool when driver is online
+  Future<void> _fetchScheduledPool() async {
+    if (_status != 'online' || !mounted) return;
+    setState(() => _isPoolLoading = true);
+    try {
+      final response = await _apiService.getScheduledPool();
+      if (mounted && response['success'] == true) {
+        final data = response['data'];
+        setState(() {
+          _scheduledPool = data is List ? data : [];
+        });
+      }
+    } catch (e) {
+      debugPrint('🔴 [DriverHomeScreen] Error fetching scheduled pool: $e');
+    } finally {
+      if (mounted) setState(() => _isPoolLoading = false);
+    }
+  }
+
+  /// Claim a scheduled ride from the pool
+  Future<void> _claimScheduledRide(Map<String, dynamic> ride) async {
+    final rideId = ride['_id']?.toString();
+    if (rideId == null) return;
+    setState(() => _isLoading = true);
+    try {
+      final response = await _apiService.acceptRide(rideId);
+      if (response['success'] == true) {
+        AudioService.instance.stop();
+        final data = response['data'];
+        final newData = data is Map<String, dynamic> ? data : <String, dynamic>{};
+        setState(() {
+          _status = 'pickup';
+          _currentRideId = newData['_id']?.toString() ?? rideId;
+          _rideData = {...ride, ...newData};
+        });
+        _persistActiveRide();
+        _fetchNavigationRoute();
+        CustomSnackbar.show(
+          context,
+          message: 'Scheduled ride claimed!',
+          type: SnackbarType.success,
+        );
+        // Refresh pool to remove claimed ride
+        _fetchScheduledPool();
+      } else {
+        final message = response['message']?.toString() ?? 'Failed to claim ride';
+        ErrorDisplayHelper.showRideError(
+          context,
+          message,
+          errors: response['errors'],
+        );
+      }
+    } catch (e) {
+      CustomSnackbar.show(
+        context,
+        message: 'Error: $e',
+        type: SnackbarType.error,
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   void _handleNewRideRequest(dynamic data) {
     debugPrint(
       '🔔 [DriverHomeScreen] Handling request. Current status: $_status',
@@ -1391,6 +1465,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         _status = 'request';
         _currentRideId = normalised['rideId'] ?? normalised['_id'];
         _rideData = normalised;
+        _acceptError = null;
       });
 
       // Show notification
@@ -1455,8 +1530,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           if (isGoingOnline) {
             _emitDriverOnline();
             _startLocationUpdates();
+            _fetchScheduledPool();
           } else {
             _positionStreamSubscription?.cancel();
+            setState(() => _scheduledPool = []);
             // Optional: emit driver:goOffline
           }
         }
@@ -1690,6 +1767,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           AudioService.instance.stop();
           setState(() {
             _status = 'pickup';
+            _acceptError = null;
             if (response['data'] != null) {
               final newData = response['data'] as Map<String, dynamic>;
               _rideData = {...?_rideData, ...newData};
@@ -1705,11 +1783,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           // Fetch navigation route to pickup
           _fetchNavigationRoute();
         } else {
-          CustomSnackbar.show(
-            context,
-            message: 'Failed to accept: ${response['message']}',
-            type: SnackbarType.error,
-          );
+          final message = response['message']?.toString() ?? 'Failed to accept ride';
+          final info = RideErrorMapper.map(message, response['errors']);
+          setState(() => _acceptError = '${info.title}: ${info.copy}');
         }
       } else if (_status == 'pickup') {
         // Arrive at Pickup
@@ -1980,10 +2056,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             ),
             const SizedBox(height: 12),
             Text('Base fare £${summary.fare.toStringAsFixed(2)}'),
-            Text(
-              'Wait ${summary.totalWaitMinutes} min · '
-              '£${summary.totalWaitFee.toStringAsFixed(2)} fees',
-            ),
+            if (summary.totalWaitMinutes > 0 || summary.totalWaitFee > 0)
+              Text(
+                'Wait ${summary.totalWaitMinutes} min · '
+                '£${summary.totalWaitFee.toStringAsFixed(2)} fees',
+              ),
             if (subline != null) ...[
               const SizedBox(height: 12),
               Text(
@@ -2999,6 +3076,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         onAccept: _handleRideAction,
         onDecline: _declineRide,
         isLoading: _isLoading,
+        acceptError: _acceptError,
       );
     } else if (_status == 'pickup' ||
         _status == 'arrived' ||
@@ -3209,6 +3287,54 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
                   else
                     ..._recentRides.map((ride) => _buildRideItem(ride)),
                   const SizedBox(height: 20),
+
+                  // Scheduled Pool Section
+                  if (_status == 'online') ...[
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Upcoming Scheduled Rides',
+                          style: GoogleFonts.outfit(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.textPrimary,
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: _fetchScheduledPool,
+                          child: Text(
+                            'Refresh',
+                            style: GoogleFonts.outfit(
+                              color: AppTheme.primaryColor,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (_isPoolLoading && _scheduledPool.isEmpty)
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(20.0),
+                          child: CircularProgressIndicator(),
+                        ),
+                      )
+                    else if (_scheduledPool.isEmpty)
+                      Center(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 20),
+                          child: Text(
+                            'No scheduled rides available',
+                            style: GoogleFonts.outfit(color: Colors.grey),
+                          ),
+                        ),
+                      )
+                    else
+                      ..._scheduledPool.map((ride) => _buildScheduledPoolTile(ride)),
+                    const SizedBox(height: 20),
+                  ],
                 ],
               ),
             ),
@@ -3358,6 +3484,170 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildScheduledPoolTile(dynamic ride) {
+    final pickupTime = ride['scheduledPickupTime']?.toString();
+    final pickupAddr = ride['pickupLocation']?['address'] ?? 'Unknown Pickup';
+    final dropoffAddr = ride['dropoffLocation']?['address'] ?? '';
+    final fare = (ride['fare'] as num?)?.toDouble() ?? 0.0;
+    final userName = ride['user']?['name'] ?? 'Passenger';
+    final stops = ride['stops'] is List ? ride['stops'] as List : [];
+    final distance = (ride['distance'] as num?)?.toDouble() ?? 0.0;
+    final isClaiming = _isLoading;
+
+    String timeDisplay = '';
+    if (pickupTime != null) {
+      try {
+        final dt = DateTime.parse(pickupTime).toLocal();
+        final now = DateTime.now();
+        final diff = dt.difference(now);
+        if (diff.inMinutes > 0) {
+          if (diff.inHours > 0) {
+            timeDisplay = '${diff.inHours}h ${diff.inMinutes % 60}m';
+          } else {
+            timeDisplay = '${diff.inMinutes}m';
+          }
+        } else {
+          timeDisplay = 'Overdue';
+        }
+        timeDisplay += ' · ${DateFormat('MMM d, hh:mm a').format(dt)}';
+      } catch (_) {
+        timeDisplay = pickupTime;
+      }
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.primaryColor.withOpacity(0.2)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.calendar_month, color: AppTheme.primaryColor, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  pickupAddr,
+                  style: GoogleFonts.outfit(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                    color: AppTheme.textPrimary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Text(
+                '£${fare.toStringAsFixed(2)}',
+                style: GoogleFonts.outfit(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: AppTheme.primaryColor,
+                ),
+              ),
+            ],
+          ),
+          if (dropoffAddr.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              '→ $dropoffAddr',
+              style: GoogleFonts.outfit(
+                color: AppTheme.textSecondary,
+                fontSize: 12,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Icon(Icons.person_outline, size: 14, color: Colors.grey[500]),
+              const SizedBox(width: 4),
+              Text(
+                userName,
+                style: GoogleFonts.outfit(fontSize: 12, color: Colors.grey[600]),
+              ),
+              const SizedBox(width: 12),
+              Icon(Icons.directions_car, size: 14, color: Colors.grey[500]),
+              const SizedBox(width: 4),
+              Text(
+                '${distance.toStringAsFixed(1)} mi',
+                style: GoogleFonts.outfit(fontSize: 12, color: Colors.grey[600]),
+              ),
+              if (stops.isNotEmpty) ...[
+                const SizedBox(width: 12),
+                Icon(Icons.stop_circle, size: 14, color: Colors.grey[500]),
+                const SizedBox(width: 4),
+                Text(
+                  '${stops.length} stop${stops.length > 1 ? 's' : ''}',
+                  style: GoogleFonts.outfit(fontSize: 12, color: Colors.grey[600]),
+                ),
+              ],
+              const Spacer(),
+              if (timeDisplay.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[50],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    timeDisplay,
+                    style: GoogleFonts.outfit(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.blue[700],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: isClaiming
+                  ? null
+                  : () => _claimScheduledRide(ride as Map<String, dynamic>),
+              icon: isClaiming
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.check_circle_outline, size: 18),
+              label: Text(isClaiming ? 'Claiming...' : 'Claim Ride'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
