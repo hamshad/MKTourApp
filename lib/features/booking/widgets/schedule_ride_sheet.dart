@@ -3,14 +3,43 @@ import 'package:flutter/cupertino.dart';
 import 'package:intl/intl.dart';
 import '../../../core/theme.dart';
 
+/// Structured payload returned when a scheduled ride is confirmed.
+class SchedulePayload {
+  /// ISO 8601 pickup time in UTC.
+  final String pickupTime;
+
+  /// Selected payment method slug (stripe, payment_link, cash).
+  final String paymentMethod;
+
+  /// Optional pre-booking note for the driver.
+  final String? note;
+
+  /// Intermediate stops (max 3), each with coordinates and address.
+  final List<Map<String, dynamic>> stops;
+
+  const SchedulePayload({
+    required this.pickupTime,
+    required this.paymentMethod,
+    this.note,
+    this.stops = const [],
+  });
+}
+
 /// Bottom sheet for selecting a scheduled ride date/time and optional note.
+///
+/// Enforces a minimum of 2 hours and maximum of 30 days from now.
+/// Returns a [SchedulePayload] via [onSchedule] callback.
 class ScheduleRideSheet extends StatefulWidget {
   final DateTime initialDateTime;
-  final void Function(DateTime selectedDateTime, String? notes) onSchedule;
+  final List<Map<String, dynamic>> stops;
+  final String paymentMethod;
+  final void Function(SchedulePayload payload) onSchedule;
 
   const ScheduleRideSheet({
     super.key,
     required this.initialDateTime,
+    this.stops = const [],
+    this.paymentMethod = 'stripe',
     required this.onSchedule,
   });
 
@@ -22,8 +51,13 @@ class _ScheduleRideSheetState extends State<ScheduleRideSheet> {
   late DateTime _selectedDateTime;
   final TextEditingController _notesController = TextEditingController();
 
+  /// Minimum pickup time: 2 hours from now (backend constraint).
   DateTime get _minimumScheduleTime =>
-      DateTime.now().add(const Duration(minutes: 30));
+      DateTime.now().add(const Duration(hours: 2));
+
+  /// Maximum pickup time: 30 days from now (backend constraint).
+  DateTime get _maximumScheduleTime =>
+      DateTime.now().add(const Duration(days: 30));
 
   @override
   void initState() {
@@ -115,7 +149,7 @@ class _ScheduleRideSheetState extends State<ScheduleRideSheet> {
       mode: CupertinoDatePickerMode.date,
       initialDateTime: _selectedDateTime,
       minimumDate: now,
-      maximumDate: now.add(const Duration(days: 30)),
+      maximumDate: _maximumScheduleTime,
       onChanged: (picked) {
         setState(() {
           _selectedDateTime = DateTime(
@@ -193,7 +227,7 @@ class _ScheduleRideSheetState extends State<ScheduleRideSheet> {
           ),
           const SizedBox(height: 4),
           Text(
-            'Choose a pickup time at least 30 minutes from now',
+            'Pickup must be 2 hours to 30 days from now',
             style: TextStyle(fontSize: 13, color: Colors.grey[600]),
           ),
           const SizedBox(height: 24),
@@ -240,7 +274,7 @@ class _ScheduleRideSheetState extends State<ScheduleRideSheet> {
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Text(
-                'Pickup must be at least 30 minutes from now',
+                'Pickup must be between 2 hours and 30 days from now',
                 style: TextStyle(fontSize: 12, color: Colors.red[600]),
               ),
             ),
@@ -279,10 +313,14 @@ class _ScheduleRideSheetState extends State<ScheduleRideSheet> {
                   ? () {
                       Navigator.pop(context);
                       widget.onSchedule(
-                        _selectedDateTime,
-                        _notesController.text.isNotEmpty
-                            ? _notesController.text
-                            : null,
+                        SchedulePayload(
+                          pickupTime: _selectedDateTime.toUtc().toIso8601String(),
+                          paymentMethod: widget.paymentMethod,
+                          note: _notesController.text.isNotEmpty
+                              ? _notesController.text
+                              : null,
+                          stops: widget.stops,
+                        ),
                       );
                     }
                   : null,
