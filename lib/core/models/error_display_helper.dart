@@ -164,6 +164,43 @@ class RideErrorMapper {
       );
     }
 
+    // Scheduled-ride booking window errors.
+    if (lower.contains('must be booked at least 2 hours in advance')) {
+      return const RideErrorInfo(
+        title: 'Too soon to schedule',
+        copy: 'Scheduled rides must be booked at least 2 hours before pickup. '
+            'Choose a later time.',
+        actionLabel: 'Pick a later time',
+      );
+    }
+
+    if (lower.contains('cannot be booked more than 30 days in advance')) {
+      return const RideErrorInfo(
+        title: 'Too far in the future',
+        copy: 'Scheduled rides can only be booked up to 30 days ahead. '
+            'Pick a closer date.',
+        actionLabel: 'Pick an earlier date',
+      );
+    }
+
+    // Schedule conflict — driver already has a ride nearby in time.
+    if (lower.contains('another scheduled ride within 30 minutes')) {
+      return const RideErrorInfo(
+        title: 'Schedule conflict',
+        copy: 'You have another scheduled ride within 30 minutes of this '
+            'pickup. Finish or cancel the conflicting ride first.',
+      );
+    }
+
+    if (lower.contains('already has an active ride') ||
+        lower.contains('upcoming scheduled ride starting within 30 minutes')) {
+      return const RideErrorInfo(
+        title: 'Driver busy',
+        copy: 'You already have an active or upcoming scheduled ride '
+            'starting within 30 minutes. Complete it first.',
+      );
+    }
+
     // Reassigned — informational, not an error.
     if (lower.contains('reassigned to other drivers')) {
       return const RideErrorInfo(

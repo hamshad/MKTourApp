@@ -31,6 +31,12 @@ class ActiveRideStorage {
   static const String _stopIndexKey = 'active_ride_stop_index';
   static const String _savedAtKey = 'active_ride_saved_at';
 
+  // Scheduled-ride metadata — persisted so a cold-start restores the
+  // scheduled-ride UI without re-fetching.
+  static const String _scheduledPickupTimeKey = 'active_ride_scheduled_pickup_time';
+  static const String _scheduledStatusKey = 'active_ride_scheduled_status';
+  static const String _scheduledPaymentMethodKey = 'active_ride_scheduled_payment_method';
+
   /// Rides older than this are treated as stale on cold start and cleared.
   static const Duration staleAfter = Duration(hours: 24);
 
@@ -78,6 +84,9 @@ class ActiveRideStorage {
     String? paymentMethod,
     String? paymentStatus,
     int? currentStopIndex,
+    String? scheduledPickupTime,
+    String? scheduledStatus,
+    String? scheduledPaymentMethod,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     if (stops != null) {
@@ -96,6 +105,15 @@ class ActiveRideStorage {
     }
     if (currentStopIndex != null) {
       await prefs.setInt(_stopIndexKey, currentStopIndex);
+    }
+    if (scheduledPickupTime != null) {
+      await prefs.setString(_scheduledPickupTimeKey, scheduledPickupTime);
+    }
+    if (scheduledStatus != null) {
+      await prefs.setString(_scheduledStatusKey, scheduledStatus);
+    }
+    if (scheduledPaymentMethod != null) {
+      await prefs.setString(_scheduledPaymentMethodKey, scheduledPaymentMethod);
     }
   }
 
@@ -120,6 +138,9 @@ class ActiveRideStorage {
       'paymentMethod': prefs.getString(_paymentMethodKey),
       'paymentStatus': prefs.getString(_paymentStatusKey),
       'currentStopIndex': prefs.getInt(_stopIndexKey) ?? 0,
+      'scheduledPickupTime': prefs.getString(_scheduledPickupTimeKey),
+      'scheduledStatus': prefs.getString(_scheduledStatusKey),
+      'scheduledPaymentMethod': prefs.getString(_scheduledPaymentMethodKey),
     };
   }
 
@@ -167,5 +188,8 @@ class ActiveRideStorage {
     await prefs.remove(_stopIndexKey);
     await prefs.remove(_savedAtKey);
     await prefs.remove(_legacyOtpKey);
+    await prefs.remove(_scheduledPickupTimeKey);
+    await prefs.remove(_scheduledStatusKey);
+    await prefs.remove(_scheduledPaymentMethodKey);
   }
 }
