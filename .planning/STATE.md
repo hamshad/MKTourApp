@@ -1,9 +1,9 @@
 # MK Tours - Project State
 
 ## Current Position
-- **Phase:** 06-rider-prebook — In Progress (1/2 plans)
-- **Plan:** 06-01 — Complete (2026-09-10)
-- **Next:** 06-02 — Scheduled ride list and status management
+- **Phase:** 07-driver-prebook — In Progress (0/2 plans)
+- **Plan:** 07-01 — Complete (2026-09-10)
+- **Next:** 07-02
 
 ## Completed Plans
 - 02-01: Ride-flow API layer — no-OTP startRide, stopArrive/stopResume, stops-aware fare/create, reason cancel, fixed end-early (`c0c7d26`, `0e95c3b`)
@@ -15,6 +15,8 @@
 - 05-01: Scheduled ride endpoints — pool, driver list, user/driver cancel (`d23f16b`)
 - 05-02: Models + error mapping + persistence — ScheduledRide, booking-window errors, storage keys (`077d3e1`, `1da279f`)
 - 06-01: Schedule creation + payment routing — SchedulePayload, 2h-30d constraint, paymentUrl/clientSecret routing (`ef8920b`, `76c38fc`)
+- 06-02: Scheduled list + detail + cancel — model-parsed list, live handoff, cancel with reason, optimistic UI (`e29a33a`, `ab0dd84`)
+- 07-01: Driver pool + claim + scheduled rides — pool tiles, claim feedback, scheduled tab with countdown and cancel (`63b4e11`, `4ec7d88`)
 
 ## Decisions
 - [02-01] OTP dialog UI left in place; only API call path made OTP-free (UI strip-out in 03-01)
@@ -39,10 +41,15 @@
 - [06-01] ISO8601 UTC pickupTime built from local DateTime in sheet, not at API call site
 - [06-01] Payment routing reuses PaymentService.bookRideWithPayment with scheduledAt param
 - [06-01] Schedule button placed alongside Confirm Booking as outlined secondary action
+- [06-02] Cancel uses optimistic UI with "cancelling" intermediate status
+- [06-02] Live handoff checks status + pickupTime before redirecting to RideProgressScreen
+- [06-02] PaymentService.cancelScheduledRideUser accepts optional reason parameter
+- [07-01] Pool tiles show countdown to pickup time inline
+- [07-01] Accept errors displayed as inline banner in request panel, not just snackbar
 
 ## Blockers
 - None
 
 ## Session
-- Last session: Completed 06-01-PLAN.md (2026-09-10, 2 feat commits, SUMMARY at phases/06-rider-prebook/06-01-SUMMARY.md). Stopped after plan completion.
-- Previous: Completed 05-02-PLAN.md (2026-09-10, 2 feat commits, SUMMARY at phases/05-prebook-foundation/05-02-SUMMARY.md).
+- Last session: Completed 07-01-PLAN.md (2026-09-10, 2 feat commits, SUMMARY at phases/07-driver-prebook/07-01-SUMMARY.md). Stopped after plan completion.
+- Previous: Completed 06-02-PLAN.md (2026-09-10, 2 feat commits, SUMMARY at phases/06-rider-prebook/06-02-SUMMARY.md).
