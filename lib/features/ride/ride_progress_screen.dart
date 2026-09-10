@@ -296,7 +296,9 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
       final response = await _apiService.getRideDetails(rideId);
       if (!mounted) return;
       if (response['success'] != true || response['data'] == null) return;
-      final raw = response['data'];
+      final rawData = response['data'];
+      // API nests the ride under data.ride — unwrap like home_screen does.
+      final raw = rawData is Map ? (rawData['ride'] ?? rawData) : rawData;
       final map = raw is Map<String, dynamic>
           ? raw
           : raw is Map
@@ -366,7 +368,8 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
         try {
           final response = await _apiService.getRideDetails(rideId);
           if (response['success'] == true && response['data'] != null) {
-            final raw = response['data'];
+            final rawData = response['data'];
+            final raw = rawData is Map ? (rawData['ride'] ?? rawData) : rawData;
             rideData = raw is Map<String, dynamic>
                 ? raw
                 : raw is Map

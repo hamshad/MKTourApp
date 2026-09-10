@@ -268,8 +268,9 @@ class DriverNavigationPanel extends StatelessWidget {
                     ),
                   ],
 
-                  // Running totals bar (stops trip: wait + fare preview)
+                  // Running totals bar — only when there is actual wait to show.
                   if (totalWaitMinutes != null &&
+                      (totalWaitMinutes! > 0 || (totalWaitFee ?? 0) > 0) &&
                       (status == 'in_progress' || status == 'at_stop')) ...[
                     Container(
                       width: double.infinity,
@@ -844,7 +845,7 @@ class DriverNavigationPanel extends StatelessWidget {
 class _StopWaitChip extends StatefulWidget {
   final String? arrivedAt;
 
-  /// Backend per-ride policy; null → [WaitFeePolicy] defaults.
+  /// Backend per-ride policy; null hides policy-based copy (no defaults shown).
   final int? freeMinutes;
   final double? perMinuteRate;
 
@@ -885,15 +886,20 @@ class _StopWaitChipState extends State<_StopWaitChip> {
   @override
   Widget build(BuildContext context) {
     final elapsed = _elapsedMinutes;
-    final window = widget.freeMinutes ?? WaitFeePolicy.freeMinutes;
-    final preview = WaitFeePolicy.feeFor(
-      elapsed,
-      freeMinutes: widget.freeMinutes,
-      perMinuteRate: widget.perMinuteRate,
-    );
-    final text = preview > 0
-        ? 'Waiting ${elapsed}m · £${preview.toStringAsFixed(2)} so far'
-        : 'Waiting ${elapsed}m · within $window min free';
+    // No backend policy → show elapsed only, never an invented window.
+    final window = widget.freeMinutes;
+    final preview = window == null
+        ? 0.0
+        : WaitFeePolicy.feeFor(
+            elapsed,
+            freeMinutes: widget.freeMinutes,
+            perMinuteRate: widget.perMinuteRate,
+          );
+    final text = window == null
+        ? 'Waiting ${elapsed}m'
+        : preview > 0
+            ? 'Waiting ${elapsed}m · £${preview.toStringAsFixed(2)} so far'
+            : 'Waiting ${elapsed}m · within $window min free';
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),

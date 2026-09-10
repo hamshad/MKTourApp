@@ -10,7 +10,7 @@
 | 04 | Driver Flow + Polish | Complete | 2 | RIDE-03, RIDE-04, RIDE-06, RIDE-07..12 |
 | 05 | Prebook Flow Foundation | Complete    | 2026-09-10 | PREBOOK-01..04 |
 | 06 | 1/2 | Complete    | 2026-09-10 | PREBOOK-01..06 |
-| 07 | Driver Prebook Flow | Complete    | 2026-09-10 | PREBOOK-03..07 |
+| 07 | 2/2 | Complete   | 2026-09-10 | PREBOOK-03..07 |
 
 ---
 
@@ -163,5 +163,5 @@
 | PREBOOK-03 | 05, 06, 07 | 05-01, 05-03, 06-02, 07-01 | ✓ |
 | PREBOOK-04 | 05, 06, 07 | 05-04, 06-01, 07-01 | ✓ |
 | PREBOOK-05 | 06 | 06-01 | ✓ |
-| PREBOOK-06 | 06, 07 | 06-02, 07-02 | - |
+| PREBOOK-06 | 06, 07 | 06-02, 07-02 | ✓ |
 | PREBOOK-07 | 07 | 07-01, 07-02 | ✓ |
