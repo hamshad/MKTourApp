@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/theme.dart';
+import '../../core/models/scheduled_ride.dart';
 import '../../core/services/payment_service.dart';
 import '../../core/services/socket_service.dart';
 import '../../core/widgets/custom_snackbar.dart';
 import '../ride/payment_webview_screen.dart';
+import '../ride/ride_progress_screen.dart';
+import '../activity/ride_detail_screen.dart';
 
 /// Screen showing the user's scheduled (pre-booked) rides with cancel option.
 class ScheduledRidesScreen extends StatefulWidget {
@@ -16,7 +19,7 @@ class ScheduledRidesScreen extends StatefulWidget {
 }
 
 class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
-  List<Map<String, dynamic>> _rides = [];
+  List<ScheduledRide> _rides = [];
   bool _isLoading = true;
 
   @override
@@ -27,19 +30,47 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
 
   Future<void> _fetchScheduledRides() async {
     setState(() => _isLoading = true);
-    final rides = await PaymentService.getScheduledRides();
+    final rawRides = await PaymentService.getScheduledRides();
     if (mounted) {
       setState(() {
-        _rides = rides;
+        _rides = rawRides
+            .map((r) => ScheduledRide.fromJson(r))
+            .toList();
         _isLoading = false;
       });
+      _checkLiveHandoff();
     }
   }
 
-  void _showCancelDialog(Map<String, dynamic> ride) {
-    final rideId = ride['_id']?.toString() ?? '';
-    final deposit = ride['depositAmount'] ?? 0;
-    final depositStr = '£${(deposit is num ? deposit : 0).toStringAsFixed(2)}';
+  /// If any scheduled ride has status that's live and pickup time has passed,
+  /// redirect to ride-progress screen.
+  void _checkLiveHandoff() {
+    final now = DateTime.now();
+    for (final ride in _rides) {
+      final isLiveStatus = ride.status == 'in_progress' ||
+          ride.status == 'driver_arrived' ||
+          ride.status == 'accepted';
+      if (!isLiveStatus || ride.scheduledPickupTime == null) continue;
+
+      try {
+        final pickupTime = DateTime.parse(ride.scheduledPickupTime!).toLocal();
+        if (now.isAfter(pickupTime) && mounted) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (_) => RideProgressScreen(
+                rideId: ride.id,
+                driver: ride.driver,
+              ),
+            ),
+          );
+          return;
+        }
+      } catch (_) {}
+    }
+  }
+
+  void _showCancelDialog(ScheduledRide ride) {
+    final depositStr = '£${ride.depositAmount.toStringAsFixed(2)}';
 
     showDialog(
       context: context,
@@ -79,7 +110,7 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(ctx);
-              _cancelRide(rideId);
+              _cancelRide(ride);
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
@@ -108,14 +139,10 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
     );
   }
 
-  Future<void> _payDeposit(Map<String, dynamic> ride) async {
-    final rideId = ride['_id']?.toString() ?? '';
-
-    // Prefer paymentUrl from depositPayment sub-object, fall back to root
-    String? paymentUrl =
-        (ride['depositPayment'] as Map<String, dynamic>?)?['paymentUrl']
-            ?.toString();
-    paymentUrl ??= ride['paymentUrl']?.toString();
+  // ignore: unused_element
+  Future<void> _payDeposit(ScheduledRide ride) async {
+    final rideId = ride.id;
+    final paymentUrl = ride.payment.paymentUrl;
 
     if (paymentUrl == null || paymentUrl.isEmpty) {
       CustomSnackbar.show(
@@ -150,7 +177,7 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
       await Navigator.of(context).push<Map<String, dynamic>>(
         MaterialPageRoute(
           builder: (_) =>
-              PaymentWebViewScreen(paymentUrl: paymentUrl!, rideId: rideId),
+              PaymentWebViewScreen(paymentUrl: paymentUrl, rideId: rideId),
         ),
       );
       // Refresh regardless of WebView outcome — socket will update status if paid
@@ -160,7 +187,34 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
     }
   }
 
-  Future<void> _cancelRide(String rideId) async {
+  Future<void> _cancelRide(ScheduledRide ride) async {
+    final rideId = ride.id;
+
+    // Optimistic UI — update status immediately
+    setState(() {
+      _rides = _rides.map((r) {
+        if (r.id == rideId) {
+          return ScheduledRide(
+            id: r.id,
+            pickupLocation: r.pickupLocation,
+            dropoffLocation: r.dropoffLocation,
+            stops: r.stops,
+            vehicleCategorySlug: r.vehicleCategorySlug,
+            fare: r.fare,
+            status: 'cancelling',
+            isScheduled: r.isScheduled,
+            scheduledPickupTime: r.scheduledPickupTime,
+            driver: r.driver,
+            user: r.user,
+            depositAmount: r.depositAmount,
+            distance: r.distance,
+            payment: r.payment,
+          );
+        }
+        return r;
+      }).toList();
+    });
+
     try {
       final response = await PaymentService.cancelScheduledRideUser(rideId);
 
@@ -179,6 +233,8 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
         );
         _fetchScheduledRides();
       } else {
+        // Revert optimistic update on failure
+        _fetchScheduledRides();
         CustomSnackbar.show(
           context,
           message: response['message'] ?? 'Failed to cancel ride',
@@ -186,6 +242,8 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
         );
       }
     } catch (e) {
+      // Revert optimistic update on error
+      _fetchScheduledRides();
       if (mounted) {
         CustomSnackbar.show(
           context,
@@ -249,24 +307,64 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
     );
   }
 
-  Widget _buildRideCard(Map<String, dynamic> ride) {
-    final pickup = ride['pickupLocation']?['address'] ?? 'Unknown Pickup';
-    final dropoff = ride['dropoffLocation']?['address'] ?? 'Unknown Dropoff';
-    final fare = (ride['fare'] as num?)?.toDouble() ?? 0;
-    final deposit = (ride['depositAmount'] as num?)?.toDouble() ?? 0;
-    final depositStatus = ride['depositStatus'] ?? 'pending';
-    final status = ride['status'] ?? 'scheduled';
-    final driverName = (ride['driver'] as Map<String, dynamic>?)?['name'] ?? '';
+  Widget _buildRideCard(ScheduledRide ride) {
+    final pickup = ride.pickupLocation.address.isNotEmpty
+        ? ride.pickupLocation.address
+        : 'Unknown Pickup';
+    final dropoff = ride.dropoffLocation.address.isNotEmpty
+        ? ride.dropoffLocation.address
+        : 'Unknown Dropoff';
+    final fare = ride.fare;
+    final status = ride.status;
+    final driverName = ride.driver is Map
+        ? (ride.driver['name'] ?? '').toString()
+        : '';
+    final stopsCount = ride.stops.length;
 
     String scheduledTimeStr = '';
-    if (ride['scheduledPickupTime'] != null) {
+    if (ride.scheduledPickupTime != null) {
       try {
-        final dt = DateTime.parse(ride['scheduledPickupTime']).toLocal();
+        final dt = DateTime.parse(ride.scheduledPickupTime!).toLocal();
         scheduledTimeStr = DateFormat('EEE, MMM dd · h:mm a').format(dt);
       } catch (_) {}
     }
 
-    return Container(
+    // Check if ride is live (status became active after scheduled time)
+    final now = DateTime.now();
+    bool isLive = false;
+    if (ride.scheduledPickupTime != null) {
+      try {
+        final pickupTime = DateTime.parse(ride.scheduledPickupTime!).toLocal();
+        final isLiveStatus = status == 'in_progress' ||
+            status == 'driver_arrived' ||
+            status == 'accepted';
+        isLive = isLiveStatus && now.isAfter(pickupTime);
+      } catch (_) {}
+    }
+
+    return GestureDetector(
+      onTap: isLive
+          ? () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => RideProgressScreen(
+                    rideId: ride.id,
+                    driver: ride.driver,
+                  ),
+                ),
+              );
+            }
+          : () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => RideDetailScreen(
+                    rideId: ride.id,
+                    initialData: ride.toJson(),
+                  ),
+                ),
+              );
+            },
+      child: Container(
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border.all(color: Colors.grey[200]!),
@@ -310,7 +408,8 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
                     ),
                   ),
                 ),
-                _buildStatusBadge(status, depositStatus),
+                if (isLive) _buildLiveBadge(),
+                _buildStatusBadge(status),
               ],
             ),
           ),
@@ -383,58 +482,47 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
                 Row(
                   children: [
                     _infoChip('Fare', '£${fare.toStringAsFixed(2)}'),
-                    const SizedBox(width: 10),
-                    _infoChip('Deposit', '£${deposit.toStringAsFixed(2)}'),
+                    if (stopsCount > 0) ...[
+                      const SizedBox(width: 10),
+                      _infoChip('Stops', '$stopsCount'),
+                    ],
                     if (driverName.isNotEmpty) ...[
                       const SizedBox(width: 10),
                       _infoChip('Driver', driverName),
                     ],
                   ],
                 ),
-                if (ride['preBookingNote'] != null &&
-                    (ride['preBookingNote'] as String).isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Icon(Icons.note, size: 16, color: Colors.grey[500]),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          ride['preBookingNote'],
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
               ],
             ),
           ),
 
           // Action buttons
-          if (status == 'awaiting_deposit') ...[
-            // Padding(
-            //   padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-            //   child: SizedBox(
-            //     width: double.infinity,
-            //     child: ElevatedButton.icon(
-            //       onPressed: () => _payDeposit(ride),
-            //       icon: const Icon(Icons.payment, size: 18, color: Colors.white),
-            //       label: const Text('Pay Deposit',
-            //           style: TextStyle(color: Colors.white)),
-            //       style: ElevatedButton.styleFrom(
-            //         backgroundColor: AppTheme.primaryColor,
-            //         shape: RoundedRectangleBorder(
-            //             borderRadius: BorderRadius.circular(10)),
-            //       ),
-            //     ),
-            //   ),
-            // ),
+          if (status == 'cancelling')
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: null,
+                  icon: const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  label: const Text(
+                    'Cancelling...',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.grey),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ),
+            )
+          else if (status == 'awaiting_deposit')
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
               child: SizedBox(
@@ -454,32 +542,69 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
                   ),
                 ),
               ),
-            ),
-          ] else if (status == 'scheduled' || status == 'requested')
-            Container(
-              width: double.infinity,
+            )
+          else if (status == 'scheduled' || status == 'requested')
+            Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-              child: OutlinedButton.icon(
-                onPressed: () => _showCancelDialog(ride),
-                icon: const Icon(Icons.close, size: 18, color: Colors.red),
-                label: const Text(
-                  'Cancel Ride',
-                  style: TextStyle(color: Colors.red),
-                ),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Colors.red),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _showCancelDialog(ride),
+                  icon: const Icon(Icons.close, size: 18, color: Colors.red),
+                  label: const Text(
+                    'Cancel Ride',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.red),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
                 ),
               ),
             ),
         ],
       ),
+    ),
     );
   }
 
-  Widget _buildStatusBadge(String status, String depositStatus) {
+  Widget _buildLiveBadge() {
+    return Container(
+      margin: const EdgeInsets.only(left: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.red[50],
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: Colors.red[200]!),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: const BoxDecoration(
+              color: Colors.red,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 4),
+          const Text(
+            'LIVE',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: Colors.red,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusBadge(String status) {
     Color bgColor;
     Color textColor;
     String label;
@@ -493,7 +618,7 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
       case 'scheduled':
         bgColor = Colors.green[50]!;
         textColor = Colors.green[800]!;
-        label = 'Confirmed ✓';
+        label = 'Confirmed';
         break;
       case 'requested':
         bgColor = Colors.blue[50]!;
@@ -514,6 +639,16 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
         bgColor = Colors.indigo[50]!;
         textColor = Colors.indigo[800]!;
         label = 'In Progress';
+        break;
+      case 'cancelling':
+        bgColor = Colors.orange[50]!;
+        textColor = Colors.orange[800]!;
+        label = 'Cancelling...';
+        break;
+      case 'cancelled':
+        bgColor = Colors.red[50]!;
+        textColor = Colors.red[800]!;
+        label = 'Cancelled';
         break;
       default:
         bgColor = Colors.grey[100]!;

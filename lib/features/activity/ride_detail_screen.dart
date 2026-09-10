@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart' as fmap;
 import 'package:latlong2/latlong.dart' as latlong;
 import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/platform_map.dart';
 import '../../core/auth_provider.dart';
+import '../../core/models/vehicle.dart';
 
 class RideDetailScreen extends StatefulWidget {
   final String rideId;
@@ -272,7 +274,60 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                           text: destination,
                           time: 'Dropoff',
                         ),
-                        
+
+                        // Intermediate stops
+                        ..._buildStopsList(_rideData),
+
+                        // Scheduled pickup time
+                        if (_rideData?['scheduledPickupTime'] != null) ...[
+                          const SizedBox(height: 16),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppTheme.primaryColor.withOpacity(0.05),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: AppTheme.primaryColor.withOpacity(0.2),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.calendar_today,
+                                  size: 18,
+                                  color: AppTheme.primaryColor,
+                                ),
+                                const SizedBox(width: 10),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Scheduled Pickup',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: AppTheme.textSecondary,
+                                      ),
+                                    ),
+                                    Text(
+                                      DateFormat('EEE, MMM dd · h:mm a')
+                                          .format(
+                                        DateTime.parse(
+                                          _rideData!['scheduledPickupTime'],
+                                        ).toLocal(),
+                                      ),
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppTheme.textPrimary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+
                         const SizedBox(height: 24),
                         Divider(color: AppTheme.borderColor),
                         const SizedBox(height: 24),
@@ -392,6 +447,24 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                             ),
                           ],
                         ),
+
+                        // Deposit / payment status for scheduled rides
+                        if (_rideData?['isScheduled'] == true) ...[
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Deposit',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: AppTheme.textSecondary,
+                                ),
+                              ),
+                              _buildDepositStatusChip(_rideData),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -437,6 +510,72 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     );
   }
 
+  List<Widget> _buildStopsList(Map<String, dynamic>? rideData) {
+    if (rideData == null || rideData['stops'] == null) return [];
+    final stops = parseRideStops(rideData['stops']);
+    if (stops.isEmpty) return [];
+    return [
+      const SizedBox(height: 16),
+      ...stops.asMap().entries.map((entry) {
+        final i = entry.key;
+        final stop = entry.value;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(
+            children: [
+              Container(
+                width: 20,
+                height: 20,
+                decoration: const BoxDecoration(
+                  color: AppTheme.primaryColor,
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: Text(
+                    '${i + 1}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  stop.address.isNotEmpty ? stop.address : 'Stop ${i + 1}',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: AppTheme.textPrimary,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: _stopStatusColor(stop.status).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  stop.status.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w600,
+                    color: _stopStatusColor(stop.status),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      }),
+    ];
+  }
+
   Widget _buildDottedLine() {
     return Container(
       margin: const EdgeInsets.only(left: 9, top: 4, bottom: 4),
@@ -445,6 +584,59 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
       decoration: BoxDecoration(
         color: AppTheme.borderColor,
         borderRadius: BorderRadius.circular(1),
+      ),
+    );
+  }
+
+  Color _stopStatusColor(String status) {
+    switch (status) {
+      case 'completed':
+        return Colors.green;
+      case 'in_progress':
+        return Colors.orange;
+      case 'pending':
+      default:
+        return Colors.grey;
+    }
+  }
+
+  Widget _buildDepositStatusChip(Map<String, dynamic>? rideData) {
+    final depositAmount = (rideData?['depositAmount'] as num?)?.toDouble() ?? 0.0;
+    final depositStatus = rideData?['depositStatus']?.toString() ?? 'pending';
+    final payment = rideData?['payment'];
+    final paymentStatus = payment is Map ? payment['status']?.toString() : null;
+
+    Color chipColor;
+    String chipText;
+
+    if (depositStatus == 'paid' || paymentStatus == 'succeeded') {
+      chipColor = Colors.green;
+      chipText = 'Paid';
+    } else if (paymentStatus == 'requires_payment_method' ||
+        paymentStatus == 'requires_action') {
+      chipColor = Colors.orange;
+      chipText = 'Awaiting Payment';
+    } else if (depositAmount > 0) {
+      chipColor = Colors.orange;
+      chipText = '£${depositAmount.toStringAsFixed(2)} Pending';
+    } else {
+      chipColor = Colors.green;
+      chipText = 'No Deposit';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: chipColor.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        chipText,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: chipColor,
+        ),
       ),
     );
   }
