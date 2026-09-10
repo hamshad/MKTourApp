@@ -1,6 +1,6 @@
 class ApiConstants {
   // Local development socket URL (commented when using live API)
-  static const String socketUrl = 'http://192.168.1.30:5001';
+  static const String socketUrl = 'http://192.168.1.8:5001';
   // Live API socket URL
   // static const String socketUrl = 'https://api.mktours.co.uk';
   static const String baseUrl = '$socketUrl/api/v1';
@@ -79,6 +79,9 @@ class ApiConstants {
   // Scheduled Ride Endpoints
   static const String scheduleRide = '$baseUrl/rides/schedule';
   static const String scheduledRides = '$baseUrl/rides/scheduled';
+  static const String scheduledPool = '$baseUrl/rides/scheduled/pool';
+  static const String driverScheduledRides =
+      '$baseUrl/rides/scheduled/driver';
   static String confirmDeposit(String id) =>
       '$baseUrl/rides/$id/confirm-deposit';
   static String cancelScheduledRideUser(String id) =>

@@ -2185,14 +2185,16 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> getDriverScheduledRides() async {
+  /// Fetch open pool of unassigned scheduled rides available for driver to claim.
+  /// Returns rides filtered by driver vehicle capacity and schedule conflicts.
+  Future<Map<String, dynamic>> getScheduledPool() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString(_prefsAuthTokenKey);
       if (token == null) throw Exception('No auth token found');
 
       final response = await http.get(
-        Uri.parse(ApiConstants.scheduledRides),
+        Uri.parse(ApiConstants.scheduledPool),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
@@ -2204,11 +2206,166 @@ class ApiService {
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       } else {
-        throw Exception('Failed to get scheduled rides: ${response.body}');
+        return {
+          'success': false,
+          'message': 'Failed to fetch scheduled pool: ${response.body}',
+        };
+      }
+    } catch (e) {
+      debugPrint('🔴 API Error (getScheduledPool): $e');
+      return {'success': false, 'message': 'Error fetching scheduled pool: $e'};
+    }
+  }
+
+  /// Fetch driver's claimed scheduled rides (driver-specific endpoint).
+  Future<Map<String, dynamic>> getDriverScheduledRides() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString(_prefsAuthTokenKey);
+      if (token == null) throw Exception('No auth token found');
+
+      final response = await http.get(
+        Uri.parse(ApiConstants.driverScheduledRides),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      await _checkUnauthorized(response);
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        return {
+          'success': false,
+          'message': 'Failed to get driver scheduled rides: ${response.body}',
+        };
       }
     } catch (e) {
       debugPrint('🔴 API Error (getDriverScheduledRides): $e');
-      rethrow;
+      return {
+        'success': false,
+        'message': 'Error fetching driver scheduled rides: $e',
+      };
+    }
+  }
+
+  /// User cancels a scheduled ride before pickup.
+  /// Returns decoded backend message (refund status, errors, etc.).
+  Future<Map<String, dynamic>> cancelScheduledRideUser(
+    String rideId, {
+    String? reason,
+  }) async {
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
+    debugPrint('🔵 [ApiService] cancelScheduledRideUser called');
+    debugPrint(
+      '🔵 [Request] URL: ${ApiConstants.cancelScheduledRideUser(rideId)}',
+    );
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString(_prefsAuthTokenKey);
+      if (token == null) throw Exception('No auth token found');
+
+      final response = await http.post(
+        Uri.parse(ApiConstants.cancelScheduledRideUser(rideId)),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          if (reason != null) 'cancellationReason': reason,
+        }),
+      );
+
+      debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
+      debugPrint('🟣 [Response] Body: ${response.body}');
+
+      await _checkUnauthorized(response);
+
+      final responseData = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        debugPrint('🟢 [ApiService] cancelScheduledRideUser Success');
+        return responseData;
+      } else {
+        // Return backend error message without throwing
+        debugPrint(
+          '🔴 [ApiService] cancelScheduledRideUser Failed: ${responseData['message']}',
+        );
+        return {
+          'success': false,
+          'message': responseData['message'] ?? 'Failed to cancel scheduled ride',
+        };
+      }
+    } catch (e) {
+      debugPrint('🔴 [ApiService] cancelScheduledRideUser Error: $e');
+      return {
+        'success': false,
+        'message': 'Error cancelling scheduled ride: $e',
+      };
+    }
+  }
+
+  /// Driver cancels a claimed scheduled ride before pickup.
+  /// Returns decoded backend message (error, schedule conflict, etc.).
+  Future<Map<String, dynamic>> cancelScheduledRideDriver(
+    String rideId, {
+    String? reason,
+  }) async {
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
+    debugPrint('🔵 [ApiService] cancelScheduledRideDriver called');
+    debugPrint(
+      '🔵 [Request] URL: ${ApiConstants.cancelScheduledRideDriver(rideId)}',
+    );
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString(_prefsAuthTokenKey);
+      if (token == null) throw Exception('No auth token found');
+
+      final response = await http.post(
+        Uri.parse(ApiConstants.cancelScheduledRideDriver(rideId)),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          if (reason != null) 'cancellationReason': reason,
+        }),
+      );
+
+      debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
+      debugPrint('🟣 [Response] Body: ${response.body}');
+
+      await _checkUnauthorized(response);
+
+      final responseData = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        debugPrint('🟢 [ApiService] cancelScheduledRideDriver Success');
+        return responseData;
+      } else {
+        // Return backend error message without throwing
+        debugPrint(
+          '🔴 [ApiService] cancelScheduledRideDriver Failed: ${responseData['message']}',
+        );
+        return {
+          'success': false,
+          'message': responseData['message'] ?? 'Failed to cancel scheduled ride',
+        };
+      }
+    } catch (e) {
+      debugPrint('🔴 [ApiService] cancelScheduledRideDriver Error: $e');
+      return {
+        'success': false,
+        'message': 'Error cancelling scheduled ride: $e',
+      };
     }
   }
 
