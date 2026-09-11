@@ -12,6 +12,7 @@
 | 06 | 1/2 | Complete    | 2026-09-10 | PREBOOK-01..06 |
 | 07 | 2/2 | Complete   | 2026-09-10 | PREBOOK-03..07 |
 | 08 | 2/3 | Complete    | 2026-09-11 | SCHED-01..06 |
+| 09 | Promo Pending State | Planned | 2 | PROMO-01..04 |
 
 ---
 
@@ -166,6 +167,10 @@
 | PREBOOK-05 | 06 | 06-01 | ✓ |
 | PREBOOK-06 | 06, 07 | 06-02, 07-02 | ✓ |
 | PREBOOK-07 | 07 | 07-01, 07-02 | ✓ |
+| PROMO-01 | 09 | 09-01 | - |
+| PROMO-02 | 09 | 09-02 | - |
+| PROMO-03 | 09 | 09-02 | - |
+| PROMO-04 | 09 | 09-01 | - |
 ---
 
 ## Phase 08: Scheduled Screen-Flow Integration
@@ -191,3 +196,26 @@ Plans:
 - Instant-ride flows behavior-identical (no regressions)
 - `flutter analyze` clean on touched files
 - No payment, fare, or repayment logic touched
+
+---
+
+## Phase 09: Promo Pending State
+
+**Goal:** Promo flow reflects the 4-state backend (none/eligible/pending/claimed) — pending shows as locked free ride on status screen and home banner, with no client-side fare/booking blocks.
+
+**Requirements:**
+- **PROMO-01**: App parses all 4 promo states including isPending from GET /api/v1/users/promo-status
+- **PROMO-02**: PromoStatusScreen renders pending as locked state (badge, hero, progress copy)
+- **PROMO-03**: Home promo banner renders pending as locked banner, tappable to status screen
+- **PROMO-04**: 401/500 promo errors handled gracefully; fare/booking add no client-side pending block (backend authoritative)
+
+**Plans:** 2 plans
+Plans:
+- [ ] `09-01-PLAN.md` — Typed PromoStatus model + ApiService docs + unit tests (TDD)
+- [ ] `09-02-PLAN.md` — Pending UI: status screen + home banner
+
+**Success Criteria:**
+- All 4 backend scenarios render correct copy on both surfaces
+- `flutter analyze` clean on touched files
+- `flutter test test/promo_status_test.dart` passes
+- Zero fare/booking blocking logic added
