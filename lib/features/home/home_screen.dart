@@ -697,10 +697,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _socketService.on('ride:scheduledDriverCancelled', (data) {
       debugPrint('⚠️ [HomeScreen] Scheduled Driver Cancelled: $data');
       if (mounted) {
+        // Refresh so the ride card drops the cancelled driver and reflects
+        // back-to-pool status. Never navigate, never show a cancel dialog —
+        // the ride stays listed as unassigned until re-accepted.
+        _fetchRideHistory();
         CustomSnackbar.show(
           context,
-          message: data['message'] ?? 'Your driver had to cancel. We are finding a new one.',
+          message: data['message'] ??
+              'Driver cancelled. Finding a new driver for your scheduled ride…',
           type: SnackbarType.warning,
+          duration: const Duration(seconds: 6),
         );
       }
     });

@@ -30,6 +30,13 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
     // Quietly refresh the visible card when a driver accepts one of these
     // rides — no toast here, Home already toasted via its own listener.
     _socketService.on('ride:accepted', _onRideAccepted);
+    // Same id-match pattern for driver-cancel: drop the cancelled driver
+    // from the open Upcoming list without manual refresh. Home owns the
+    // banner; this screen stays silent.
+    _socketService.on(
+      'ride:scheduledDriverCancelled',
+      _onScheduledDriverCancelled,
+    );
   }
 
   /// Socket `ride:accepted` handler: refresh in place when the accepted ride
@@ -40,6 +47,18 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
         : null;
     if (acceptedId == null || acceptedId.isEmpty || !mounted) return;
     final isVisible = _rides.any((r) => r.id == acceptedId);
+    if (isVisible) _refreshSilently();
+  }
+
+  /// Socket `ride:scheduledDriverCancelled` handler: refresh in place when
+  /// the cancelled ride is one of the visible scheduled rides, so the card
+  /// reverts to unassigned without manual refresh. No toast, no navigation.
+  void _onScheduledDriverCancelled(dynamic data) {
+    final cancelledId = data is Map
+        ? (data['rideId'] ?? data['_id'] ?? data['bookingId'])?.toString()
+        : null;
+    if (cancelledId == null || cancelledId.isEmpty || !mounted) return;
+    final isVisible = _rides.any((r) => r.id == cancelledId);
     if (isVisible) _refreshSilently();
   }
 
@@ -60,6 +79,7 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
   @override
   void dispose() {
     _socketService.off('ride:accepted');
+    _socketService.off('ride:scheduledDriverCancelled');
     super.dispose();
   }
 
