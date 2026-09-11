@@ -150,7 +150,11 @@ class _DriverScheduledRidesScreenState
               backgroundColor: AppTheme.successColor,
             ),
           );
+          // Land on My Scheduled: refetch both lists (claimed id drops out
+          // of the pool, appears chronologically under Confirmed) and
+          // switch to the Confirmed tab.
           _fetchAll();
+          _tabController.animateTo(1);
         }
       } else {
         if (mounted) {
