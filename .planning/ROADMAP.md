@@ -180,10 +180,10 @@
 - **SCHED-05**: Driver Confirmed tab has time-gated Go to Pickup entering unified execution
 - **SCHED-06**: Driver accept shows feedback, removes pool entry, lists under Confirmed
 
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans executed
 Plans:
 - [x] `08-01-PLAN.md` — Rider booking + accept guards (nav split, accept toast, list refresh)
-- [ ] `08-02-PLAN.md` — Rider day-of + cancel (global arrival nav, live continuity, cancel banner)
+- [x] `08-02-PLAN.md` — Rider day-of + cancel (global arrival nav, live continuity, cancel banner)
 - [x] `08-03-PLAN.md` — Driver entry + landing (Go to Pickup, accept verification)
 
 **Success Criteria:**
