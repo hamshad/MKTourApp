@@ -8,7 +8,7 @@ class SchedulePayload {
   /// ISO 8601 pickup time in UTC.
   final String pickupTime;
 
-  /// Selected payment method slug (stripe, payment_link, cash).
+  /// Selected payment method slug (payment_link, cash).
   final String paymentMethod;
 
   /// Optional pre-booking note for the driver.
@@ -39,7 +39,7 @@ class ScheduleRideSheet extends StatefulWidget {
     super.key,
     required this.initialDateTime,
     this.stops = const [],
-    this.paymentMethod = 'stripe',
+    this.paymentMethod = 'cash',
     required this.onSchedule,
   });
 
@@ -50,6 +50,7 @@ class ScheduleRideSheet extends StatefulWidget {
 class _ScheduleRideSheetState extends State<ScheduleRideSheet> {
   late DateTime _selectedDateTime;
   final TextEditingController _notesController = TextEditingController();
+  late String _selectedPaymentMethod;
 
   /// Minimum pickup time: 2 hours from now (backend constraint).
   DateTime get _minimumScheduleTime =>
@@ -63,6 +64,7 @@ class _ScheduleRideSheetState extends State<ScheduleRideSheet> {
   void initState() {
     super.initState();
     _selectedDateTime = widget.initialDateTime;
+    _selectedPaymentMethod = widget.paymentMethod;
   }
 
   @override
@@ -279,30 +281,36 @@ class _ScheduleRideSheetState extends State<ScheduleRideSheet> {
               ),
             ),
 
-          // Info banner
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.blue[50],
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.info_outline, color: Colors.blue[700], size: 20),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'A 10% deposit will be charged to confirm your booking. The remaining 90% is paid at pickup.',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.blue[800],
-                    ),
-                  ),
-                ),
-              ],
+          // Payment method selector
+          Text(
+            'Payment Method',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey[700],
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _buildPaymentOption(
+                  icon: Icons.link,
+                  label: 'Payment Link',
+                  value: 'payment_link',
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildPaymentOption(
+                  icon: Icons.money,
+                  label: 'Cash',
+                  value: 'cash',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
 
           // Confirm button
           SizedBox(
@@ -315,7 +323,7 @@ class _ScheduleRideSheetState extends State<ScheduleRideSheet> {
                       widget.onSchedule(
                         SchedulePayload(
                           pickupTime: _selectedDateTime.toUtc().toIso8601String(),
-                          paymentMethod: widget.paymentMethod,
+                          paymentMethod: _selectedPaymentMethod,
                           note: _notesController.text.isNotEmpty
                               ? _notesController.text
                               : null,
@@ -331,8 +339,10 @@ class _ScheduleRideSheetState extends State<ScheduleRideSheet> {
                   borderRadius: BorderRadius.circular(14),
                 ),
               ),
-              child: const Text(
-                'Schedule & Pay Deposit',
+              child: Text(
+                _selectedPaymentMethod == 'cash'
+                    ? 'Confirm Booking'
+                    : 'Pay & Confirm Booking',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -377,6 +387,47 @@ class _ScheduleRideSheetState extends State<ScheduleRideSheet> {
               ),
             ),
             Icon(Icons.chevron_right, color: Colors.grey[400]),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPaymentOption({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    final isSelected = _selectedPaymentMethod == value;
+    return GestureDetector(
+      onTap: () => setState(() => _selectedPaymentMethod = value),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: isSelected ? AppTheme.primaryColor.withOpacity(0.08) : Colors.grey[50],
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? AppTheme.primaryColor : Colors.grey[200]!,
+            width: isSelected ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 18,
+              color: isSelected ? AppTheme.primaryColor : Colors.grey[600],
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                color: isSelected ? AppTheme.primaryColor : Colors.grey[700],
+              ),
+            ),
           ],
         ),
       ),

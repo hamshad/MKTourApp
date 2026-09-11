@@ -25,6 +25,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../core/services/audio_service.dart';
 import '../../core/services/fcm_service.dart';
 import '../../core/services/payment_service.dart';
+import 'driver_scheduled_rides_screen.dart';
 
 class DriverHomeScreen extends StatefulWidget {
   const DriverHomeScreen({super.key});
@@ -3245,6 +3246,87 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
 
                   const SizedBox(height: 32),
 
+                  // Scheduled Rides Button
+                  if (_status == 'online') ...[
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const DriverScheduledRidesScreen(),
+                          ),
+                        );
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              AppTheme.primaryColor.withOpacity(0.9),
+                              AppTheme.primaryColor,
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppTheme.primaryColor.withOpacity(0.3),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(
+                                Icons.calendar_month,
+                                color: Colors.white,
+                                size: 24,
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Scheduled Rides',
+                                    style: GoogleFonts.outfit(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'View requests & confirmed rides',
+                                    style: GoogleFonts.outfit(
+                                      fontSize: 12,
+                                      color: Colors.white.withOpacity(0.8),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Icon(
+                              Icons.arrow_forward_ios,
+                              color: Colors.white.withOpacity(0.7),
+                              size: 16,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+
                   // Recent Activity Header
                   Text(
                     'Recent Activity',
@@ -3287,54 +3369,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
                   else
                     ..._recentRides.map((ride) => _buildRideItem(ride)),
                   const SizedBox(height: 20),
-
-                  // Scheduled Pool Section
-                  if (_status == 'online') ...[
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Upcoming Scheduled Rides',
-                          style: GoogleFonts.outfit(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.textPrimary,
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: _fetchScheduledPool,
-                          child: Text(
-                            'Refresh',
-                            style: GoogleFonts.outfit(
-                              color: AppTheme.primaryColor,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    if (_isPoolLoading && _scheduledPool.isEmpty)
-                      const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(20.0),
-                          child: CircularProgressIndicator(),
-                        ),
-                      )
-                    else if (_scheduledPool.isEmpty)
-                      Center(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 20),
-                          child: Text(
-                            'No scheduled rides available',
-                            style: GoogleFonts.outfit(color: Colors.grey),
-                          ),
-                        ),
-                      )
-                    else
-                      ..._scheduledPool.map((ride) => _buildScheduledPoolTile(ride)),
-                    const SizedBox(height: 20),
-                  ],
                 ],
               ),
             ),

@@ -28,6 +28,7 @@ class RideConfirmationScreen extends StatefulWidget {
   final bool isScheduled; // Set to true to enable scheduling flow
   final DateTime? scheduledDateTime; // The scheduled ride time (if prebooked)
   final List<Map<String, dynamic>>? stops; // Intermediate stops (max 3)
+  final String? paymentMethod; // Payment method for prebook
 
   const RideConfirmationScreen({
     super.key,
@@ -40,6 +41,7 @@ class RideConfirmationScreen extends StatefulWidget {
     this.isScheduled = false,
     this.scheduledDateTime,
     this.stops,
+    this.paymentMethod,
   });
 
   @override
@@ -54,6 +56,10 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   String? _fareError; // Error message if fare fetch fails
   Map<String, dynamic>? _dynamicFareData;
   PaymentTiming _paymentTiming = PaymentTiming.payLater;
+  late String _selectedPaymentMethod;
+  // Pending unpaid scheduled ride — set when backend returns a paymentUrl.
+  // Used to switch payment method via select-payment instead of duplicate create.
+  String? _pendingScheduledRideId;
   bool get _isFixedFare => widget.fareData['is_fixed_fare'] == true;
 
   // Route polyline points - initialized synchronously from passed data
@@ -63,6 +69,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   @override
   void initState() {
     super.initState();
+    _selectedPaymentMethod = widget.paymentMethod ?? 'cash';
     // Initialize route synchronously from passed polyline
     _initializeRouteSync();
     // Skip the old fare API if we already have promo-aware data or a fixed fare
@@ -219,17 +226,29 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   }
 
   void _showScheduleSheet() {
+    // Use existing scheduled time if set, otherwise default to 30 min from now
+    final initialTime = widget.scheduledDateTime != null
+        ? widget.scheduledDateTime!
+        : DateTime.now().add(const Duration(minutes: 30));
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => ScheduleRideSheet(
-        initialDateTime: DateTime.now().add(const Duration(minutes: 30)),
-        onSchedule: (selectedDateTime, notes) {
+        initialDateTime: initialTime,
+        onSchedule: (SchedulePayload payload) {
+          _selectedPaymentMethod = payload.paymentMethod;
+          // Payment switched after a cancelled webview → update existing ride
+          if (_pendingScheduledRideId != null) {
+            _switchScheduledPayment(_pendingScheduledRideId!, payload);
+            return;
+          }
           _processBooking(
-            PaymentTiming.payLater,
-            scheduledAt: selectedDateTime,
-            notes: notes,
+            PaymentTiming.payNow,
+            scheduledAt: DateTime.parse(payload.pickupTime),
+            notes: payload.note,
+            paymentMethod: payload.paymentMethod,
           );
         },
       ),
@@ -348,15 +367,28 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   }
 
   Future<void> _confirmPrebook() async {
-    // For prebooked rides, call _processBooking with the scheduledDateTime
-    // This will handle the 10% deposit payment and then show success dialog
+    // Time + payment already chosen on previous sheet → confirm directly.
+    // A pending unpaid ride exists after webview cancel → switch method on it.
     if (widget.scheduledDateTime != null) {
+      if (_pendingScheduledRideId != null) {
+        _switchScheduledPayment(
+          _pendingScheduledRideId!,
+          SchedulePayload(
+            pickupTime: widget.scheduledDateTime!.toUtc().toIso8601String(),
+            paymentMethod: _selectedPaymentMethod,
+          ),
+        );
+        return;
+      }
       _processBooking(
-        PaymentTiming.payLater,
+        PaymentTiming.payNow,
         scheduledAt: widget.scheduledDateTime,
         notes: '',
+        paymentMethod: _selectedPaymentMethod,
       );
+      return;
     }
+    _showScheduleSheet();
   }
 
   /* Commented out for now - used in _confirmRide's bottom sheet
@@ -420,6 +452,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     PaymentTiming timing, {
     DateTime? scheduledAt,
     String? notes,
+    String? paymentMethod,
   }) async {
     debugPrint(
       '🚀 RideConfirmationScreen: Processing booking with timing: $timing',
@@ -446,6 +479,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
         scheduledAt: scheduledAt,
         notes: notes,
         stops: widget.stops?.isNotEmpty == true ? widget.stops : null,
+        paymentMethod: paymentMethod,
       );
 
       if (mounted) {
@@ -458,19 +492,20 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
           debugPrint('✅ [RideConfirmationScreen] Ride created: $rideId');
 
           if (scheduledAt != null) {
-            // Persist scheduled status in state manager so downstream screens
-            // (RideAssignedScreen, RideCompleteScreen) know this is a prebook ride
-            // without relying on socket event fields or async API calls.
-            Provider.of<AuthProvider>(context, listen: false).markRideAsScheduled(rideId);
-            setState(() => _isLoading = false);
+            // Cash (no paymentUrl) → confirm directly.
+            // Payment Link → open webview first; mark scheduled only after success.
             final paymentUrl = result.data!['paymentUrl']?.toString();
             if (paymentUrl != null && paymentUrl.isNotEmpty) {
-              await _handleScheduledDepositPayment(
+              _pendingScheduledRideId = rideId;
+              await _handleScheduledPayment(
                 rideId: rideId,
                 paymentUrl: paymentUrl,
                 scheduledAt: scheduledAt,
               );
             } else {
+              _pendingScheduledRideId = null;
+              Provider.of<AuthProvider>(context, listen: false).markRideAsScheduled(rideId);
+              setState(() => _isLoading = false);
               _showPreBookingSuccess(rideId, scheduledAt);
             }
             return;
@@ -521,7 +556,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     }
   }
 
-  Future<void> _handleScheduledDepositPayment({
+  Future<void> _handleScheduledPayment({
     required String rideId,
     required String paymentUrl,
     required DateTime scheduledAt,
@@ -538,22 +573,93 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
       final success = webViewResult?['success'] == true;
 
       if (success) {
-        // Payment successful - show success dialog immediately
-        if (mounted) _showPreBookingSuccess(rideId, scheduledAt);
-      } else {
+        // Payment successful — mark scheduled and show success
         if (mounted) {
+          _pendingScheduledRideId = null;
+          Provider.of<AuthProvider>(context, listen: false).markRideAsScheduled(rideId);
+          setState(() => _isLoading = false);
+          _showPreBookingSuccess(rideId, scheduledAt);
+        }
+      } else {
+        // Cancelled — back to schedule sheet so user can pick another option
+        if (mounted) {
+          setState(() => _isLoading = false);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
-                'Deposit payment was not completed. You can pay from your scheduled rides.',
+                'Payment cancelled. Your booking is not confirmed yet.',
               ),
               backgroundColor: Colors.orange,
             ),
           );
+          _showScheduleSheet();
         }
       }
     } catch (e) {
-      debugPrint('❌ _handleScheduledDepositPayment: Error: $e');
+      debugPrint('❌ _handleScheduledPayment: Error: $e');
+    }
+  }
+
+  /// Switch payment method on an existing unpaid scheduled ride
+  /// (after webview cancel) instead of creating a duplicate ride.
+  Future<void> _switchScheduledPayment(
+    String rideId,
+    SchedulePayload payload,
+  ) async {
+    setState(() => _isLoading = true);
+    try {
+      final res = await _apiService.selectPaymentMethod(
+        rideId,
+        payload.paymentMethod,
+      );
+      if (!mounted) return;
+      if (res['success'] == true) {
+        final data = res['data'];
+        final ride = data is Map ? (data['ride'] ?? data) : null;
+        final url = ride is Map ? ride['paymentUrl']?.toString() : null;
+        final scheduledAt = DateTime.parse(payload.pickupTime);
+        if (url != null && url.isNotEmpty) {
+          await _handleScheduledPayment(
+            rideId: rideId,
+            paymentUrl: url,
+            scheduledAt: scheduledAt,
+          );
+        } else {
+          _pendingScheduledRideId = null;
+          Provider.of<AuthProvider>(context, listen: false)
+              .markRideAsScheduled(rideId);
+          setState(() => _isLoading = false);
+          _showPreBookingSuccess(rideId, scheduledAt);
+        }
+      } else {
+        // Backend rejected switch — cancel stale unpaid ride, then fresh create
+        await _apiService.cancelScheduledRideUser(
+          rideId,
+          reason: 'Payment method changed',
+        );
+        _pendingScheduledRideId = null;
+        _processBooking(
+          PaymentTiming.payNow,
+          scheduledAt: DateTime.parse(payload.pickupTime),
+          notes: payload.note,
+          paymentMethod: payload.paymentMethod,
+        );
+      }
+    } catch (_) {
+      // Network error — cancel stale unpaid ride, then fresh create
+      await _apiService.cancelScheduledRideUser(
+        rideId,
+        reason: 'Payment method changed',
+      );
+      _pendingScheduledRideId = null;
+      if (mounted) {
+        _processBooking(
+          PaymentTiming.payNow,
+          scheduledAt: DateTime.parse(payload.pickupTime),
+          notes: payload.note,
+          paymentMethod: payload.paymentMethod,
+        );
+      }
     }
   }
 
@@ -975,8 +1081,8 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'No payment required now',
-                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                      'Payment required to confirm',
+                      style: TextStyle(fontSize: 12, color: AppTheme.primaryColor, fontWeight: FontWeight.w500),
                     ),
                   ],
                 ),

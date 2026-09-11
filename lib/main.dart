@@ -185,6 +185,7 @@ class RideEaseApp extends StatelessWidget {
               polyline: args?['polyline'],
               isScheduled: args?['isScheduled'] ?? false,
               scheduledDateTime: args?['scheduledDateTime'],
+              paymentMethod: args?['paymentMethod'],
             ),
           );
         }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../../core/theme.dart';
+import '../../core/api_service.dart';
 import '../../core/services/payment_service.dart';
 import '../ride/payment_webview_screen.dart';
 import 'widgets/stops_editor_widget.dart';
@@ -15,10 +16,13 @@ class ConfirmBookingScreen extends StatefulWidget {
 }
 
 class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
+  final ApiService _apiService = ApiService();
   bool _isLoading = false;
   final TextEditingController _notesController = TextEditingController();
   PaymentTiming _paymentTiming = PaymentTiming.payLater;
   List<Map<String, dynamic>> _stops = [];
+  // Pending unpaid scheduled ride — switch payment via select-payment, no duplicate create.
+  String? _pendingScheduledRideId;
 
   Future<void> _confirmBooking(
     Map<String, dynamic> vehicle,
@@ -128,6 +132,7 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
         scheduledAt: DateTime.parse(payload.pickupTime),
         notes: payload.note,
         stops: payload.stops.isNotEmpty ? payload.stops : null,
+        paymentMethod: payload.paymentMethod,
       );
 
       if (!mounted) return;
@@ -141,11 +146,16 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
         // Route payment: paymentUrl → WebView, else show success
         final paymentUrl = result.data!['paymentUrl']?.toString();
         if (paymentUrl != null && paymentUrl.isNotEmpty) {
-          await _handleScheduledDepositPayment(
+          _pendingScheduledRideId = rideId;
+          await _handleScheduledPayment(
             rideId: rideId,
             paymentUrl: paymentUrl,
+            vehicle: vehicle,
+            destination: destination,
+            pickup: pickup,
           );
         } else {
+          _pendingScheduledRideId = null;
           setState(() => _isLoading = false);
           _showSuccessDialog(
             result.message ?? 'Scheduled ride created!',
@@ -164,11 +174,14 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
     }
   }
 
-  /// Open Payment WebView for scheduled deposit. On success show confirmation;
+  /// Open Payment WebView for scheduled full payment. On success show confirmation;
   /// on cancel return user to payment selection (no duplicate ride create).
-  Future<void> _handleScheduledDepositPayment({
+  Future<void> _handleScheduledPayment({
     required String rideId,
     required String paymentUrl,
+    Map<String, dynamic>? vehicle,
+    Map<String, dynamic>? destination,
+    Map<String, dynamic>? pickup,
   }) async {
     try {
       final webViewResult = await Navigator.of(context)
@@ -184,24 +197,86 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
       if (mounted) {
         setState(() => _isLoading = false);
         if (success) {
+          _pendingScheduledRideId = null;
           _showSuccessDialog(
-            'Scheduled ride confirmed! Deposit paid.',
+            'Scheduled ride confirmed! Payment completed.',
             {'_id': rideId, 'success': true},
           );
         } else {
+          // Cancelled — back to schedule sheet so user can pick another option
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
-                'Deposit payment not completed. You can pay from your scheduled rides.',
+                'Payment cancelled. Your booking is not confirmed yet.',
               ),
               backgroundColor: Colors.orange,
             ),
           );
+          if (vehicle != null && destination != null) {
+            _showScheduleSheet(vehicle, destination, pickup);
+          }
         }
       }
     } catch (e) {
-      debugPrint('❌ _handleScheduledDepositPayment: Error: $e');
+      debugPrint('❌ _handleScheduledPayment: Error: $e');
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  /// Switch payment method on existing unpaid scheduled ride
+  /// instead of creating a duplicate ride.
+  Future<void> _switchScheduledPayment(
+    String rideId,
+    SchedulePayload payload,
+    Map<String, dynamic> vehicle,
+    Map<String, dynamic> destination,
+    Map<String, dynamic>? pickup,
+  ) async {
+    setState(() => _isLoading = true);
+    try {
+      final res = await _apiService.selectPaymentMethod(
+        rideId,
+        payload.paymentMethod,
+      );
+      if (!mounted) return;
+      if (res['success'] == true) {
+        final data = res['data'];
+        final ride = data is Map ? (data['ride'] ?? data) : null;
+        final url = ride is Map ? ride['paymentUrl']?.toString() : null;
+        if (url != null && url.isNotEmpty) {
+          await _handleScheduledPayment(
+            rideId: rideId,
+            paymentUrl: url,
+            vehicle: vehicle,
+            destination: destination,
+            pickup: pickup,
+          );
+        } else {
+          _pendingScheduledRideId = null;
+          setState(() => _isLoading = false);
+          _showSuccessDialog(
+            'Scheduled ride confirmed! Payment completed.',
+            {'_id': rideId, 'success': true},
+          );
+        }
+      } else {
+        // Backend rejected switch — cancel stale unpaid ride, then fresh create
+        await _apiService.cancelScheduledRideUser(
+          rideId,
+          reason: 'Payment method changed',
+        );
+        _pendingScheduledRideId = null;
+        _handleScheduleRide(payload, vehicle, destination, pickup);
+      }
+    } catch (_) {
+      _pendingScheduledRideId = null;
+      if (mounted) {
+        await _apiService.cancelScheduledRideUser(
+          rideId,
+          reason: 'Payment method changed',
+        );
+        _handleScheduleRide(payload, vehicle, destination, pickup);
+      }
     }
   }
 
@@ -296,6 +371,17 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
         initialDateTime: now.add(const Duration(hours: 2)),
         stops: _stops,
         onSchedule: (SchedulePayload payload) {
+          // Payment switched after cancel → update existing ride, no duplicate
+          if (_pendingScheduledRideId != null) {
+            _switchScheduledPayment(
+              _pendingScheduledRideId!,
+              payload,
+              vehicle,
+              destination,
+              pickup,
+            );
+            return;
+          }
           _handleScheduleRide(payload, vehicle, destination, pickup);
         },
       ),

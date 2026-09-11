@@ -642,9 +642,11 @@ class _AirportVehicleSelectionScreenState
       backgroundColor: Colors.transparent,
       builder: (context) => ScheduleRideSheet(
         initialDateTime: DateTime.now().add(const Duration(minutes: 30)),
-        onSchedule: (selectedDateTime, notes) async {
+        onSchedule: (SchedulePayload payload) async {
           // User selected a time, now navigate to RideConfirmationScreen with the scheduled time
           if (!mounted) return;
+
+          final selectedDateTime = DateTime.parse(payload.pickupTime);
 
           debugPrint(
             '📅 AirportSelectionScreen: Prebook scheduled for: $selectedDateTime',
@@ -662,6 +664,7 @@ class _AirportVehicleSelectionScreenState
               'fareData': fareData,
               'isScheduled': true, // Mark as scheduled
               'scheduledDateTime': selectedDateTime, // Pass the selected time
+              'paymentMethod': payload.paymentMethod,
             },
           );
 

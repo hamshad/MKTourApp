@@ -130,6 +130,7 @@ class PaymentService {
     DateTime? scheduledAt,
     String? notes,
     List<Map<String, dynamic>>? stops,
+    String? paymentMethod,
   }) async {
     String? rideId;
     final bool shouldPresentPaymentSheet =
@@ -162,6 +163,8 @@ class PaymentService {
               : 'pay_later',
         if (isScheduled)
           'scheduledPickupTime': scheduledAt.toUtc().toIso8601String(),
+        if (isScheduled && paymentMethod != null)
+          'paymentMethod': paymentMethod,
         if (notes != null && notes.isNotEmpty)
           isScheduled ? 'preBookingNote' : 'notes': notes,
         if (stops != null && stops.isNotEmpty)
@@ -208,11 +211,26 @@ class PaymentService {
       final String? clientSecret;
 
       if (isScheduled) {
-        final rideObj = rawData['ride'] as Map<String, dynamic>? ?? rawData;
-        final paymentObj = rawData['payment'] as Map<String, dynamic>?;
+        final rideObj = rawData is Map
+            ? (rawData['ride'] as Map<String, dynamic>? ??
+                Map<String, dynamic>.from(rawData))
+            : <String, dynamic>{};
+        final paymentObj = rawData is Map && rawData['payment'] is Map
+            ? Map<String, dynamic>.from(rawData['payment'] as Map)
+            : null;
         rideId = rideObj['_id'] ?? rideObj['id'];
-        clientSecret = paymentObj?['clientSecret'];
-        final String? paymentUrl = paymentObj?['paymentUrl'];
+        clientSecret = paymentObj?['clientSecret']?.toString() ??
+            rideObj['clientSecret']?.toString();
+        // paymentUrl may live under data.payment, data.ride, or data itself
+        final String? paymentUrl = paymentObj?['paymentUrl']?.toString() ??
+            rideObj['paymentUrl']?.toString() ??
+            (rawData is Map ? rawData['paymentUrl']?.toString() : null);
+        debugPrint(
+          '💳 PaymentService: scheduled paymentMethod sent=$paymentMethod, '
+          'payObj=${paymentObj?.keys.toList()}, '
+          'rideHasUrl=${rideObj['paymentUrl'] != null}, '
+          'resolvedUrl=${paymentUrl != null ? 'present' : 'missing'}',
+        );
         rideData = {
           ...rideObj,
           if (clientSecret != null) 'clientSecret': clientSecret,
@@ -236,7 +254,7 @@ class PaymentService {
         return PaymentResult.success(
           rideId: rideId!,
           message:
-              'Scheduled ride created. Complete deposit payment to confirm.',
+              'Scheduled ride created. Complete payment to confirm.',
           data: rideData,
         );
       }

@@ -787,9 +787,11 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
       backgroundColor: Colors.transparent,
       builder: (context) => ScheduleRideSheet(
         initialDateTime: DateTime.now().add(const Duration(minutes: 30)),
-        onSchedule: (selectedDateTime, notes) async {
+        onSchedule: (SchedulePayload payload) async {
           // User selected a time, now navigate to RideConfirmationScreen with the scheduled time
           if (!mounted) return;
+
+          final selectedDateTime = DateTime.parse(payload.pickupTime);
 
           debugPrint(
             '📅 DestinationSearchScreen: Prebook scheduled for: $selectedDateTime',
@@ -808,6 +810,7 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
                 isScheduled: true, // Mark as scheduled
                 scheduledDateTime: selectedDateTime, // Pass the selected time
                 stops: _stops.isNotEmpty ? _stops : null,
+                paymentMethod: payload.paymentMethod,
               ),
             ),
           );

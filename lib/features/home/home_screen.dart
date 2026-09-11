@@ -494,7 +494,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (mounted) {
         CustomSnackbar.show(
           context,
-          message: data['message'] ?? 'Deposit confirmed! Your ride is scheduled.',
+          message: data['message'] ?? 'Payment confirmed! Your ride is scheduled.',
           type: SnackbarType.success,
         );
       }
@@ -541,7 +541,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _fetchRideHistory();
         CustomSnackbar.show(
           context,
-          message: data['message'] ?? 'Your booking expired because the deposit was not paid in time.',
+          message: data['message'] ?? 'Your booking expired because the payment was not completed in time.',
           type: SnackbarType.error,
         );
       }
@@ -553,7 +553,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _fetchRideHistory();
         CustomSnackbar.show(
           context,
-          message: data['message'] ?? 'No driver was found for your scheduled ride. Your deposit will be refunded.',
+          message: data['message'] ?? 'No driver was found for your scheduled ride. Your payment will be refunded.',
           type: SnackbarType.error,
         );
       }
@@ -569,7 +569,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             forfeitedRaw != false &&
             forfeitedRaw != 0;
         final forfeitedAmount = (forfeitedRaw is num) ? forfeitedRaw.toDouble() : 0.0;
-        final forfeitedStr = forfeitedAmount > 0 ? ' £${forfeitedAmount.toStringAsFixed(2)} deposit forfeited.' : '';
+        final forfeitedStr = forfeitedAmount > 0 ? ' £${forfeitedAmount.toStringAsFixed(2)} payment forfeited.' : '';
         CustomSnackbar.show(
           context,
           message: data['message'] ??

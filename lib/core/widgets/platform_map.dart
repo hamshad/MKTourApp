@@ -142,22 +142,26 @@ class _PlatformMapState extends State<PlatformMap> {
     }
 
     try {
-      final bounds = widget.bounds;
-      final swLat = bounds.southWest.latitude;
-      final swLng = bounds.southWest.longitude;
-      final neLat = bounds.northEast.latitude;
-      final neLng = bounds.northEast.longitude;
-      
+      // Extract SW/NE from either google_maps_flutter or flutter_map LatLngBounds
+      double? swLat, swLng, neLat, neLng;
+      try {
+        final sw = widget.bounds.southwest;
+        final ne = widget.bounds.northeast;
+        swLat = sw.latitude; swLng = sw.longitude;
+        neLat = ne.latitude; neLng = ne.longitude;
+      } catch (_) {
+        final sw = widget.bounds.southWest;
+        final ne = widget.bounds.northEast;
+        swLat = sw.latitude; swLng = sw.longitude;
+        neLat = ne.latitude; neLng = ne.longitude;
+      }
+
+      if (swLat == null || swLng == null || neLat == null || neLng == null) return;
+
       debugPrint('🗺️ PlatformMap: Fitting bounds...');
       debugPrint('   → SW: ($swLat, $swLng)');
       debugPrint('   → NE: ($neLat, $neLng)');
-      
-      // Calculate center point
-      final centerLat = (swLat + neLat) / 2;
-      final centerLng = (swLng + neLng) / 2;
-      
-      debugPrint('   → Center: ($centerLat, $centerLng)');
-      
+
       final googleBounds = LatLngBounds(
         southwest: LatLng(swLat, swLng),
         northeast: LatLng(neLat, neLng),
@@ -217,10 +221,27 @@ class _PlatformMapState extends State<PlatformMap> {
     // Determine initial camera target: prefer center of bounds, fallback to initialLat/Lng
     LatLng initialTarget = LatLng(widget.initialLat, widget.initialLng);
     if (widget.bounds != null) {
-      initialTarget = LatLng(
-        (widget.bounds.southWest.latitude + widget.bounds.northEast.latitude) / 2,
-        (widget.bounds.southWest.longitude + widget.bounds.northEast.longitude) / 2,
-      );
+      try {
+        // Works with both google_maps_flutter and flutter_map LatLngBounds
+        final sw = widget.bounds.southwest;
+        final ne = widget.bounds.northeast;
+        initialTarget = LatLng(
+          (sw.latitude + ne.latitude) / 2,
+          (sw.longitude + ne.longitude) / 2,
+        );
+      } catch (_) {
+        try {
+          // flutter_map uses southWest/northEast (camelCase)
+          final sw = widget.bounds.southWest;
+          final ne = widget.bounds.northEast;
+          initialTarget = LatLng(
+            (sw.latitude + ne.latitude) / 2,
+            (sw.longitude + ne.longitude) / 2,
+          );
+        } catch (_) {
+          // Keep fallback
+        }
+      }
     }
 
     return GoogleMap(
