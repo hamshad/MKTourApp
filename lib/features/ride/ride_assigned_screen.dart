@@ -1860,7 +1860,11 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       setState(() { _isScheduled = true; });
     }
 
-    AudioService.instance.playNotification();
+    // Scheduled arrivals stay silent — ringtone fires only for prebook
+    // reminders. Instant arrivals keep the alert.
+    if (!_isScheduled) {
+      AudioService.instance.playNotification();
+    }
 
     setState(() {
       _rideStatus = 'driver_arrived';

@@ -1486,12 +1486,15 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     );
     // Only show request if driver is online and available
     if (_status == 'online') {
-      debugPrint('🔔 [DriverHomeScreen] Starting ringtone sound...');
-      // Use playRingtone for better visibility as it's meant for alerts
-      // Play app custom notification sound
-      AudioService.instance.playNotification();
-
       final normalised = _normaliseRideData(data);
+      // Ringtone for instant requests only — scheduled pool entries notify
+      // via snackbar so prebook browsing stays quiet (reminders still ring).
+      if (normalised['isScheduled'] != true) {
+        debugPrint('🔔 [DriverHomeScreen] Starting ringtone sound...');
+        // Use playRingtone for better visibility as it's meant for alerts
+        // Play app custom notification sound
+        AudioService.instance.playNotification();
+      }
 
       setState(() {
         _status = 'request';

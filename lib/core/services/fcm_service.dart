@@ -344,7 +344,7 @@ class FcmService {
     }
 
     // Play notification sound for important notifications
-    _playNotificationSound(data.type);
+    _playNotificationSound(data);
 
     // Show local notification
     _showLocalNotification(message);
@@ -502,22 +502,37 @@ class FcmService {
     );
   }
 
-  /// Play notification sound based on notification type
-  void _playNotificationSound(String type) {
-    // Play sound for important notifications
+  /// Play notification sound based on notification type.
+  ///
+  /// Ringtone policy: scheduled-ride lifecycle events stay silent — sound
+  /// fires only for the two prebook reminders (1hr/15min, plus the generic
+  /// ride reminder) and for instant ride requests. Instant-ride sounds
+  /// unchanged. FCM data values arrive stringly, so match bool and string.
+  void _playNotificationSound(FcmNotificationData data) {
+    final type = data.type;
+    final rawScheduled = data.rawData['isScheduled'];
+    final isScheduledEvent = rawScheduled == true ||
+        rawScheduled?.toString().toLowerCase() == 'true';
     switch (type) {
+      // Prebook reminders always ring (rider + driver).
+      case NotificationType.scheduledReminder1hr:
+      case NotificationType.scheduledReminder15min:
+      case NotificationType.rideReminder:
+        AudioService.instance.playNotification();
+        break;
+      // Instant-only sounds — suppressed for scheduled rides.
       case NotificationType.rideRequest:
       case NotificationType.rideAccepted:
       case NotificationType.driverArrived:
       case NotificationType.rideStarted:
       case NotificationType.rideCompleted:
       case NotificationType.rideDriverReassigning:
-      case NotificationType.scheduledReminder1hr:
-      case NotificationType.scheduledReminder15min:
       case NotificationType.promoUnlocked:
       case NotificationType.promoApplied:
       case NotificationType.promoClaimed:
-        AudioService.instance.playNotification();
+        if (!isScheduledEvent) {
+          AudioService.instance.playNotification();
+        }
         break;
       default:
         // No sound for other notification types
