@@ -1,8 +1,8 @@
 # MK Tours - Project State
 
 ## Current Position
-- **Phase:** 08-scheduled-screen-flow — In Progress (2/3 plans, 2026-09-11)
-- **Next:** 08-02
+- **Phase:** 08-scheduled-screen-flow — Complete (3/3 plans, 2026-09-11)
+- **Next:** Phase transition (08 complete)
 
 ## Completed Plans
 - 02-01: Ride-flow API layer — no-OTP startRide, stopArrive/stopResume, stops-aware fare/create, reason cancel, fixed end-early (`c0c7d26`, `0e95c3b`)
@@ -19,6 +19,7 @@
 - 07-02: Execution merge + verification — scheduled rides merge into live flow, full lifecycle verified (commits shared with 07-01)
 - 08-01: Scheduled screen-flow guards — scheduled booking to /home, scheduled accept toast-only, upcoming silent refresh (`9a4c4e5`, `89e1549`, `2b00f93`)
 - 08-03: Day-of entry + accept landing — Go to Pickup into unified execution, accept lands on Confirmed (`45f068c`, `56ec34e`)
+- 08-02: Day-of transitions + cancel reassignment — global arrival routing, started/completed verified, cancel banner + refresh (`cbcaa37`, `d1e8bd8`)
 
 ## Decisions
 - [02-01] OTP dialog UI left in place; only API call path made OTP-free (UI strip-out in 03-01)
@@ -55,12 +56,16 @@
 - [08-03] Go to Pickup adopts via pop-with-result into home pickup state, not a new route (home owns lifecycle)
 - [08-03] Pickup window 60 min including overdue; button never hidden, disabled with countdown hint
 - [08-03] Accept auto-switches to Confirmed tab so driver lands on My Scheduled
+- [08-02] Arrival pushes RideAssignedScreen with isScheduled:true (same destination _handleDriverArrival mutates in place)
+- [08-02] Scheduled started/completed verified with no code change; instant payment logic untouched
+- [08-02] Upcoming cancel refresh uses silent refresh per 08-01 pattern, not full loader
 
 ## Blockers
 - None
 
 ## Session
-- Last session: Completed 08-03-PLAN.md (2026-09-11, 2 commits, SUMMARY at phases/08-scheduled-screen-flow/08-03-SUMMARY.md). Next: 08-02.
+- Last session: Completed 08-02-PLAN.md (2026-09-11, 2 feat commits + Task 2 verification-only, SUMMARY at phases/08-scheduled-screen-flow/08-02-SUMMARY.md). Phase 08 complete — ready for transition.
+- Previous: Completed 08-03-PLAN.md (2026-09-11, 2 commits, SUMMARY at phases/08-scheduled-screen-flow/08-03-SUMMARY.md). Next: 08-02.
 - Previous: Completed 08-01-PLAN.md (2026-09-11, 3 feat commits, SUMMARY at phases/08-scheduled-screen-flow/08-01-SUMMARY.md). Next: 08-02.
 - Previous: Completed 07-02-PLAN.md (2026-09-10, verification approved, SUMMARY at phases/07-driver-prebook/07-02-SUMMARY.md). Phase 07 complete.
 - Previous: Completed 07-01-PLAN.md (2026-09-10, 2 feat commits, SUMMARY at phases/07-driver-prebook/07-01-SUMMARY.md).
