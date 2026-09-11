@@ -15,6 +15,7 @@ import 'package:latlong2/latlong.dart' as lat_lng;
 import 'dart:async';
 import '../../core/services/socket_service.dart';
 import '../../core/services/ride_event_dedupe.dart';
+import '../../core/services/audio_service.dart';
 import '../../core/services/active_ride_storage.dart';
 import '../../core/api_service.dart';
 import '../ride/ride_assigned_screen.dart';
@@ -797,6 +798,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _socketService.on('ride:reminder', (data) {
       debugPrint('⏰ [HomeScreen] Ride Reminder: $data');
       if (mounted) {
+        // Prebook reminders ring — first transport (socket or FCM) wins via
+        // the shared canonical key, so no double ringtone.
+        final reminderType =
+            data is Map ? data['reminderType']?.toString().toLowerCase() : null;
+        final key = (reminderType?.contains('final') ?? false)
+            ? 'reminder_final'
+            : 'reminder_first';
+        if (RideEventDedupe.shouldHandle(
+          source: 'socket',
+          type: key,
+          rideId: data is Map
+              ? (data['rideId'] ?? data['_id'])?.toString()
+              : null,
+        )) {
+          AudioService.instance.playNotification();
+        }
         CustomSnackbar.show(
           context,
           message: data['message'] ?? 'Reminder: You have a scheduled ride soon!',

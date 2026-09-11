@@ -43,6 +43,9 @@ class NotificationType {
   // Scheduled Ride Notifications (User)
   static const String scheduledReminder1hr = 'scheduled_reminder_1hr';
   static const String scheduledReminder15min = 'scheduled_reminder_15min';
+  // Environment-aware reminder names (3min/1min dev, 30min/15min prod).
+  static const String scheduledReminderFirst = 'scheduled_reminder_first';
+  static const String scheduledReminderFinal = 'scheduled_reminder_final';
   static const String scheduledRideActivated = 'scheduled_ride_activated';
   static const String scheduledDriverCancelled = 'scheduled_driver_cancelled';
   static const String depositTimeout = 'deposit_timeout';
@@ -64,6 +67,29 @@ class NotificationType {
   static const String promoUnlocked = 'promo_unlocked';
   static const String promoApplied = 'promo_applied';
   static const String promoClaimed = 'promo_claimed';
+}
+
+/// Canonical dedupe key for prebook reminders, shared between the FCM
+/// `scheduled_reminder_*` types and the socket `ride:reminder` handler
+/// (`reminderType` first/final). First transport within the window rings.
+String canonicalReminderDedupeType(String type) {
+  switch (type) {
+    case NotificationType.scheduledReminderFirst:
+    case NotificationType.scheduledReminder1hr:
+      return 'reminder_first';
+    case NotificationType.scheduledReminderFinal:
+    case NotificationType.scheduledReminder15min:
+      return 'reminder_final';
+    default:
+      return type;
+  }
+}
+
+/// Map a socket `reminderType` value to the shared canonical dedupe key.
+String canonicalSocketReminderKey(dynamic reminderType) {
+  final v = reminderType?.toString().toLowerCase() ?? '';
+  if (v.contains('final')) return 'reminder_final';
+  return 'reminder_first';
 }
 
 /// FCM Notification payload data
@@ -335,9 +361,11 @@ class FcmService {
     // FCM + socket deliver the same backend event twice. If the socket path
     // already handled this (type, rideId) within the window, skip the banner,
     // sound, and stream emission — and vice versa via the same guard.
+    // Reminders use a canonical key shared with the socket `ride:reminder`
+    // handler so exactly one transport rings.
     if (!RideEventDedupe.shouldHandleEvent(
       source: 'fcm',
-      type: data.type,
+      type: canonicalReminderDedupeType(data.type),
       data: message.data,
     )) {
       return;
@@ -515,6 +543,8 @@ class FcmService {
         rawScheduled?.toString().toLowerCase() == 'true';
     switch (type) {
       // Prebook reminders always ring (rider + driver).
+      case NotificationType.scheduledReminderFirst:
+      case NotificationType.scheduledReminderFinal:
       case NotificationType.scheduledReminder1hr:
       case NotificationType.scheduledReminder15min:
       case NotificationType.rideReminder:
@@ -676,6 +706,8 @@ mixin FcmNotificationHandler<T extends StatefulWidget> on State<T> {
         onPromoClaimed(data);
         break;
       // Scheduled ride notification handlers
+      case NotificationType.scheduledReminderFirst:
+      case NotificationType.scheduledReminderFinal:
       case NotificationType.scheduledReminder1hr:
       case NotificationType.scheduledReminder15min:
         onScheduledReminder(data);

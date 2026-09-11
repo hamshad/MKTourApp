@@ -1246,6 +1246,22 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     _socketService.on('ride:reminder', (data) {
       debugPrint('⏰ [DriverHomeScreen] Ride Reminder: $data');
       if (mounted) {
+        // Prebook reminders ring — first transport (socket or FCM) wins via
+        // the shared canonical key, so no double ringtone.
+        final reminderType =
+            data is Map ? data['reminderType']?.toString().toLowerCase() : null;
+        final key = (reminderType?.contains('final') ?? false)
+            ? 'reminder_final'
+            : 'reminder_first';
+        if (RideEventDedupe.shouldHandle(
+          source: 'socket',
+          type: key,
+          rideId: data is Map
+              ? (data['rideId'] ?? data['_id'])?.toString()
+              : null,
+        )) {
+          AudioService.instance.playNotification();
+        }
         CustomSnackbar.show(
           context,
           message: data['message'] ?? 'Reminder: You have an upcoming ride!',
