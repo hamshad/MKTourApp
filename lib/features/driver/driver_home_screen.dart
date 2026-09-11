@@ -1405,6 +1405,37 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     }
   }
 
+  /// Adopt a confirmed scheduled ride (from the Scheduled Rides screen
+  /// Go to Pickup entry) into the unified active-ride execution path.
+  /// The ride enters the exact instant-ride pickup state: arrive → start →
+  /// stops → complete via the existing navigation panel. `isScheduled: true`
+  /// is preserved so the scheduled banner and cancel routing keep working.
+  void _adoptScheduledRide(Map<String, dynamic> ride) {
+    final rideId = ride['_id']?.toString();
+    if (rideId == null || rideId.isEmpty) return;
+    if (_status != 'online') {
+      CustomSnackbar.show(
+        context,
+        message: 'Finish your current ride before starting a scheduled one',
+        type: SnackbarType.info,
+      );
+      return;
+    }
+    AudioService.instance.stop();
+    setState(() {
+      _status = 'pickup';
+      _currentRideId = rideId;
+      _rideData = {...ride, 'isScheduled': true};
+    });
+    _persistActiveRide();
+    _fetchNavigationRoute();
+    CustomSnackbar.show(
+      context,
+      message: 'Scheduled ride started — head to pickup',
+      type: SnackbarType.success,
+    );
+  }
+
   /// Claim a scheduled ride from the pool
   Future<void> _claimScheduledRide(Map<String, dynamic> ride) async {
     final rideId = ride['_id']?.toString();
@@ -3249,13 +3280,18 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
                   // Scheduled Rides Button
                   if (_status == 'online') ...[
                     GestureDetector(
-                      onTap: () {
-                        Navigator.push(
+                      onTap: () async {
+                        final result = await Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (_) => const DriverScheduledRidesScreen(),
                           ),
                         );
+                        if (!mounted) return;
+                        if (result is Map<String, dynamic> &&
+                            result['_id'] != null) {
+                          _adoptScheduledRide(result);
+                        }
                       },
                       child: Container(
                         padding: const EdgeInsets.all(16),

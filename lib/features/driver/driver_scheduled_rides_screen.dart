@@ -174,6 +174,81 @@ class _DriverScheduledRidesScreenState
     }
   }
 
+  /// Disabled-state hint for the Go to Pickup button. Null means enabled:
+  /// open within 60 min before pickupTime (overdue counts as open — a
+  /// day-of driver must never be stuck with a disabled button).
+  String? _pickupHint(ScheduledRide ride, DateTime? pickupTime) {
+    if (ride.status != 'scheduled' && ride.status != 'accepted') {
+      return 'Already in progress — continue from home';
+    }
+    if (pickupTime == null) return 'Pickup time unavailable';
+    final diff = pickupTime.difference(DateTime.now());
+    if (diff.inMinutes > 60) {
+      final wait = diff.inHours > 0
+          ? '${diff.inHours}h ${diff.inMinutes % 60}m'
+          : '${diff.inMinutes}m';
+      return 'Available $wait before pickup';
+    }
+    return null;
+  }
+
+  /// Enter the unified execution flow via driver home: pop with rideData
+  /// (`isScheduled: true` preserved for the driver_home normalisation
+  /// contract) so home adopts it into the instant-ride pickup path.
+  /// No execution UI is duplicated here — single entry into the existing
+  /// unified arrive/start/stops/complete panel.
+  void _goToPickup(ScheduledRide ride) {
+    final rideData = ride.toJson();
+    rideData['isScheduled'] = true;
+    Navigator.pop(context, rideData);
+  }
+
+  Widget _buildGoToPickupButton(ScheduledRide ride, DateTime? pickupTime) {
+    final hint = _pickupHint(ride, pickupTime);
+    final enabled = hint == null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: enabled ? () => _goToPickup(ride) : null,
+            icon: const Icon(Icons.navigation_outlined, size: 18),
+            label: Text(
+              'Go to Pickup',
+              style: GoogleFonts.outfit(
+                fontWeight: FontWeight.w600,
+                fontSize: 15,
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryColor,
+              foregroundColor: Colors.white,
+              disabledBackgroundColor: Colors.grey[300],
+              disabledForegroundColor: Colors.grey[600],
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              elevation: 0,
+            ),
+          ),
+        ),
+        if (hint != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            hint,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.outfit(
+              fontSize: 12,
+              color: Colors.grey[500],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   void _showCancelDialog(ScheduledRide ride) {
     String? selectedReason;
     bool showReasonError = false;
@@ -872,8 +947,12 @@ class _DriverScheduledRidesScreenState
                   ],
                 ),
 
-                // Cancel button
+                // Go to Pickup (unified execution entry — always visible,
+                // disabled with countdown hint outside the pickup window)
                 const SizedBox(height: 12),
+                _buildGoToPickupButton(ride, pickupTime),
+                const SizedBox(height: 8),
+                // Cancel button
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(
