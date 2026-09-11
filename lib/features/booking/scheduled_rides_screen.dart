@@ -21,11 +21,46 @@ class ScheduledRidesScreen extends StatefulWidget {
 class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
   List<ScheduledRide> _rides = [];
   bool _isLoading = true;
+  final SocketService _socketService = SocketService();
 
   @override
   void initState() {
     super.initState();
     _fetchScheduledRides();
+    // Quietly refresh the visible card when a driver accepts one of these
+    // rides — no toast here, Home already toasted via its own listener.
+    _socketService.on('ride:accepted', _onRideAccepted);
+  }
+
+  /// Socket `ride:accepted` handler: refresh in place when the accepted ride
+  /// is one of the visible scheduled rides.
+  void _onRideAccepted(dynamic data) {
+    final acceptedId = data is Map
+        ? (data['rideId'] ?? data['_id'])?.toString()
+        : null;
+    if (acceptedId == null || acceptedId.isEmpty || !mounted) return;
+    final isVisible = _rides.any((r) => r.id == acceptedId);
+    if (isVisible) _refreshSilently();
+  }
+
+  /// Refresh list data without toggling the full-screen loader, so the card
+  /// updates in place while the user watches.
+  Future<void> _refreshSilently() async {
+    final rawRides = await PaymentService.getScheduledRides();
+    if (mounted) {
+      setState(() {
+        _rides = rawRides
+            .map((r) => ScheduledRide.fromJson(r))
+            .toList();
+      });
+      _checkLiveHandoff();
+    }
+  }
+
+  @override
+  void dispose() {
+    _socketService.off('ride:accepted');
+    super.dispose();
   }
 
   Future<void> _fetchScheduledRides() async {
