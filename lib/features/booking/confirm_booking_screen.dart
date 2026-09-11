@@ -162,6 +162,7 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
           _showSuccessDialog(
             result.message ?? 'Scheduled ride created!',
             result.data,
+            isScheduled: true,
           );
         }
       } else {
@@ -203,6 +204,7 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
           _showSuccessDialog(
             'Scheduled ride confirmed! Payment completed.',
             {'_id': rideId, 'success': true},
+            isScheduled: true,
           );
         } else {
           // Cancelled — back to schedule sheet so user can pick another option
@@ -259,6 +261,7 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
           _showSuccessDialog(
             'Scheduled ride confirmed! Payment completed.',
             {'_id': rideId, 'success': true},
+            isScheduled: true,
           );
         }
       } else {
@@ -282,7 +285,11 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
     }
   }
 
-  void _showSuccessDialog(String message, Map<String, dynamic>? rideData) {
+  void _showSuccessDialog(
+    String message,
+    Map<String, dynamic>? rideData, {
+    bool isScheduled = false,
+  }) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -311,6 +318,14 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
           TextButton(
             onPressed: () {
               Navigator.pop(context);
+              if (isScheduled) {
+                Navigator.pushNamedAndRemoveUntil(
+                  context,
+                  '/home',
+                  (route) => false,
+                );
+                return;
+              }
               Navigator.pushNamedAndRemoveUntil(
                 context,
                 '/ride-assigned',
