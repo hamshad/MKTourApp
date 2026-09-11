@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:intl/intl.dart';
 import '../../../core/theme.dart';
+import '../../../core/constants.dart';
 
 /// Structured payload returned when a scheduled ride is confirmed.
 class SchedulePayload {
@@ -27,7 +28,8 @@ class SchedulePayload {
 
 /// Bottom sheet for selecting a scheduled ride date/time and optional note.
 ///
-/// Enforces a minimum of 2 hours and maximum of 30 days from now.
+/// Enforces a minimum lead time (5 minutes in dev, 2 hours in prod)
+/// and maximum of 30 days from now.
 /// Returns a [SchedulePayload] via [onSchedule] callback.
 class ScheduleRideSheet extends StatefulWidget {
   final DateTime initialDateTime;
@@ -52,9 +54,17 @@ class _ScheduleRideSheetState extends State<ScheduleRideSheet> {
   final TextEditingController _notesController = TextEditingController();
   late String _selectedPaymentMethod;
 
-  /// Minimum pickup time: 2 hours from now (backend constraint).
-  DateTime get _minimumScheduleTime =>
-      DateTime.now().add(const Duration(hours: 2));
+  /// Minimum pickup time: 5 minutes in dev (testing), 2 hours in prod
+  /// (backend constraint).
+  DateTime get _minimumScheduleTime => DateTime.now().add(
+        AppConstants.isDev
+            ? const Duration(minutes: 5)
+            : const Duration(hours: 2),
+      );
+
+  /// Human-readable minimum lead time for hint/error copy.
+  String get _minLeadLabel =>
+      AppConstants.isDev ? '5 minutes' : '2 hours';
 
   /// Maximum pickup time: 30 days from now (backend constraint).
   DateTime get _maximumScheduleTime =>
@@ -229,7 +239,7 @@ class _ScheduleRideSheetState extends State<ScheduleRideSheet> {
           ),
           const SizedBox(height: 4),
           Text(
-            'Pickup must be 2 hours to 30 days from now',
+            'Pickup must be $_minLeadLabel to 30 days from now',
             style: TextStyle(fontSize: 13, color: Colors.grey[600]),
           ),
           const SizedBox(height: 24),
@@ -276,7 +286,7 @@ class _ScheduleRideSheetState extends State<ScheduleRideSheet> {
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Text(
-                'Pickup must be between 2 hours and 30 days from now',
+                'Pickup must be between $_minLeadLabel and 30 days from now',
                 style: TextStyle(fontSize: 12, color: Colors.red[600]),
               ),
             ),

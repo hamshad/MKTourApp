@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../../core/theme.dart';
+import '../../core/constants.dart';
 import '../../core/api_service.dart';
 import '../../core/services/payment_service.dart';
 import '../ride/payment_webview_screen.dart';
@@ -385,8 +386,12 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
       context: context,
       isScrollControlled: true,
       builder: (_) => ScheduleRideSheet(
-        initialDateTime:
-            _lastScheduledTime ?? now.add(const Duration(hours: 2)),
+        initialDateTime: _lastScheduledTime ??
+            now.add(
+              AppConstants.isDev
+                  ? const Duration(minutes: 5)
+                  : const Duration(hours: 2),
+            ),
         stops: _stops,
         onSchedule: (SchedulePayload payload) {
           _lastScheduledTime = DateTime.parse(payload.pickupTime);
