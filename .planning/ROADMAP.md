@@ -184,7 +184,7 @@
 Plans:
 - [x] `08-01-PLAN.md` — Rider booking + accept guards (nav split, accept toast, list refresh)
 - [ ] `08-02-PLAN.md` — Rider day-of + cancel (global arrival nav, live continuity, cancel banner)
-- [ ] `08-03-PLAN.md` — Driver entry + landing (Go to Pickup, accept verification)
+- [x] `08-03-PLAN.md` — Driver entry + landing (Go to Pickup, accept verification)
 
 **Success Criteria:**
 - Full scheduled lifecycle navigates per guide on both apps with zero disruptive navigation
