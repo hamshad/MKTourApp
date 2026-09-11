@@ -1041,28 +1041,26 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
       final message = data['message'] ?? 'Payment failed. Please try again.';
 
-      // Show error
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          title: const Text('Payment Failed'),
-          content: Text(message),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context); // Close dialog
-                _showPaymentSelectionModal(); // Allow retry
-              },
-              child: const Text('Select Payment Method'),
-            ),
-          ],
-        ),
-      );
+      // A newer payment attempt is in flight (e.g. cash picked after a
+      // payment_link cancel) — this expiry belongs to the old link.
+      // Showing a blocking dialog now would pop over the new flow and
+      // corrupt its loader/state. Defer until the attempt settles.
+      if (_isSelectingPayment) {
+        final guardSeq = _paymentSelectionSeq;
+        debugPrint(
+          '⚠️ [RideAssignedScreen] payment:failed during attempt seq $guardSeq — deferring',
+        );
+        Future.delayed(const Duration(seconds: 3), () {
+          if (!mounted) return;
+          if (_paymentSelectionSeq != guardSeq) return;
+          if (_isPaymentMethodSelected) return;
+          if (_isSelectingPayment) return;
+          _showPaymentFailedDialog(message);
+        });
+        return;
+      }
 
-      setState(() {
-        _isPaymentMethodSelected = false;
-      });
+      _showPaymentFailedDialog(message);
     });
 
     _socketService.on('payment:succeeded', (data) {
@@ -2191,6 +2189,33 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     };
 
     _showPaymentSuccessScreen(finalRideData);
+  }
+
+  void _showPaymentFailedDialog(String message) {
+    if (!mounted) return;
+    // Never pop failure UI over the live trip.
+    if (_rideStatus == 'in_progress') return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Payment Failed'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context); // Close dialog
+              _showPaymentSelectionModal(); // Allow retry
+            },
+            child: const Text('Select Payment Method'),
+          ),
+        ],
+      ),
+    );
+
+    setState(() {
+      _isPaymentMethodSelected = false;
+    });
   }
 
   void _showPaymentSuccessScreen(Map<String, dynamic> rideData) {

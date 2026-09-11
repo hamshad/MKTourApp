@@ -60,6 +60,8 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   // Pending unpaid scheduled ride — set when backend returns a paymentUrl.
   // Used to switch payment method via select-payment instead of duplicate create.
   String? _pendingScheduledRideId;
+  // Last time picked in the sheet — reused as sheet initial so cancel keeps it.
+  DateTime? _lastScheduledTime;
   bool get _isFixedFare => widget.fareData['is_fixed_fare'] == true;
 
   // Route polyline points - initialized synchronously from passed data
@@ -226,10 +228,11 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   }
 
   void _showScheduleSheet() {
-    // Use existing scheduled time if set, otherwise default to 30 min from now
-    final initialTime = widget.scheduledDateTime != null
-        ? widget.scheduledDateTime!
-        : DateTime.now().add(const Duration(minutes: 30));
+    // Preserve last picked time across webview cancel; fall back to
+    // pre-set time, otherwise default to 30 min from now.
+    final initialTime = _lastScheduledTime ??
+        widget.scheduledDateTime ??
+        DateTime.now().add(const Duration(minutes: 30));
 
     showModalBottomSheet(
       context: context,
@@ -239,6 +242,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
         initialDateTime: initialTime,
         onSchedule: (SchedulePayload payload) {
           _selectedPaymentMethod = payload.paymentMethod;
+          _lastScheduledTime = DateTime.parse(payload.pickupTime);
           // Payment switched after a cancelled webview → update existing ride
           if (_pendingScheduledRideId != null) {
             _switchScheduledPayment(_pendingScheduledRideId!, payload);

@@ -23,6 +23,8 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
   List<Map<String, dynamic>> _stops = [];
   // Pending unpaid scheduled ride — switch payment via select-payment, no duplicate create.
   String? _pendingScheduledRideId;
+  // Last time picked in the sheet — reused as sheet initial so cancel keeps it.
+  DateTime? _lastScheduledTime;
 
   Future<void> _confirmBooking(
     Map<String, dynamic> vehicle,
@@ -368,9 +370,11 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
       context: context,
       isScrollControlled: true,
       builder: (_) => ScheduleRideSheet(
-        initialDateTime: now.add(const Duration(hours: 2)),
+        initialDateTime:
+            _lastScheduledTime ?? now.add(const Duration(hours: 2)),
         stops: _stops,
         onSchedule: (SchedulePayload payload) {
+          _lastScheduledTime = DateTime.parse(payload.pickupTime);
           // Payment switched after cancel → update existing ride, no duplicate
           if (_pendingScheduledRideId != null) {
             _switchScheduledPayment(
