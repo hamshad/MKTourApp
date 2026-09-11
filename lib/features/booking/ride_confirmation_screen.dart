@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../core/theme.dart';
+import '../../core/constants.dart';
 import '../../core/api_service.dart';
 import '../../core/services/places_service.dart';
 import '../../core/services/payment_service.dart';
@@ -229,10 +230,15 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
 
   void _showScheduleSheet() {
     // Preserve last picked time across webview cancel; fall back to
-    // pre-set time, otherwise default to 30 min from now.
+    // pre-set time, otherwise default to minimum lead time
+    // (5 min dev, 2 hours prod).
     final initialTime = _lastScheduledTime ??
         widget.scheduledDateTime ??
-        DateTime.now().add(const Duration(minutes: 30));
+        DateTime.now().add(
+          AppConstants.isDev
+              ? const Duration(minutes: 5)
+              : const Duration(hours: 2),
+        );
 
     showModalBottomSheet(
       context: context,

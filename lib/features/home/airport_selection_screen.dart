@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme.dart';
+import '../../core/constants.dart';
 import '../../core/models/airport.dart';
 import '../../core/services/airport_service.dart';
 import '../../core/services/location_cache_service.dart';
@@ -641,7 +642,12 @@ class _AirportVehicleSelectionScreenState
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => ScheduleRideSheet(
-        initialDateTime: DateTime.now().add(const Duration(minutes: 30)),
+        // Default to minimum lead time (5 min dev, 2 hours prod).
+        initialDateTime: DateTime.now().add(
+          AppConstants.isDev
+              ? const Duration(minutes: 5)
+              : const Duration(hours: 2),
+        ),
         onSchedule: (SchedulePayload payload) async {
           // User selected a time, now navigate to RideConfirmationScreen with the scheduled time
           if (!mounted) return;

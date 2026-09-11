@@ -4,6 +4,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:flutter_map/flutter_map.dart' as fmap;
 import 'package:geolocator/geolocator.dart';
 import '../../core/theme.dart';
+import '../../core/constants.dart';
 import '../../core/services/places_service.dart';
 import '../../core/services/geocoding_service.dart';
 import '../../core/config/api_config.dart';
@@ -786,7 +787,12 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => ScheduleRideSheet(
-        initialDateTime: DateTime.now().add(const Duration(minutes: 30)),
+        // Default to minimum lead time (5 min dev, 2 hours prod).
+        initialDateTime: DateTime.now().add(
+          AppConstants.isDev
+              ? const Duration(minutes: 5)
+              : const Duration(hours: 2),
+        ),
         onSchedule: (SchedulePayload payload) async {
           // User selected a time, now navigate to RideConfirmationScreen with the scheduled time
           if (!mounted) return;
