@@ -248,7 +248,8 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
         initialDateTime: initialTime,
         onSchedule: (SchedulePayload payload) {
           _selectedPaymentMethod = payload.paymentMethod;
-          _lastScheduledTime = DateTime.parse(payload.pickupTime);
+          _lastScheduledTime =
+              DateTime.parse(payload.pickupTime).toLocal();
           // Payment switched after a cancelled webview → update existing ride
           if (_pendingScheduledRideId != null) {
             _switchScheduledPayment(_pendingScheduledRideId!, payload);

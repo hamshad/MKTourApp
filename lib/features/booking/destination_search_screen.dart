@@ -797,7 +797,8 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
           // User selected a time, now navigate to RideConfirmationScreen with the scheduled time
           if (!mounted) return;
 
-          final selectedDateTime = DateTime.parse(payload.pickupTime);
+          final selectedDateTime =
+              DateTime.parse(payload.pickupTime).toLocal();
 
           debugPrint(
             '📅 DestinationSearchScreen: Prebook scheduled for: $selectedDateTime',

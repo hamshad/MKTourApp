@@ -652,7 +652,8 @@ class _AirportVehicleSelectionScreenState
           // User selected a time, now navigate to RideConfirmationScreen with the scheduled time
           if (!mounted) return;
 
-          final selectedDateTime = DateTime.parse(payload.pickupTime);
+          final selectedDateTime =
+              DateTime.parse(payload.pickupTime).toLocal();
 
           debugPrint(
             '📅 AirportSelectionScreen: Prebook scheduled for: $selectedDateTime',

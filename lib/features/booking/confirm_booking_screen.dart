@@ -394,7 +394,8 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
             ),
         stops: _stops,
         onSchedule: (SchedulePayload payload) {
-          _lastScheduledTime = DateTime.parse(payload.pickupTime);
+          _lastScheduledTime =
+              DateTime.parse(payload.pickupTime).toLocal();
           // Payment switched after cancel → update existing ride, no duplicate
           if (_pendingScheduledRideId != null) {
             _switchScheduledPayment(
