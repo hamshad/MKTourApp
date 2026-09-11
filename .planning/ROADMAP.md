@@ -11,6 +11,7 @@
 | 05 | Prebook Flow Foundation | Complete    | 2026-09-10 | PREBOOK-01..04 |
 | 06 | 1/2 | Complete    | 2026-09-10 | PREBOOK-01..06 |
 | 07 | 2/2 | Complete   | 2026-09-10 | PREBOOK-03..07 |
+| 08 | Scheduled Screen-Flow | Planned | 3 | SCHED-01..06 |
 
 ---
 
@@ -165,3 +166,28 @@
 | PREBOOK-05 | 06 | 06-01 | ✓ |
 | PREBOOK-06 | 06, 07 | 06-02, 07-02 | ✓ |
 | PREBOOK-07 | 07 | 07-01, 07-02 | ✓ |
+---
+
+## Phase 08: Scheduled Screen-Flow Integration
+
+**Goal:** Scheduled rides navigate correctly on both apps — booking lands on Upcoming not tracking, driver-accept toasts without navigating, day-of arrival pulls user into live tracking, driver-cancel reassures with banner, driver Confirmed tab opens execution via Go to Pickup.
+
+**Requirements:**
+- **SCHED-01**: Scheduled booking success routes to Home/Upcoming, never live tracking
+- **SCHED-02**: Scheduled driver-accept shows toast, no navigation, Upcoming list refreshes
+- **SCHED-03**: Day-of arrival navigates to tracking from anywhere; started/completed reach rating/receipt
+- **SCHED-04**: Scheduled driver-cancel shows persistent banner, no navigation, lists refresh
+- **SCHED-05**: Driver Confirmed tab has time-gated Go to Pickup entering unified execution
+- **SCHED-06**: Driver accept shows feedback, removes pool entry, lists under Confirmed
+
+**Plans:** 3 plans
+Plans:
+- [ ] `08-01-PLAN.md` — Rider booking + accept guards (nav split, accept toast, list refresh)
+- [ ] `08-02-PLAN.md` — Rider day-of + cancel (global arrival nav, live continuity, cancel banner)
+- [ ] `08-03-PLAN.md` — Driver entry + landing (Go to Pickup, accept verification)
+
+**Success Criteria:**
+- Full scheduled lifecycle navigates per guide on both apps with zero disruptive navigation
+- Instant-ride flows behavior-identical (no regressions)
+- `flutter analyze` clean on touched files
+- No payment, fare, or repayment logic touched
