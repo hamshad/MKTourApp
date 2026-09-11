@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../core/theme.dart';
+import '../../core/ui_frame.dart';
 import '../../core/constants.dart';
 import '../../core/api_service.dart';
 import '../../core/services/places_service.dart';
@@ -90,7 +91,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     // Auto-open the schedule sheet if this is a prebook request WITHOUT a pre-selected time
     // If scheduledDateTime is already provided, skip this (user already scheduled)
     if (widget.isScheduled && widget.scheduledDateTime == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      runAfterFrame((_) {
         _showScheduleSheet();
       });
     }

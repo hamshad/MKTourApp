@@ -16,6 +16,7 @@ import 'dart:async';
 import '../../core/services/socket_service.dart';
 import '../../core/services/ride_event_dedupe.dart';
 import '../../core/services/audio_service.dart';
+import '../../core/ui_frame.dart';
 import '../../core/services/active_ride_storage.dart';
 import '../../core/api_service.dart';
 import '../ride/ride_assigned_screen.dart';
@@ -151,7 +152,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           return;
         }
         // New flow: no ride code — driver data passes through untouched.
-        WidgetsBinding.instance.addPostFrameCallback((_) {
+        runAfterFrame((_) {
           if (mounted && context.mounted) {
             _handleRideAccepted(data);
           }
@@ -166,7 +167,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _socketService.on('ride:driverArrived', (data) {
       debugPrint('🚖 [HomeScreen] Driver Arrived (restored global): $data');
       if (!mounted || !context.mounted) return;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      runAfterFrame((_) {
         if (mounted && context.mounted) {
           _handleDriverArrivedGlobal(data);
         }
@@ -176,7 +177,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _socketService.on('ride:started', (data) {
       debugPrint('🚀 [HomeScreen] Ride Started (restored global): $data');
       if (!mounted || !context.mounted) return;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      runAfterFrame((_) {
         if (mounted && context.mounted) {
           _handleRideStartedGlobal(data);
         }
@@ -449,7 +450,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     if (!mounted || !context.mounted) return;
     _lastArrivalNavRideId = rideId;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    runAfterFrame((_) {
       if (!mounted || !context.mounted) return;
       debugPrint(
         '🚖 [HomeScreen] Global driver arrival → tracking ride=$rideId',
@@ -522,7 +523,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     if (!mounted || !context.mounted) return;
     _lastArrivalNavRideId = rideId;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    runAfterFrame((_) {
       if (!mounted || !context.mounted) return;
       debugPrint('🚀 [HomeScreen] Global ride start → tracking ride=$rideId');
       Navigator.of(context).push(
@@ -677,7 +678,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         }
         // New flow: no ride code — driver data passes through untouched.
         // Use post-frame callback to ensure UI is ready for navigation
-        WidgetsBinding.instance.addPostFrameCallback((_) {
+        runAfterFrame((_) {
           if (mounted && context.mounted) {
             _handleRideAccepted(data);
           }
@@ -696,7 +697,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _socketService.on('ride:driverArrived', (data) {
       debugPrint('🚖 [HomeScreen] Driver Arrived (global): $data');
       if (!mounted || !context.mounted) return;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      runAfterFrame((_) {
         if (mounted && context.mounted) {
           _handleDriverArrivedGlobal(data);
         }
@@ -707,7 +708,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _socketService.on('ride:started', (data) {
       debugPrint('🚀 [HomeScreen] Ride Started (global): $data');
       if (!mounted || !context.mounted) return;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      runAfterFrame((_) {
         if (mounted && context.mounted) {
           _handleRideStartedGlobal(data);
         }
@@ -718,7 +719,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _socketService.on('ride:expired', (data) {
       debugPrint('⏰ [HomeScreen] Ride Expired: $data');
       if (mounted && context.mounted && _isSearching) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
+        runAfterFrame((_) {
           if (mounted && context.mounted) {
             _handleRideExpiration();
           }
@@ -1104,7 +1105,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       await ActiveRideStorage.updateStatus(status);
 
       if (!mounted || !context.mounted) return;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      runAfterFrame((_) {
         if (!mounted || !context.mounted) return;
         if (status == 'in_progress' || status == 'at_stop') {
           Navigator.of(context).pushReplacementNamed('/ride-progress');

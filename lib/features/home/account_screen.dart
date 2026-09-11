@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/theme.dart';
+import '../../core/ui_frame.dart';
 import '../account/edit_profile_screen.dart';
 import '../account/payment_methods_screen.dart';
 import '../account/settings_screen.dart';
@@ -20,7 +21,7 @@ class _AccountScreenState extends State<AccountScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    runAfterFrame((_) {
       context.read<AuthProvider>().fetchUserProfile();
     });
   }

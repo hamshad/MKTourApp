@@ -4,6 +4,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:flutter_map/flutter_map.dart' as fmap;
 import 'package:geolocator/geolocator.dart';
 import '../../core/theme.dart';
+import '../../core/ui_frame.dart';
 import '../../core/constants.dart';
 import '../../core/services/places_service.dart';
 import '../../core/services/geocoding_service.dart';
@@ -104,7 +105,7 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
     _getCurrentLocation();
 
     // Auto-focus dropoff field if not in route view and pickup is ready
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    runAfterFrame((_) {
       if (!_isRouteView && _isPickupLocationReady) {
         _dropoffFocus.requestFocus();
       }
