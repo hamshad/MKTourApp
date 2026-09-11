@@ -30,6 +30,11 @@ class RideAssignedScreen extends StatefulWidget {
   final String? clientSecret; // for pay_later (saved from createRide)
   final bool isScheduled;
 
+  /// Status the ride is already in when this screen opens (e.g. global
+  /// arrival/start handlers push mid-flow). Applied once in initial state;
+  /// live socket events own state afterwards.
+  final String? initialStatus;
+
   const RideAssignedScreen({
     super.key,
     required this.rideId,
@@ -40,6 +45,7 @@ class RideAssignedScreen extends StatefulWidget {
     this.paymentTiming,
     this.clientSecret,
     this.isScheduled = false,
+    this.initialStatus,
   });
 
   @override
@@ -322,6 +328,17 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       debugPrint('✅ [RideAssignedScreen] Initial driver data provided');
       _rideStatus = 'accepted';
       _driver = widget.driver as Map<String, dynamic>;
+
+      // Pushed mid-flow by global arrival/start handlers — land directly in
+      // the already-reached status instead of replaying earlier states.
+      final initial = widget.initialStatus?.trim() ?? '';
+      if (initial.isNotEmpty) {
+        final normalized = _normalizeRideStatus(initial, true);
+        debugPrint(
+          '🚖 [RideAssignedScreen] Applying initialStatus=$initial → $normalized',
+        );
+        _rideStatus = normalized;
+      }
 
       debugPrint('👤 [RideAssignedScreen] Initial driver: $_driver');
 
