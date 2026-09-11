@@ -64,6 +64,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   StreamSubscription<bool>? _connectionSubscription;
   bool _socketListenersInitialized = false;
 
+  // Global driver-arrival dedupe: arrival navigates exactly once per ride
+  // even with Home still mounted under the pushed tracking screen.
+  String? _lastArrivalNavRideId;
+
   @override
   void initState() {
     super.initState();
@@ -86,9 +90,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         '🔄 [HomeScreen] didChangeDependencies - verifying socket listeners...',
       );
       // Check if the critical listener is registered
-      if (!_socketService.hasListeners('ride:accepted')) {
+      if (!_socketService.hasListeners('ride:accepted') ||
+          !_socketService.hasListeners('ride:driverArrived')) {
         debugPrint(
-          '⚠️ [HomeScreen] ride:accepted listener MISSING! Restoring...',
+          '⚠️ [HomeScreen] ride:accepted/driverArrived listener MISSING! Restoring...',
         );
         _restoreSocketListeners();
       }
@@ -102,6 +107,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     _socketService.off('ride:accepted');
     _socketService.off('user:status');
+    _socketService.off('ride:driverArrived');
     _socketService.offDriverReassigning();
 
     _socketService.on('ride:accepted', (data) {
@@ -148,6 +154,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     _socketService.on('user:status', (data) {
       debugPrint('📩 [HomeScreen] User status: $data');
+    });
+
+    _socketService.on('ride:driverArrived', (data) {
+      debugPrint('🚖 [HomeScreen] Driver Arrived (restored global): $data');
+      if (!mounted || !context.mounted) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && context.mounted) {
+          _handleDriverArrivedGlobal(data);
+        }
+      });
     });
 
     // Driver-cancel auto-reassign: backend puts the ride back in `requested`
@@ -338,6 +354,123 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await auth.fetchRideHistory();
   }
 
+  /// Global `ride:driverArrived` handler — pulls the rider into live tracking
+  /// from anywhere (home tab, Upcoming list, account). RideAssignedScreen owns
+  /// arrival state when already open (its own listener mutates in place), so
+  /// this path only fires while Home is the live route.
+  Future<void> _handleDriverArrivedGlobal(dynamic data) async {
+    final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
+    final rideId =
+        map['rideId']?.toString() ??
+        map['bookingId']?.toString() ??
+        map['_id']?.toString() ??
+        map['id']?.toString() ??
+        '';
+    if (rideId.isEmpty) {
+      debugPrint('⚠️ [HomeScreen] driverArrived without rideId, ignoring');
+      return;
+    }
+    if (!mounted || !context.mounted) return;
+
+    // Socket + FCM deliver the same arrival twice — navigate exactly once.
+    if (!RideEventDedupe.shouldHandleEvent(
+      source: 'socket',
+      type: 'driver_arrived',
+      data: data,
+    )) {
+      return;
+    }
+
+    // Already pulled into tracking for this ride — the live screen owns state.
+    if (_lastArrivalNavRideId == rideId) {
+      debugPrint(
+        '🔁 [HomeScreen] Already navigated for arrival ride=$rideId, skipping',
+      );
+      return;
+    }
+
+    // Restore-safe persist so kill+restart after arrival lands in tracking.
+    await ActiveRideStorage.save(
+      rideId: rideId,
+      role: 'passenger',
+      status: 'driver_arrived',
+    );
+
+    // Hydrate nav args from the backend; fall back to socket payload fields.
+    Map<String, dynamic>? pickup;
+    Map<String, dynamic>? dropoff;
+    Map<String, dynamic>? driver;
+    double fare = 0.0;
+    String? paymentTiming;
+    String? clientSecret;
+    try {
+      final response = await _apiService.getRideDetails(rideId);
+      final raw = response['data'];
+      final ride = raw is Map ? (raw['ride'] ?? raw) : null;
+      if (ride is Map) {
+        final rideMap = Map<String, dynamic>.from(ride);
+        if (rideMap['pickupLocation'] is Map) {
+          pickup = Map<String, dynamic>.from(rideMap['pickupLocation']);
+        } else if (rideMap['pickup'] is Map) {
+          pickup = Map<String, dynamic>.from(rideMap['pickup']);
+        }
+        if (rideMap['dropoffLocation'] is Map) {
+          dropoff = Map<String, dynamic>.from(rideMap['dropoffLocation']);
+        } else if (rideMap['dropoff'] is Map) {
+          dropoff = Map<String, dynamic>.from(rideMap['dropoff']);
+        }
+        if (rideMap['driver'] is Map) {
+          driver = Map<String, dynamic>.from(rideMap['driver']);
+        }
+        if (rideMap['fare'] is num) fare = (rideMap['fare'] as num).toDouble();
+        paymentTiming = rideMap['paymentTiming']?.toString();
+        clientSecret = rideMap['clientSecret']?.toString();
+      }
+    } catch (e) {
+      debugPrint('⚠️ [HomeScreen] Arrival ride-details fetch failed: $e');
+    }
+    // Socket-payload fallback when the fetch yields nothing usable.
+    pickup ??= map['pickupLocation'] is Map
+        ? Map<String, dynamic>.from(map['pickupLocation'])
+        : (map['pickup'] is Map ? Map<String, dynamic>.from(map['pickup']) : null);
+    dropoff ??= map['dropoffLocation'] is Map
+        ? Map<String, dynamic>.from(map['dropoffLocation'])
+        : (map['dropoff'] is Map ? Map<String, dynamic>.from(map['dropoff']) : null);
+    driver ??= map['driver'] is Map ? Map<String, dynamic>.from(map['driver']) : null;
+    if (fare == 0.0 && map['fare'] is num) fare = (map['fare'] as num).toDouble();
+    paymentTiming ??= map['paymentTiming']?.toString();
+    clientSecret ??= map['clientSecret']?.toString();
+
+    if (!mounted || !context.mounted) return;
+    _lastArrivalNavRideId = rideId;
+    final navPickup = pickup;
+    final navDropoff = dropoff;
+    final navDriver = driver;
+    final navFare = fare;
+    final navPaymentTiming = paymentTiming;
+    final navClientSecret = clientSecret;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !context.mounted) return;
+      debugPrint(
+        '🚖 [HomeScreen] Global driver arrival → tracking ride=$rideId',
+      );
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => RideAssignedScreen(
+            rideId: rideId,
+            pickup: navPickup,
+            dropoff: navDropoff,
+            fare: navFare,
+            driver: navDriver,
+            paymentTiming: navPaymentTiming,
+            clientSecret: navClientSecret,
+            isScheduled: true,
+          ),
+        ),
+      );
+    });
+  }
+
   Future<void> _fetchPromoStatus() async {
     try {
       final response = await _apiService.getPromoStatus();
@@ -407,6 +540,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _socketService.off('ride:accepted');
     _socketService.off('ride:expired');
     _socketService.off('ride:cancelled');
+    _socketService.off('ride:driverArrived');
     _socketService.off('user:status');
     _socketService.off('ride:depositConfirmed');
     _socketService.off('ride:scheduledActivated');
@@ -480,6 +614,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           '⚠️ [HomeScreen] Ignored ride:accepted (not searching, rideId mismatch): incoming=$incomingRideId active=$activeRideId',
         );
       }
+    });
+
+    // Global driver-arrived: pull rider into live tracking from any screen.
+    // RideAssignedScreen handles its own arrival in place when already open;
+    // this Home listener covers home/Upcoming/account. Dedupe + nav guard
+    // inside the handler keep socket+FCM duplicates to one navigation.
+    _socketService.on('ride:driverArrived', (data) {
+      debugPrint('🚖 [HomeScreen] Driver Arrived (global): $data');
+      if (!mounted || !context.mounted) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && context.mounted) {
+          _handleDriverArrivedGlobal(data);
+        }
+      });
     });
 
     // Listen for ride expired event
@@ -969,6 +1117,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _socketService.off('ride:accepted');
     _socketService.off('ride:expired');
     _socketService.off('ride:cancelled');
+    _socketService.off('ride:driverArrived');
     _socketService.off('user:status');
     _socketService.off('ride:depositConfirmed');
     _socketService.off('ride:scheduledActivated');
