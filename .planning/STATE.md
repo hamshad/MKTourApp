@@ -1,8 +1,8 @@
 # MK Tours - Project State
 
 ## Current Position
-- **Phase:** 07-driver-prebook — Complete (2/2 plans, 2026-09-10)
-- **Next:** None — prebook flow complete
+- **Phase:** 08-scheduled-screen-flow — In Progress (2/3 plans, 2026-09-11)
+- **Next:** 08-02
 
 ## Completed Plans
 - 02-01: Ride-flow API layer — no-OTP startRide, stopArrive/stopResume, stops-aware fare/create, reason cancel, fixed end-early (`c0c7d26`, `0e95c3b`)
@@ -17,6 +17,8 @@
 - 06-02: Scheduled list + detail + cancel — model-parsed list, live handoff, cancel with reason, optimistic UI (`e29a33a`, `ab0dd84`)
 - 07-01: Driver pool + claim + scheduled rides — pool tiles, claim feedback, scheduled tab with countdown and cancel (`63b4e11`, `4ec7d88`)
 - 07-02: Execution merge + verification — scheduled rides merge into live flow, full lifecycle verified (commits shared with 07-01)
+- 08-01: Scheduled screen-flow guards — scheduled booking to /home, scheduled accept toast-only, upcoming silent refresh (`9a4c4e5`, `89e1549`, `2b00f93`)
+- 08-03: Day-of entry + accept landing — Go to Pickup into unified execution, accept lands on Confirmed (`45f068c`, `56ec34e`)
 
 ## Decisions
 - [02-01] OTP dialog UI left in place; only API call path made OTP-free (UI strip-out in 03-01)
@@ -47,11 +49,19 @@
 - [07-01] Pool tiles show countdown to pickup time inline
 - [07-01] Accept errors displayed as inline banner in request panel, not just snackbar
 - [07-02] Scheduled rides follow identical arrive/start/complete flow as instant rides from pickup time onward
+- [08-01] Scheduled booking success routes to /home with clean back-stack, not into ScheduledRidesScreen directly
+- [08-01] isScheduled checked before state-clear and ActiveRideStorage save so scheduled accepts never corrupt cold-start restore
+- [08-01] Silent refresh (no loader flash, no toast) on Upcoming list; Home owns the toast
+- [08-03] Go to Pickup adopts via pop-with-result into home pickup state, not a new route (home owns lifecycle)
+- [08-03] Pickup window 60 min including overdue; button never hidden, disabled with countdown hint
+- [08-03] Accept auto-switches to Confirmed tab so driver lands on My Scheduled
 
 ## Blockers
 - None
 
 ## Session
-- Last session: Completed 07-02-PLAN.md (2026-09-10, verification approved, SUMMARY at phases/07-driver-prebook/07-02-SUMMARY.md). Phase 07 complete.
+- Last session: Completed 08-03-PLAN.md (2026-09-11, 2 commits, SUMMARY at phases/08-scheduled-screen-flow/08-03-SUMMARY.md). Next: 08-02.
+- Previous: Completed 08-01-PLAN.md (2026-09-11, 3 feat commits, SUMMARY at phases/08-scheduled-screen-flow/08-01-SUMMARY.md). Next: 08-02.
+- Previous: Completed 07-02-PLAN.md (2026-09-10, verification approved, SUMMARY at phases/07-driver-prebook/07-02-SUMMARY.md). Phase 07 complete.
 - Previous: Completed 07-01-PLAN.md (2026-09-10, 2 feat commits, SUMMARY at phases/07-driver-prebook/07-01-SUMMARY.md).
 - Previous: Completed 06-02-PLAN.md (2026-09-10, 2 feat commits, SUMMARY at phases/06-rider-prebook/06-02-SUMMARY.md).

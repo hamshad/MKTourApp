@@ -11,7 +11,7 @@
 | 05 | Prebook Flow Foundation | Complete    | 2026-09-10 | PREBOOK-01..04 |
 | 06 | 1/2 | Complete    | 2026-09-10 | PREBOOK-01..06 |
 | 07 | 2/2 | Complete   | 2026-09-10 | PREBOOK-03..07 |
-| 08 | Scheduled Screen-Flow | Planned | 3 | SCHED-01..06 |
+| 08 | 2/3 | In Progress|  | SCHED-01..06 |
 
 ---
 
@@ -180,9 +180,9 @@
 - **SCHED-05**: Driver Confirmed tab has time-gated Go to Pickup entering unified execution
 - **SCHED-06**: Driver accept shows feedback, removes pool entry, lists under Confirmed
 
-**Plans:** 3 plans
+**Plans:** 2/3 plans executed
 Plans:
-- [ ] `08-01-PLAN.md` — Rider booking + accept guards (nav split, accept toast, list refresh)
+- [x] `08-01-PLAN.md` — Rider booking + accept guards (nav split, accept toast, list refresh)
 - [ ] `08-02-PLAN.md` — Rider day-of + cancel (global arrival nav, live continuity, cancel banner)
 - [ ] `08-03-PLAN.md` — Driver entry + landing (Go to Pickup, accept verification)
 
