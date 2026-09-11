@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 import '../../core/auth_provider.dart';
 import '../../core/theme.dart';
 import 'activity_screen.dart';
@@ -229,6 +230,50 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
 
+    // Extract ride ID from multiple possible fields
+    final rideId =
+        data['rideId']?.toString() ??
+        data['_id']?.toString() ??
+        data['id']?.toString() ??
+        '';
+
+    // Use state manager to determine scheduled status (persisted at booking time)
+    // instead of relying on socket event data which may lack isScheduled flag.
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final bool isScheduled = data['isScheduled'] == true || auth.isRideScheduled(rideId);
+
+    // Scheduled accept arrives hours/days later while the user browses the
+    // app — never navigate, never persist an active ride (that would corrupt
+    // cold-start restore into tracking days early). Toast once + refresh.
+    if (isScheduled) {
+      final driver = data['driver'];
+      final driverName = driver is Map
+          ? (driver['name'] ?? driver['driverName'] ?? '').toString()
+          : '';
+      final timeRaw = data['scheduledPickupTime'] ??
+          data['pickupTime'] ??
+          data['scheduledAt'];
+      String whenStr = '';
+      if (timeRaw != null) {
+        try {
+          final dt = DateTime.parse(timeRaw.toString()).toLocal();
+          whenStr = ' for ${DateFormat('EEE, MMM dd · h:mm a').format(dt)}';
+        } catch (_) {}
+      }
+      final message = driverName.isNotEmpty
+          ? 'Driver $driverName accepted your scheduled ride$whenStr'
+          : 'Your scheduled ride was accepted$whenStr';
+      if (mounted) {
+        CustomSnackbar.show(
+          context,
+          message: message,
+          type: SnackbarType.success,
+        );
+        _fetchRideHistory();
+      }
+      return;
+    }
+
     // Preserve payment info from active ride before clearing
     final previousActiveRide = _activeRide;
 
@@ -240,13 +285,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _activeRide = null;
       _reassignmentCount = 0;
     });
-
-    // Extract ride ID from multiple possible fields
-    final rideId =
-        data['rideId']?.toString() ??
-        data['_id']?.toString() ??
-        data['id']?.toString() ??
-        '';
 
     // Handle both socket format (pickupLocation/dropoffLocation) and API format (pickup/dropoff)
     final pickup = data['pickupLocation'] ?? data['pickup'];
@@ -279,11 +317,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       '✅ [HomeScreen] Navigating to RideAssignedScreen with rideId: $rideId',
     );
 
-    // Use state manager to determine scheduled status (persisted at booking time)
-    // instead of relying on socket event data which may lack isScheduled flag.
-    final auth = Provider.of<AuthProvider>(context, listen: false);
-    final bool isScheduled = data['isScheduled'] == true || auth.isRideScheduled(rideId);
-
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (context) => RideAssignedScreen(
@@ -294,7 +327,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           fare: fare,
           paymentTiming: paymentTiming,
           clientSecret: clientSecret,
-          isScheduled: isScheduled,
+          isScheduled: false,
         ),
       ),
     );
