@@ -1,8 +1,8 @@
 # MK Tours - Project State
 
 ## Current Position
-- **Phase:** 08-scheduled-screen-flow — Complete (3/3 plans, 2026-09-11)
-- **Next:** Phase transition (08 complete)
+- **Phase:** 09-promo-pending-state — In Progress (1/2 plans, 2026-09-12)
+- **Next:** 09-02 (pending UI: status screen + home banner)
 
 ## Completed Plans
 - 02-01: Ride-flow API layer — no-OTP startRide, stopArrive/stopResume, stops-aware fare/create, reason cancel, fixed end-early (`c0c7d26`, `0e95c3b`)
@@ -20,6 +20,7 @@
 - 08-01: Scheduled screen-flow guards — scheduled booking to /home, scheduled accept toast-only, upcoming silent refresh (`9a4c4e5`, `89e1549`, `2b00f93`)
 - 08-03: Day-of entry + accept landing — Go to Pickup into unified execution, accept lands on Confirmed (`45f068c`, `56ec34e`)
 - 08-02: Day-of transitions + cancel reassignment — global arrival routing, started/completed verified, cancel banner + refresh (`cbcaa37`, `d1e8bd8`)
+- 09-01: PromoStatus foundation — 4-state typed model, ApiService docs, 8 unit tests (`de0080e`, `f4fff4e`)
 
 ## Decisions
 - [02-01] OTP dialog UI left in place; only API call path made OTP-free (UI strip-out in 03-01)
@@ -59,12 +60,14 @@
 - [08-02] Arrival pushes RideAssignedScreen with isScheduled:true (same destination _handleDriverArrival mutates in place)
 - [08-02] Scheduled started/completed verified with no code change; instant payment logic untouched
 - [08-02] Upcoming cancel refresh uses silent refresh per 08-01 pattern, not full loader
+- [09-01] PromoStatus.fromMap parses data map only; 401/500 envelopes stay plain failure maps, no throw
+- [09-01] getPromoStatus logic untouched (docs only); model consumed by UI in 09-02
 
 ## Blockers
 - None
 
 ## Session
-- Last session: Completed 08-02-PLAN.md (2026-09-11, 2 feat commits + Task 2 verification-only, SUMMARY at phases/08-scheduled-screen-flow/08-02-SUMMARY.md). Phase 08 complete — ready for transition.
+- Last session: Completed 09-01-PLAN.md (2026-09-12, test + feat commits, SUMMARY at phases/09-promo-pending-state/09-01-SUMMARY.md). Next: 09-02.
 - Previous: Completed 08-03-PLAN.md (2026-09-11, 2 commits, SUMMARY at phases/08-scheduled-screen-flow/08-03-SUMMARY.md). Next: 08-02.
 - Previous: Completed 08-01-PLAN.md (2026-09-11, 3 feat commits, SUMMARY at phases/08-scheduled-screen-flow/08-01-SUMMARY.md). Next: 08-02.
 - Previous: Completed 07-02-PLAN.md (2026-09-10, verification approved, SUMMARY at phases/07-driver-prebook/07-02-SUMMARY.md). Phase 07 complete.

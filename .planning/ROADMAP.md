@@ -12,7 +12,7 @@
 | 06 | 1/2 | Complete    | 2026-09-10 | PREBOOK-01..06 |
 | 07 | 2/2 | Complete   | 2026-09-10 | PREBOOK-03..07 |
 | 08 | 2/3 | Complete    | 2026-09-11 | SCHED-01..06 |
-| 09 | Promo Pending State | Planned | 2 | PROMO-01..04 |
+| 09 | Promo Pending State | In Progress | 1/2 | PROMO-01..04 |
 
 ---
 
@@ -209,9 +209,9 @@ Plans:
 - **PROMO-03**: Home promo banner renders pending as locked banner, tappable to status screen
 - **PROMO-04**: 401/500 promo errors handled gracefully; fare/booking add no client-side pending block (backend authoritative)
 
-**Plans:** 2 plans
+**Plans:** 1/2 plans complete
 Plans:
-- [ ] `09-01-PLAN.md` — Typed PromoStatus model + ApiService docs + unit tests (TDD)
+- [x] `09-01-PLAN.md` — Typed PromoStatus model + ApiService docs + unit tests (TDD)
 - [ ] `09-02-PLAN.md` — Pending UI: status screen + home banner
 
 **Success Criteria:**

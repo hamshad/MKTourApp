@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import '../../core/api_service.dart';
+import '../../core/models/promo_status.dart';
 import '../../core/theme.dart';
 
 /// Full-screen sheet showing the user's Free Ride promo progress.
 ///
 /// Promo rule: Every user's 6th completed ride (i.e. after 5 completed rides)
 /// gets a £4.45 discount, valid only within Milton Keynes.
-/// One-time use — status is one of: "none" | "eligible" | "claimed".
+/// One-time use — status is one of: "none" | "eligible" | "pending" | "claimed".
+/// Pending means the free ride is locked to an already-booked active ride.
 class PromoStatusScreen extends StatefulWidget {
   const PromoStatusScreen({super.key});
 
@@ -22,9 +24,10 @@ class _PromoStatusScreenState extends State<PromoStatusScreen> {
 
   // Data from API
   int _completedRides = 0;
-  String _promoStatus = 'none'; // "none" | "eligible" | "claimed"
+  String _promoStatus = 'none'; // "none" | "eligible" | "pending" | "claimed"
   int _ridesUntilEligible = 5;
   bool _isEligible = false;
+  bool _isPending = false;
   bool _isClaimed = false;
   String _statusMessage = '';
 
@@ -47,14 +50,16 @@ class _PromoStatusScreenState extends State<PromoStatusScreen> {
       final response = await _apiService.getPromoStatus();
       if (response['success'] == true && response['data'] != null) {
         final data = response['data'] as Map<String, dynamic>;
+        final promo = PromoStatus.fromMap(data);
         setState(() {
-          _completedRides = (data['completedRides'] as num?)?.toInt() ?? 0;
-          _promoStatus = data['promoStatus']?.toString() ?? 'none';
-          _ridesUntilEligible =
-              (data['ridesUntilEligible'] as num?)?.toInt() ?? 0;
-          _isEligible = data['isEligible'] == true;
-          _isClaimed = data['isClaimed'] == true;
-          _statusMessage = data['message']?.toString() ?? '';
+          _completedRides = promo.completedRides;
+          _promoStatus = promo.rawStatus;
+          _ridesUntilEligible = promo.ridesUntilEligible;
+          _isEligible = promo.isEligible;
+          _isPending =
+              promo.isPending || promo.isPendingState;
+          _isClaimed = promo.isClaimed;
+          _statusMessage = promo.message;
         });
       } else {
         setState(() {
@@ -80,6 +85,8 @@ class _PromoStatusScreenState extends State<PromoStatusScreen> {
     switch (_promoStatus) {
       case 'eligible':
         return const Color(0xFF22C55E); // green
+      case 'pending':
+        return const Color(0xFFF59E0B); // amber — locked
       case 'claimed':
         return Colors.grey;
       default:
@@ -91,6 +98,8 @@ class _PromoStatusScreenState extends State<PromoStatusScreen> {
     switch (_promoStatus) {
       case 'eligible':
         return 'FREE RIDE READY';
+      case 'pending':
+        return 'RIDE BOOKED';
       case 'claimed':
         return 'CLAIMED';
       default:
@@ -174,9 +183,11 @@ class _PromoStatusScreenState extends State<PromoStatusScreen> {
   Widget _buildHeroCard() {
     final cardColor = _isClaimed
         ? Colors.grey[100]!
-        : _isEligible
-            ? const Color(0xFFD1FAE5) // light green
-            : const Color(0xFFFFF7ED); // light orange
+        : _isPending
+            ? const Color(0xFFFEF3C7) // light amber — locked
+            : _isEligible
+                ? const Color(0xFFD1FAE5) // light green
+                : const Color(0xFFFFF7ED); // light orange
 
     return Container(
       width: double.infinity,
@@ -187,9 +198,11 @@ class _PromoStatusScreenState extends State<PromoStatusScreen> {
         border: Border.all(
           color: _isClaimed
               ? Colors.grey[300]!
-              : _isEligible
-                  ? const Color(0xFF86EFAC)
-                  : const Color(0xFFFDBA74),
+              : _isPending
+                  ? const Color(0xFFFCD34D)
+                  : _isEligible
+                      ? const Color(0xFF86EFAC)
+                      : const Color(0xFFFDBA74),
           width: 1.5,
         ),
       ),
@@ -220,9 +233,11 @@ class _PromoStatusScreenState extends State<PromoStatusScreen> {
           Text(
             _isClaimed
                 ? 'Free Ride Used 🎉'
-                : _isEligible
-                    ? '🎁 Your Free Ride is Ready!'
-                    : '🚗 Earn Your Free MK Ride',
+                : _isPending
+                    ? '🔒 Free Ride Locked to Active Booking'
+                    : _isEligible
+                        ? '🎁 Your Free Ride is Ready!'
+                        : '🚗 Earn Your Free MK Ride',
             style: const TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.bold,
@@ -237,9 +252,11 @@ class _PromoStatusScreenState extends State<PromoStatusScreen> {
                 ? _statusMessage
                 : _isClaimed
                     ? 'You have already claimed your free ride. Thank you for riding with MK Tours!'
-                    : _isEligible
-                        ? 'Book any ride within Milton Keynes to get up to £${_promoDiscount.toStringAsFixed(2)} off!'
-                        : 'Complete $_ridesUntilEligible more ride${_ridesUntilEligible == 1 ? '' : 's'} to unlock a free MK ride!',
+                    : _isPending
+                        ? 'You have a free ride booked! Complete the ride to claim it, or cancel to regain eligibility.'
+                        : _isEligible
+                            ? 'Book any ride within Milton Keynes to get up to £${_promoDiscount.toStringAsFixed(2)} off!'
+                            : 'Complete $_ridesUntilEligible more ride${_ridesUntilEligible == 1 ? '' : 's'} to unlock a free MK ride!',
             style: TextStyle(
               fontSize: 14,
               color: Colors.black.withOpacity(0.6),
@@ -263,6 +280,35 @@ class _PromoStatusScreenState extends State<PromoStatusScreen> {
                   Flexible(
                     child: Text(
                       'Up to £4.45 discount applied automatically',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (_isPending && !_isClaimed) ...[
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF59E0B),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.lock_clock, color: Colors.white, size: 18),
+                  SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      'Discount locked — further bookings pay full fare',
                       style: TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w600,
@@ -390,9 +436,11 @@ class _PromoStatusScreenState extends State<PromoStatusScreen> {
           child: Text(
             _isClaimed
                 ? 'Promo used — thank you for riding with MK Tours!'
-                : _isEligible
-                    ? '5 rides complete — book in Milton Keynes to claim!'
-                    : '$_ridesUntilEligible more ride${_ridesUntilEligible == 1 ? '' : 's'} to go!',
+                : _isPending
+                    ? 'Ride in progress — complete or cancel it to resolve.'
+                    : _isEligible
+                        ? '5 rides complete — book in Milton Keynes to claim!'
+                        : '$_ridesUntilEligible more ride${_ridesUntilEligible == 1 ? '' : 's'} to go!',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 13,
