@@ -12,7 +12,7 @@
 | 06 | 1/2 | Complete    | 2026-09-10 | PREBOOK-01..06 |
 | 07 | 2/2 | Complete   | 2026-09-10 | PREBOOK-03..07 |
 | 08 | 2/3 | Complete    | 2026-09-11 | SCHED-01..06 |
-| 09 | 2/2 | Complete   | 2026-09-12 | PROMO-01..04 |
+| 09 | 2/2 | Complete    | 2026-09-12 | PROMO-01..04 |
 
 ---
 
