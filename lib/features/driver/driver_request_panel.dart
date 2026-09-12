@@ -46,6 +46,30 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
   String _dropoffAddress = '';
   bool _isLoadingAddresses = true;
 
+  static const int _addressCacheCapacity = 20;
+
+  /// Bounded per-ride geocode cache: canonical rideId → {pickup, dropoff}.
+  /// Display data only — fare/distance/passenger always read live.
+  final Map<String, Map<String, String>> _addressCache = {};
+
+  /// Same canonical keys as the home-screen queue (rideId/bookingId/_id/id).
+  static String? _canonicalRideId(Map<String, dynamic>? r) {
+    if (r == null) return null;
+    for (final k in ['rideId', 'bookingId', '_id', 'id']) {
+      final v = r[k]?.toString();
+      if (v != null && v.isNotEmpty) return v;
+    }
+    return null;
+  }
+
+  void _storeInAddressCache(String rideId, String pickup, String dropoff) {
+    _addressCache.remove(rideId); // refresh recency on rewrite
+    while (_addressCache.length >= _addressCacheCapacity) {
+      _addressCache.remove(_addressCache.keys.first); // oldest-first eviction
+    }
+    _addressCache[rideId] = {'pickup': pickup, 'dropoff': dropoff};
+  }
+
   @override
   void initState() {
     super.initState();
@@ -55,9 +79,21 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
   @override
   void didUpdateWidget(DriverRequestPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Cycling cards swaps rideData — refetch the geocoded addresses for the
-    // newly visible card. Background rows reuse payload strings (no lookup).
-    if (oldWidget.rideData != widget.rideData) {
+    // Cycling cards swaps rideData — key on canonical rideId. Same card
+    // (parent rebuild with a new map instance) keeps shown addresses with
+    // no refetch. A seen card serves from cache instantly; only a cache
+    // miss hits PlacesService. Background rows reuse payload strings.
+    final oldId = _canonicalRideId(oldWidget.rideData);
+    final newId = _canonicalRideId(widget.rideData);
+    if (oldId == newId) return;
+    final cached = newId != null ? _addressCache[newId] : null;
+    if (cached != null) {
+      setState(() {
+        _pickupAddress = cached['pickup'] ?? '';
+        _dropoffAddress = cached['dropoff'] ?? '';
+        _isLoadingAddresses = false;
+      });
+    } else {
       setState(() {
         _pickupAddress = '';
         _dropoffAddress = '';
@@ -127,6 +163,20 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
       return;
     }
 
+    final rideId = _canonicalRideId(widget.rideData);
+    final cached = rideId != null ? _addressCache[rideId] : null;
+    if (cached != null) {
+      // Cache hit (e.g. initState after a rebuild reseeded state) — no fetch.
+      if (mounted) {
+        setState(() {
+          _pickupAddress = cached['pickup'] ?? '';
+          _dropoffAddress = cached['dropoff'] ?? '';
+          _isLoadingAddresses = false;
+        });
+      }
+      return;
+    }
+
     // Fetch pickup address
     if (widget.rideData!['pickupLocation']?['coordinates'] != null) {
       final pickupCoords = widget.rideData!['pickupLocation']['coordinates'];
@@ -168,6 +218,23 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
     }
 
     if (mounted) {
+      // Store what is actually displayed so a revisit serves from cache.
+      // Guard on rideId: a rapid card flip may leave this fetch stale.
+      if (rideId != null &&
+          _canonicalRideId(widget.rideData) == rideId &&
+          (_pickupAddress.isNotEmpty || _dropoffAddress.isNotEmpty)) {
+        _storeInAddressCache(
+          rideId,
+          _pickupAddress.isNotEmpty
+              ? _pickupAddress
+              : (widget.rideData!['pickupLocation']?['address']?.toString() ??
+                    'Pickup Location'),
+          _dropoffAddress.isNotEmpty
+              ? _dropoffAddress
+              : (widget.rideData!['dropoffLocation']?['address']?.toString() ??
+                    'Dropoff Location'),
+        );
+      }
       setState(() => _isLoadingAddresses = false);
     }
   }
