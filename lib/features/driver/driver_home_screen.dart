@@ -51,6 +51,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   String? _currentRideId;
   Map<String, dynamic>? _rideData;
 
+  // Pending-request queue: concurrent ride:newRequest payloads stack here
+  // while a card is open. _rideData/_currentRideId mirror
+  // queue[_requestIndex] so accept/decline and downstream execution keep
+  // working unchanged. (Panel UI wiring lands in 10-02.)
+  final List<Map<String, dynamic>> _requestQueue = [];
+  int _requestIndex = 0;
+  static const int _maxQueuedRequests = 5;
+
   final ApiService _apiService = ApiService();
   bool _isLoading = false;
   final SocketService _socketService = SocketService();
@@ -1525,13 +1533,35 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     }
   }
 
+  /// Canonical ride id across socket payload shapes.
+  static String? _canonicalRideId(Map<String, dynamic> m) {
+    for (final k in ['rideId', 'bookingId', '_id', 'id']) {
+      final v = m[k]?.toString();
+      if (v != null && v.isNotEmpty) return v;
+    }
+    return null;
+  }
+
   void _handleNewRideRequest(dynamic data) {
     debugPrint(
       '🔔 [DriverHomeScreen] Handling request. Current status: $_status',
     );
-    // Only show request if driver is online and available
+    final normalised = _normaliseRideData(data);
+    final rideId = _canonicalRideId(normalised);
+
+    // Per-ride dedupe: an already-queued ride must never double-queue.
+    // (Deliberately NOT the global RideEventDedupe 5s window — a genuinely
+    // new request for another ride must still queue.)
+    if (rideId != null &&
+        _requestQueue.any((r) => _canonicalRideId(r) == rideId)) {
+      debugPrint(
+        '🔔 [DriverHomeScreen] Duplicate request for $rideId — already queued',
+      );
+      return;
+    }
+
+    // First request: today's behavior (status=request, ring unless scheduled).
     if (_status == 'online') {
-      final normalised = _normaliseRideData(data);
       // Ringtone for instant requests only — scheduled pool entries notify
       // via snackbar so prebook browsing stays quiet (reminders still ring).
       if (normalised['isScheduled'] != true) {
@@ -1542,8 +1572,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       }
 
       setState(() {
+        _requestQueue.add(normalised);
+        _requestIndex = 0;
         _status = 'request';
-        _currentRideId = normalised['rideId'] ?? normalised['_id'];
+        _currentRideId = rideId;
         _rideData = normalised;
         _acceptError = null;
       });
@@ -1561,6 +1593,23 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         context,
         message: message,
         type: SnackbarType.success,
+      );
+    } else if (_status == 'request') {
+      // A card is already open — stack instead of replacing or dropping.
+      if (_requestQueue.length >= _maxQueuedRequests) {
+        debugPrint(
+          '⚠️ [DriverHomeScreen] Request queue full ($_maxQueuedRequests) — dropping $rideId',
+        );
+        return;
+      }
+      setState(() {
+        _requestQueue.add(normalised);
+      });
+      // No ringtone per append — only the empty→non-empty transition rings.
+      CustomSnackbar.show(
+        context,
+        message: 'New request stacked (${_requestQueue.length} total)',
+        type: SnackbarType.info,
       );
     } else {
       debugPrint(
@@ -1593,6 +1642,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           if (!isGoingOnline) {
             _currentRideId = null;
             _rideData = null;
+            _requestQueue.clear();
+            _requestIndex = 0;
             _clearNavigationUi();
             AudioService.instance.stop();
           }
@@ -1848,6 +1899,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           setState(() {
             _status = 'pickup';
             _acceptError = null;
+            // Driver is now busy — pending stacked requests are stale.
+            _requestQueue.clear();
+            _requestIndex = 0;
             if (response['data'] != null) {
               final newData = response['data'] as Map<String, dynamic>;
               _rideData = {...?_rideData, ...newData};
