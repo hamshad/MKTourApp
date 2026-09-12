@@ -2081,8 +2081,8 @@ class ApiService {
   }
 
   /// Fetch the current user's promo (free ride) status.
-  /// Returns completedRides, promoStatus ("none" | "eligible" | "claimed"),
-  /// ridesUntilEligible, isEligible, isClaimed, and a human‑readable message.
+  /// Returns completedRides, promoStatus ("none" | "eligible" | "pending" | "claimed"),
+  /// ridesUntilEligible, isEligible, isPending, isClaimed, and a human‑readable message.
   Future<Map<String, dynamic>> getPromoStatus() async {
     debugPrint(
       '🔵 ------------------------------------------------------------------',
