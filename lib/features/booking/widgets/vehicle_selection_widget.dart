@@ -187,6 +187,10 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
               durationSeconds: duration is Map
                   ? (duration['seconds'] as num?)?.toInt() ?? 0
                   : 0,
+              // Top-level routed distance (includes stops) — the per-category
+              // objects carry no numeric distance, and without this the
+              // booking screens send distance 0.0 so backend underprices.
+              distanceMiles: (estimatedDistance as num?)?.toDouble(),
             );
             if (normalized != null) {
               _fareEstimates[normalized['slug'] as String] = normalized['fare'];
@@ -256,6 +260,7 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
     required String distanceText,
     required String durationText,
     required int durationSeconds,
+    double? distanceMiles,
   }) {
     final slug = (cat['slug'] ?? cat['categorySlug'])?.toString();
     if (slug == null || slug.isEmpty) return null;
@@ -286,6 +291,7 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
         'congestion_amount': congestionAmount.toDouble(),
         if (seatingCapacity != null) 'seating_capacity': seatingCapacity,
         'distance_text': distanceText,
+        'distance_miles': distanceMiles ?? 0.0,
         'duration_text': durationText,
         'duration_seconds': durationSeconds,
       },
