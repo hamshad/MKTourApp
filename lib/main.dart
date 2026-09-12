@@ -11,6 +11,7 @@ import 'core/services/stripe_service.dart';
 import 'core/services/fcm_service.dart';
 import 'core/services/tiktok_service.dart';
 import 'core/services/places_service.dart';
+import 'core/widgets/dev_env_badge.dart';
 import 'features/auth/splash_screen.dart';
 import 'features/auth/signup_screen.dart';
 import 'features/onboarding/intro_screen.dart';
@@ -121,6 +122,9 @@ class RideEaseApp extends StatelessWidget {
       navigatorKey: navigatorKey,
       title: 'RideEase',
       debugShowCheckedModeBanner: false,
+      // Persistent DEV badge overlay on every screen in dev builds.
+      builder: (context, child) =>
+          DevEnvBadge(child: child ?? const SizedBox.shrink()),
       theme: AppTheme.lightTheme,
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
