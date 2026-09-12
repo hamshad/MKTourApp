@@ -10,6 +10,7 @@ import '../../core/services/places_service.dart';
 import '../../core/services/geocoding_service.dart';
 import '../../core/config/api_config.dart';
 import '../../core/widgets/platform_map.dart';
+import '../../core/widgets/route_map_helpers.dart';
 import '../../core/services/location_cache_service.dart';
 import 'dart:async';
 import 'widgets/vehicle_selection_widget.dart';
@@ -371,7 +372,8 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
     if (_pickupLocation == null) return;
 
     setState(() {
-      // Update Markers
+      // Update Markers — pickup + numbered intermediate stops + dropoff
+      // (Uber/Bolt style: white numbered badges for stops).
       _markers = [
         MapMarker(
           id: 'pickup',
@@ -387,6 +389,7 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
           ),
           title: 'Pickup',
         ),
+        ...RouteMapHelpers.stopMarkers(_stops),
         MapMarker(
           id: 'dropoff',
           lat: dropLat,
@@ -397,15 +400,20 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
       ];
     });
 
-    // Fetch real route from Directions API
+    // Fetch real route from Directions API — include stops as waypoints so
+    // the polyline traces pickup → stops → dropoff. No stops → plain
+    // origin/destination request (fallback behaviour preserved).
     debugPrint('🗺️ ─────────────────────────────────────────────');
     debugPrint('🗺️ DestinationSearchScreen._updateRouteView()');
-    debugPrint('🗺️ Fetching route from Directions API...');
+    debugPrint(
+      '🗺️ Fetching route from Directions API (${_stops.length} stops)...',
+    );
     final directions = await _placesService.getDirections(
       _pickupLocation!.latitude,
       _pickupLocation!.longitude,
       dropLat,
       dropLng,
+      stops: _stops,
     );
 
     if (directions != null &&
@@ -438,16 +446,83 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
       debugPrint(
         '⚠️ DestinationSearchScreen: Directions API failed or returned empty polyline, using straight-line fallback',
       );
-      // Fallback to straight line if API fails
+      // Fallback to straight line if API fails — still via stops.
       setState(() {
         final dropLocation = LatLng(dropLat, dropLng);
-        _polylines = [_pickupLocation!, dropLocation];
+        _polylines = [
+          _pickupLocation!,
+          ...RouteMapHelpers.stopPoints(_stops),
+          dropLocation,
+        ];
         _mapBounds = fmap.LatLngBounds.fromPoints(_polylines);
       });
     }
 
     // Minimize panel to show map
     _panelController.animatePanelToPosition(0.15); // Show bottom summary
+  }
+
+  /// Re-fetch the route + stop markers when the stops editor changes.
+  /// Debounced by the editor's own autocomplete; safe to call on every change.
+  Future<void> _refreshRouteForStops() async {
+    if (!_isRouteView) return;
+    final drop = _dropoffLocation;
+    if (_pickupLocation == null || drop == null) return;
+    // Refresh markers instantly so added stops appear even before the
+    // directions response lands.
+    setState(() {
+      _markers = [
+        MapMarker(
+          id: 'pickup',
+          lat: _pickupLocation!.latitude,
+          lng: _pickupLocation!.longitude,
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.black,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 2),
+            ),
+            child: const Icon(Icons.my_location, color: Colors.white, size: 16),
+          ),
+          title: 'Pickup',
+        ),
+        ...RouteMapHelpers.stopMarkers(_stops),
+        MapMarker(
+          id: 'dropoff',
+          lat: drop.latitude,
+          lng: drop.longitude,
+          child: const Icon(Icons.location_on, color: Colors.black, size: 40),
+          title: _dropoffController.text,
+        ),
+      ];
+    });
+    final directions = await _placesService.getDirections(
+      _pickupLocation!.latitude,
+      _pickupLocation!.longitude,
+      drop.latitude,
+      drop.longitude,
+      stops: _stops,
+    );
+    if (!mounted) return;
+    if (directions != null &&
+        directions['polyline'] != null &&
+        (directions['polyline'] as List).isNotEmpty) {
+      final polylinePoints =
+          directions['polyline'] as List<Map<String, double>>;
+      setState(() {
+        _polylines = polylinePoints
+            .map((point) => LatLng(point['lat']!, point['lng']!))
+            .toList();
+        if (_polylines.isNotEmpty) {
+          _mapBounds = fmap.LatLngBounds.fromPoints(_polylines);
+        }
+        _routeDistance = directions['distance_text'];
+        _routeDistanceValue = directions['distance_miles'] is num
+            ? (directions['distance_miles'] as num).toDouble()
+            : 0.0;
+        _routeDuration = directions['duration_text'];
+      });
+    }
   }
 
   @override
@@ -843,6 +918,7 @@ class _DestinationSearchScreenState extends State<DestinationSearchScreen> {
             child: StopsEditorWidget(
               onChanged: (stops) {
                 setState(() => _stops = stops);
+                _refreshRouteForStops();
               },
             ),
           ),

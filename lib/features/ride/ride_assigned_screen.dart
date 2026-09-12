@@ -16,9 +16,12 @@ import '../../core/services/marker_interpolation_service.dart';
 import '../../core/services/payment_service.dart';
 import '../../core/models/error_display_helper.dart';
 import '../../core/widgets/platform_map.dart';
+import '../../core/widgets/route_map_helpers.dart';
+import '../../core/models/vehicle.dart';
 import '../../core/widgets/ride_searching_overlay.dart';
 import 'ride_complete_screen.dart';
 import 'payment_webview_screen.dart';
+import 'widgets/driver_arrived_sheet.dart';
 
 class RideAssignedScreen extends StatefulWidget {
   final String rideId;
@@ -29,6 +32,7 @@ class RideAssignedScreen extends StatefulWidget {
   final String? paymentTiming; // 'pay_now' or 'pay_later'
   final String? clientSecret; // for pay_later (saved from createRide)
   final bool isScheduled;
+  final List<Map<String, dynamic>>? stops; // Intermediate stops (max 3)
 
   /// Status the ride is already in when this screen opens (e.g. global
   /// arrival/start handlers push mid-flow). Applied once in initial state;
@@ -46,6 +50,7 @@ class RideAssignedScreen extends StatefulWidget {
     this.clientSecret,
     this.isScheduled = false,
     this.initialStatus,
+    this.stops,
   });
 
   @override
@@ -105,6 +110,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   String _pickupAddress = '';
   String _dropoffAddress = '';
 
+  // Intermediate stops (hydrated from widget, then live ride payload).
+  List<RideStop> _stops = [];
+
   // Navigation State
   NavigationState? _navigationState;
 
@@ -158,6 +166,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   // Payment sheet/loading guards — prevent stacked sheets and popping wrong routes.
   // Without these, every API/WebView failure re-showed the same sheet -> infinite loop.
   bool _isPaymentSheetOpen = false;
+  // Arrived-sheet guard — the driverArrived socket event can refire; never
+  // stack a second arrived sheet over the payment flow.
+  bool _isArrivedSheetOpen = false;
   bool _isPaymentLoadingShowing = false;
   int _paymentRetryCount = 0;
   static const int _maxPaymentRetries = 3;
@@ -185,6 +196,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _stops = parseRideStops(widget.stops);
     _initializeLocations();
     _setupInitialState();
     _setupSocketListeners();
@@ -260,6 +272,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
             _promoFullyCovered = fullyCovered;
             if (originalFare != null) _promoOriginalFare = originalFare;
             if (currentFare != null) _currentFare = currentFare;
+            final syncedStops = parseRideStops(rideData['stops']);
+            if (syncedStops.isNotEmpty) _stops = syncedStops;
           });
         }
 
@@ -1415,6 +1429,17 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       );
     }
 
+    // Numbered intermediate stops (Uber/Bolt style) — visible in-trip.
+    if (_stops.isNotEmpty &&
+        (_rideStatus == 'driver_arrived' || _rideStatus == 'in_progress')) {
+      newMarkers.addAll(
+        RouteMapHelpers.stopMarkers(
+          _stops,
+          statuses: _stops.map((s) => s.status).toList(),
+        ),
+      );
+    }
+
     // Driver/Car Marker - Different colors based on status
     // - driver_assigned: Blue (car moving toward pickup)
     // - driver_arrived: Cyan (car stationary at pickup)
@@ -1486,6 +1511,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       originLng: origin.longitude,
       destLat: destination.latitude,
       destLng: destination.longitude,
+      // In-trip leg traces through stops; to-pickup leg has no waypoints.
+      stops: _rideStatus == 'in_progress' ? _stops : null,
     );
   }
 
@@ -1512,20 +1539,19 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       currentLng: _driverLocation!.longitude,
       destLat: destination.latitude,
       destLng: destination.longitude,
+      stops: _rideStatus == 'in_progress' ? _stops : null,
     );
   }
 
-  /// Update polylines with navigation route
+  /// Update polylines with navigation route (cased, Uber-style)
   void _updatePolylines() {
     final List<MapPolyline> newPolylines = [];
 
     if (_navigationState != null && _navigationState!.polyline.isNotEmpty) {
-      newPolylines.add(
-        MapPolyline(
-          id: 'navigation_route',
-          points: _navigationState!.polyline,
+      newPolylines.addAll(
+        RouteMapHelpers.routePolylines(
+          _navigationState!.polyline,
           color: AppTheme.primaryColor,
-          width: 5,
         ),
       );
     }
@@ -1903,223 +1929,56 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     }
   }
 
-  /// Show visual message dialog when driver arrives
+  /// Show the "driver arrived" card as a compact bottom sheet (not a dialog).
+  ///
+  /// The old centered dialog overflowed on small screens / large text. A
+  /// bottom sheet is scroll-bounded, thumb-friendly, and matches the Uber /
+  /// Bolt arrival pattern.
+  ///
+  /// NOTE: no PopScope here on purpose — PopScope(canPop: false) also vetoes
+  /// the *programmatic* Navigator.pop in onContinue, which left this sheet
+  /// stuck open underneath the payment sheet (rider had to tap twice).
+  /// Dismissal is locked via isDismissible/enableDrag; a back-button dismiss
+  /// is safe because the status panel keeps a "Continue to Payment" fallback.
   void _showDriverArrivedDialog() {
-    final driverName = _driver['name'] ?? 'Your driver';
-    final vehicleModel = _driver['vehicle']?['model'] ?? 'Vehicle';
-    final vehicleNumber =
-        _driver['vehicle']?['number'] ??
-        _driver['vehicle']?['vehicleNumber'] ??
-        '';
-    final vehicleColor = _driver['vehicle']?['color'] ?? '';
+    if (!mounted || _isArrivedSheetOpen) return;
+    _isArrivedSheetOpen = true;
+    final driverName = (_driver['name'] ?? 'Your driver').toString();
+    final vehicleModel = (_driver['vehicle']?['model'] ?? '').toString();
+    final vehicleNumber = ((_driver['vehicle']?['number'] ??
+            _driver['vehicle']?['vehicleNumber'] ??
+            ''))
+        .toString();
+    final vehicleColor = (_driver['vehicle']?['color'] ?? '').toString();
 
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      barrierDismissible: false,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Colors.green.shade50, Colors.white],
-            ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Success Icon
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.green,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.check_circle,
-                  color: Colors.white,
-                  size: 48,
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // Title
-              const Text(
-                'Driver Has Arrived!',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textPrimary,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-
-              // Subtitle
-              Text(
-                '$driverName is waiting at your pickup location',
-                style: TextStyle(fontSize: 15, color: AppTheme.textSecondary),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 24),
-
-              // Driver Info Card
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey.shade200),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 24,
-                          backgroundColor: AppTheme.primaryColor,
-                          backgroundImage: _driver['profilePicture'] != null
-                              ? NetworkImage(_driver['profilePicture'])
-                              : null,
-                          child: _driver['profilePicture'] == null
-                              ? Text(
-                                  (_driver['name'] ?? 'D')[0],
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                )
-                              : null,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                driverName,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              ),
-                              Row(
-                                children: [
-                                  const Icon(
-                                    Icons.star,
-                                    color: Colors.amber,
-                                    size: 14,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    '${_driver['rating'] ?? '-'}',
-                                    style: const TextStyle(fontSize: 13),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    const Divider(),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 8,
-                      alignment: WrapAlignment.center,
-                      children: [
-                        _buildInfoItem(Icons.directions_car, vehicleModel),
-                        if (vehicleColor.isNotEmpty)
-                          _buildInfoItem(Icons.palette, vehicleColor),
-                        if (vehicleNumber.isNotEmpty)
-                          _buildInfoItem(Icons.tag, vehicleNumber),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Location indicator
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.green.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.green.shade200),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.location_on,
-                      color: Colors.green.shade700,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        'Check the map to see driver location',
-                        style: TextStyle(
-                          color: Colors.green.shade700,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Continue button
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _showPaymentSelectionModal();
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    elevation: 2,
-                  ),
-                  child: Text(
-                    _promoFullyCovered ? 'Continue' : 'Continue to Payment',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+      isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-    );
+      builder: (context) => DriverArrivedSheet(
+        driverName: driverName,
+        rating: '${_driver['rating'] ?? '-'}',
+        profilePicture: _driver['profilePicture']?.toString(),
+        vehicleModel: vehicleModel,
+        vehicleColor: vehicleColor,
+        vehicleNumber: vehicleNumber,
+        pickupAddress: _pickupAddress,
+        continueLabel:
+            _promoFullyCovered ? 'Continue' : 'Continue to Payment',
+        onContinue: () {
+          Navigator.pop(context);
+          _showPaymentSelectionModal();
+        },
+      ),
+    ).whenComplete(() {
+      _isArrivedSheetOpen = false;
+    });
   }
 
   Widget _buildInfoItem(IconData icon, String text) {
@@ -2604,6 +2463,35 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                       ),
                     ),
                   ],
+                ),
+              ),
+
+            // Fallback entry to payment: if the arrived sheet was dismissed
+            // (e.g. back button), the rider can still continue from here and
+            // is never stranded without a next step.
+            if (_rideStatus == 'driver_arrived' && !_isPaymentMethodSelected)
+              Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed:
+                      _isPaymentSheetOpen ? null : _showPaymentSelectionModal,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    elevation: 2,
+                  ),
+                  child: Text(
+                    _promoFullyCovered ? 'Continue' : 'Continue to Payment',
+                    style: const TextStyle(
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
               ),
 

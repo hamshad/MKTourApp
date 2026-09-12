@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:latlong2/latlong.dart' as latlong;
+import 'map_marker_icons.dart';
 
 class MapMarker {
   final String id;
@@ -71,6 +72,13 @@ class PlatformMap extends StatefulWidget {
   final double tilt;
   final bool interactive;
 
+  /// Show Google's native my-location dot + recenter button.
+  /// Defaults to false because our own position markers (user/driver/pickup)
+  /// already mark the device location — leaving it on draws TWO pins on the
+  /// same spot at slightly different sizes. Opt in only on maps with no
+  /// custom position marker (e.g. the home tab).
+  final bool showMyLocationDot;
+
   const PlatformMap({
     super.key,
     required this.initialLat,
@@ -82,6 +90,7 @@ class PlatformMap extends StatefulWidget {
     this.bearing = 0.0,
     this.tilt = 0.0,
     this.interactive = true,
+    this.showMyLocationDot = false,
   });
 
   @override
@@ -91,9 +100,28 @@ class PlatformMap extends StatefulWidget {
 class _PlatformMapState extends State<PlatformMap> {
   GoogleMapController? _controller;
 
+  /// Custom bitmap icons per marker key (`id + color + zoom bucket`). Filled
+  /// in asynchronously; markers fall back to distinct hues until ready so
+  /// pins are never all the same red.
+  final Map<String, BitmapDescriptor> _icons = {};
+
+  /// Current zoom bucket — pins shrink when zoomed out, grow when zoomed in.
+  String _zoomBucket = 'mid';
+
+  @override
+  void initState() {
+    super.initState();
+    _ensureIcons();
+  }
+
   @override
   void didUpdateWidget(PlatformMap oldWidget) {
     super.didUpdateWidget(oldWidget);
+
+    if (_markerKeys(widget.markers).join() !=
+        _markerKeys(oldWidget.markers).join()) {
+      _ensureIcons();
+    }
     
     // Animate to new location if coordinates changed
     if (widget.initialLat != oldWidget.initialLat || widget.initialLng != oldWidget.initialLng) {
@@ -184,20 +212,106 @@ class _PlatformMapState extends State<PlatformMap> {
     }
   }
 
+  String _markerKey(MapMarker m) =>
+      '${m.id}_${m.markerColor?.value ?? 0}_$_zoomBucket';
+
+  static List<String> _markerKeys(List<MapMarker> markers) =>
+      markers.map((m) => '${m.id}_${m.markerColor?.value ?? 0}').toList();
+
+  void _onCameraMove(CameraPosition position) {
+    final bucket = MapMarkerIcons.bucket(position.zoom);
+    if (bucket != _zoomBucket) {
+      setState(() => _zoomBucket = bucket);
+      _ensureIcons();
+    }
+  }
+
+  /// Resolve custom bitmap icons for markers that have one (pickup, dropoff,
+  /// numbered stops, driver car, user dot). One rebuild when all are ready.
+  Future<void> _ensureIcons() async {
+    final pending = <String, Future<BitmapDescriptor>>{};
+    for (final m in widget.markers) {
+      final key = _markerKey(m);
+      if (_icons.containsKey(key)) continue;
+      final future = _iconFor(m);
+      if (future != null) pending[key] = future;
+    }
+    if (pending.isEmpty) return;
+    try {
+      final resolved = await Future.wait(pending.values);
+      if (!mounted) return;
+      setState(() {
+        var i = 0;
+        for (final key in pending.keys) {
+          _icons[key] = resolved[i++];
+        }
+      });
+    } catch (e) {
+      debugPrint('🗺️ PlatformMap: custom icon failed: $e');
+    }
+  }
+
+  /// Custom icon per marker id, sized for the current zoom bucket. Stops
+  /// (`stop_N`) render their number with the status tint carried in
+  /// [MapMarker.markerColor]; null = default hue pin.
+  Future<BitmapDescriptor>? _iconFor(MapMarker m) {
+    final scale = MapMarkerIcons.bucketScale(_zoomBucket);
+    final id = m.id.toLowerCase();
+    if (id == 'pickup') return MapMarkerIcons.pickup(scale: scale);
+    if (id == 'dropoff' || id == 'destination') {
+      return MapMarkerIcons.dropoff(scale: scale);
+    }
+    if (id.startsWith('stop')) {
+      final n =
+          int.tryParse(id.split('_').last) ?? int.tryParse(m.title ?? '') ?? 1;
+      final bg = m.markerColor ?? Colors.white;
+      final fg = bg == Colors.white ? Colors.black : Colors.white;
+      return MapMarkerIcons.stop(number: n, bg: bg, fg: fg, scale: scale);
+    }
+    if (id == 'driver') return MapMarkerIcons.driver(scale: scale);
+    if (id == 'user') return MapMarkerIcons.userDot(scale: scale);
+    return null;
+  }
+
+  /// Instant hue fallback (before bitmaps load) — distinct per role so pins
+  /// are never uniform red: green pickup, red dropoff, orange stops,
+  /// azure car, blue user dot.
+  static double? _fallbackHue(MapMarker m) {
+    final id = m.id.toLowerCase();
+    // Stops: keep the status tint (green/blue) while bitmaps generate;
+    // pending (white) falls back to orange so it never reads as red.
+    if (id.startsWith('stop')) {
+      if (m.markerColor == null || m.markerColor == Colors.white) {
+        return BitmapDescriptor.hueOrange;
+      }
+      return m.markerHue;
+    }
+    if (m.markerHue != null) return m.markerHue;
+    if (id == 'pickup') return BitmapDescriptor.hueGreen;
+    if (id == 'dropoff' || id == 'destination') {
+      return BitmapDescriptor.hueRed;
+    }
+    if (id == 'driver') return BitmapDescriptor.hueAzure;
+    if (id == 'user') return BitmapDescriptor.hueBlue;
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     // Debug logging removed to prevent log spam
 
     // Convert MapMarker to Google Maps Marker (Moved to build for reactivity)
     final googleMarkers = widget.markers.map((m) {
+      final custom = _icons[_markerKey(m)];
+      final hue = _fallbackHue(m);
       return Marker(
         markerId: MarkerId(m.id),
         position: LatLng(m.lat, m.lng),
         infoWindow: InfoWindow(title: m.title ?? m.id),
-        // Use custom colored marker if markerColor is specified
-        icon: m.markerHue != null
-            ? BitmapDescriptor.defaultMarkerWithHue(m.markerHue!)
-            : BitmapDescriptor.defaultMarker,
+        icon: custom ??
+            (hue != null
+                ? BitmapDescriptor.defaultMarkerWithHue(hue)
+                : BitmapDescriptor.defaultMarker),
       );
     }).toSet();
 
@@ -253,6 +367,7 @@ class _PlatformMapState extends State<PlatformMap> {
       ),
       markers: googleMarkers,
       polylines: googlePolylines,
+      onCameraMove: _onCameraMove,
       onMapCreated: (GoogleMapController controller) {
         debugPrint('🗺️ PlatformMap: Google Map created successfully');
         _controller = controller;
@@ -264,8 +379,13 @@ class _PlatformMapState extends State<PlatformMap> {
       onTap: (LatLng position) {
         widget.onTap?.call(position.latitude, position.longitude);
       },
-      myLocationEnabled: widget.interactive,
-      myLocationButtonEnabled: widget.interactive,
+      // Native dot is opt-in (see showMyLocationDot): our custom user/driver/
+      // pickup markers already cover the device position, and enabling both
+      // draws two overlapping pins. The recenter button is tied to the dot —
+      // showing it without the location layer would be a dead button.
+      myLocationEnabled: widget.showMyLocationDot,
+      myLocationButtonEnabled:
+          widget.interactive && widget.showMyLocationDot,
       mapToolbarEnabled: false,
       zoomControlsEnabled: false,
       zoomGesturesEnabled: widget.interactive,

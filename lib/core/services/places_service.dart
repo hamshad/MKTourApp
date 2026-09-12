@@ -270,13 +270,74 @@ class PlacesService {
     }
   }
 
-  /// Get route directions from origin to destination
+  /// Build a `waypoints` query value from [RideStop]-shaped stops.
+  ///
+  /// Format: `lat,lng|lat,lng` (e.g. `"52.040,-0.759|52.050,-0.760"`).
+  /// Returns null when there are no usable stop coordinates (caller must
+  /// then omit the `waypoints` param — plain origin/destination fallback).
+  static String? buildWaypointsParam(List<dynamic> stops) {
+    final parts = <String>[];
+    for (final stop in stops) {
+      double? lat;
+      double? lng;
+      if (stop is Map<String, dynamic> || stop is Map) {
+        final m = Map<String, dynamic>.from(stop as Map);
+        // Booking/API shape: coordinates = [lng, lat]
+        final coords = m['coordinates'];
+        if (coords is List && coords.length >= 2) {
+          lng = (coords[0] as num?)?.toDouble();
+          lat = (coords[1] as num?)?.toDouble();
+        }
+        // Flat shape: lat / lng keys
+        lat ??= (m['lat'] as num?)?.toDouble();
+        lng ??= (m['lng'] as num?)?.toDouble();
+        lat ??= (m['latitude'] as num?)?.toDouble();
+        lng ??= (m['longitude'] as num?)?.toDouble();
+        // Nested location shape
+        final loc = m['location'];
+        if ((lat == null || lng == null) && loc is Map) {
+          final lm = Map<String, dynamic>.from(loc);
+          lat ??= (lm['lat'] as num?)?.toDouble();
+          lng ??= (lm['lng'] as num?)?.toDouble();
+        }
+      } else {
+        // RideStop (or any object with .coordinates [lng, lat])
+        try {
+          final coords = (stop as dynamic).coordinates as List<double>?;
+          if (coords != null && coords.length >= 2) {
+            lng = coords[0];
+            lat = coords[1];
+          }
+        } catch (_) {}
+      }
+      if (lat == null || lng == null) continue;
+      if (lat == 0.0 && lng == 0.0) continue;
+      if (lat.isNaN || lng.isNaN) continue;
+      parts.add('$lat,$lng');
+    }
+    if (parts.isEmpty) return null;
+    return parts.join('|');
+  }
+
+  /// Get route directions from origin to destination.
+  ///
+  /// When [stops] (Ride objects' `stops` array, booking-stop maps, or
+  /// [RideStop]s) is non-empty, their coordinates are formatted as
+  /// `lat,lng|lat,lng` and sent as `&waypoints=` so the returned
+  /// `polyline_points` traces through every stop. With no stops the
+  /// request stays origin+destination only (previous behaviour).
   Future<Map<String, dynamic>?> getDirections(
     double originLat,
     double originLng,
     double destLat,
-    double destLng,
-  ) async {
+    double destLng, {
+    List<dynamic>? stops,
+    String? waypoints,
+  }) async {
+    final effectiveWaypoints =
+        waypoints ?? (stops != null ? buildWaypointsParam(stops) : null);
+    final hasWaypoints =
+        effectiveWaypoints != null && effectiveWaypoints.isNotEmpty;
     debugPrint('📍 PlacesService.getDirections - Starting request');
     debugPrint(
       '📍 PlacesService.getDirections - Origin: ($originLat, $originLng)',
@@ -284,13 +345,23 @@ class PlacesService {
     debugPrint(
       '📍 PlacesService.getDirections - Destination: ($destLat, $destLng)',
     );
+    if (hasWaypoints) {
+      debugPrint(
+        '📍 PlacesService.getDirections - Waypoints (${stops?.length ?? '?'} stops): $effectiveWaypoints',
+      );
+    }
 
     try {
       final headers = await ApiConfig.getAuthHeaders();
 
+      final queryParams = <String, String>{
+        'origin': '$originLat,$originLng',
+        'destination': '$destLat,$destLng',
+        if (hasWaypoints) 'waypoints': effectiveWaypoints,
+      };
       final url = Uri.parse(
-        '${ApiConstants.getDirections}?origin=$originLat,$originLng&destination=$destLat,$destLng',
-      );
+        ApiConstants.getDirections,
+      ).replace(queryParameters: queryParams);
 
       debugPrint('🗺️ ─────────────────────────────────────────────');
       debugPrint('🗺️ PlacesService.getDirections()');

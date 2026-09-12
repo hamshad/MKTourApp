@@ -3,6 +3,7 @@ import '../../core/api_service.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../../core/widgets/platform_map.dart';
+import '../../core/widgets/route_map_helpers.dart';
 import '../../core/services/places_service.dart';
 import '../../core/models/vehicle.dart';
 
@@ -66,11 +67,20 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     final dropoffLng = dropoff['coordinates'][0];
 
     debugPrint('🗺️ [RideDetailScreen] Fetching route via get-directions...');
+    // Multi-stop: send the ride's stops as waypoints so the polyline traces
+    // pickup → stops → dropoff. No stops → plain origin/destination.
+    final stops = parseRideStops(_rideDetails!['stops']);
+    if (stops.isNotEmpty) {
+      debugPrint(
+        '🗺️ [RideDetailScreen] Including ${stops.length} stop(s) as waypoints',
+      );
+    }
     final directions = await _placesService.getDirections(
       (pickupLat as num).toDouble(),
       (pickupLng as num).toDouble(),
       (dropoffLat as num).toDouble(),
       (dropoffLng as num).toDouble(),
+      stops: stops,
     );
 
     if (!mounted) return;
@@ -99,12 +109,16 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
       return;
     }
 
-    // Fallback: straight line
+    // Fallback: straight line (still via stops so markers match the list).
     debugPrint(
       '⚠️ [RideDetailScreen] Directions missing/empty. Using straight-line fallback.',
     );
+    final stopPoints = RouteMapHelpers.stopPoints(
+      parseRideStops(_rideDetails!['stops']),
+    );
     final fallback = [
       LatLng(pickupLat.toDouble(), pickupLng.toDouble()),
+      ...stopPoints,
       LatLng(dropoffLat.toDouble(), dropoffLng.toDouble()),
     ];
     setState(() {
@@ -152,6 +166,13 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
         ),
         title: 'Pickup',
       ),
+      // Numbered intermediate stops (Uber/Bolt style).
+      ...RouteMapHelpers.stopMarkers(
+        parseRideStops(_rideDetails!['stops']),
+        statuses: parseRideStops(
+          _rideDetails!['stops'],
+        ).map((s) => s.status).toList(),
+      ),
       MapMarker(
         id: 'dropoff',
         lat: dropoffLat,
@@ -176,12 +197,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
             initialLng: pickupLng,
             markers: markers,
             polylines: [
-              MapPolyline(
-                id: 'route',
-                points: polylines,
-                color: Colors.black,
-                width: 4.0,
-              ),
+              ...RouteMapHelpers.routePolylines(polylines, color: Colors.black),
             ],
             bounds: _routeBounds ?? LatLngBounds.fromPoints(polylines),
           ),

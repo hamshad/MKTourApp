@@ -13,6 +13,7 @@ import 'dart:async';
 import 'package:provider/provider.dart';
 import '../../core/auth_provider.dart';
 import '../../core/widgets/platform_map.dart';
+import '../../core/widgets/route_map_helpers.dart';
 import 'package:latlong2/latlong.dart' as lat_lng;
 import 'package:flutter_map/flutter_map.dart' as fmap;
 import '../../core/models/vehicle.dart';
@@ -76,6 +77,11 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     _selectedPaymentMethod = widget.paymentMethod ?? 'cash';
     // Initialize route synchronously from passed polyline
     _initializeRouteSync();
+    // Multi-stop: the passed polyline may predate the stops editor —
+    // refetch with waypoints so the map traces pickup → stops → dropoff.
+    if (widget.stops?.isNotEmpty == true) {
+      _refetchRouteWithStops();
+    }
     // Skip the old fare API if we already have promo-aware data or a fixed fare
     final hasPromoData = widget.fareData['promo_applied'] == true;
     final hasValidFare =
@@ -170,6 +176,43 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
       ),
     ];
     _routeBounds = fmap.LatLngBounds.fromPoints(_routePoints);
+  }
+
+  /// Refetch the route with the ride's stops as waypoints so the map
+  /// traces pickup → stops → dropoff (same JSON, richer polyline).
+  Future<void> _refetchRouteWithStops() async {
+    try {
+      final pickupCoords = widget.pickupLocation['coordinates'] as List;
+      final dropoffCoords = widget.dropoffLocation['coordinates'] as List;
+      final directions = await _placesService.getDirections(
+        (pickupCoords[1] as num).toDouble(),
+        (pickupCoords[0] as num).toDouble(),
+        (dropoffCoords[1] as num).toDouble(),
+        (dropoffCoords[0] as num).toDouble(),
+        stops: widget.stops,
+      );
+      if (!mounted) return;
+      if (directions != null &&
+          directions['polyline'] is List &&
+          (directions['polyline'] as List).isNotEmpty) {
+        final points = (directions['polyline'] as List).map((p) {
+          final m = Map<String, dynamic>.from(p as Map);
+          return lat_lng.LatLng(
+            (m['lat'] as num).toDouble(),
+            (m['lng'] as num).toDouble(),
+          );
+        }).toList();
+        setState(() {
+          _routePoints = points;
+          _routeBounds = fmap.LatLngBounds.fromPoints(points);
+        });
+        debugPrint(
+          '✅ RideConfirmationScreen: Multi-stop route loaded (${points.length} pts, ${widget.stops!.length} stops)',
+        );
+      }
+    } catch (e) {
+      debugPrint('⚠️ RideConfirmationScreen: waypoint refetch failed: $e');
+    }
   }
 
   Future<void> _fetchDirectionsAndFare() async {
@@ -541,6 +584,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                     ? 'pay_now'
                     : 'pay_later',
                 clientSecret: result.data!['clientSecret']?.toString(),
+                stops: widget.stops,
               ),
             ),
           );
@@ -1000,6 +1044,8 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
         title: 'Pickup',
         markerColor: Colors.green, // Green marker for pickup
       ),
+      // Numbered intermediate stops (Uber/Bolt style).
+      ...RouteMapHelpers.stopMarkers(widget.stops ?? const []),
       MapMarker(
         id: 'dropoff',
         lat: dropoffCoords[1],
@@ -1030,14 +1076,10 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
           initialLng: pickupCoords[0],
           markers: markers,
           polylines: _routePoints.isNotEmpty
-              ? [
-                  MapPolyline(
-                    id: 'route_confirmation',
-                    points: _routePoints,
-                    color: AppTheme.primaryColor,
-                    width: 5.0, // Thicker line
-                  ),
-                ]
+              ? RouteMapHelpers.routePolylines(
+                  _routePoints,
+                  color: AppTheme.primaryColor,
+                )
               : [],
           bounds: _routeBounds,
           interactive: false,

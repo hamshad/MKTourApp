@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/platform_map.dart';
+import '../../core/widgets/route_map_helpers.dart';
 import '../../core/widgets/ride_searching_overlay.dart';
 import '../../core/services/socket_service.dart';
 import '../../core/services/navigation_service.dart';
@@ -443,13 +444,15 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
     await _fetchNavigationRoute();
   }
 
-  /// Fetch navigation route from current location to dropoff
+  /// Fetch navigation route from current location to dropoff,
+  /// tracing through remaining stops via waypoints.
   Future<void> _fetchNavigationRoute() async {
     await _navigationService.fetchRoute(
       originLat: _driverLocation.latitude,
       originLng: _driverLocation.longitude,
       destLat: _dropoffLocation.latitude,
       destLng: _dropoffLocation.longitude,
+      stops: _stops,
     );
   }
 
@@ -460,20 +463,17 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
       currentLng: _driverLocation.longitude,
       destLat: _dropoffLocation.latitude,
       destLng: _dropoffLocation.longitude,
+      stops: _stops,
     );
   }
 
-  /// Update polylines with navigation route
+  /// Update polylines with navigation route (cased, Uber-style).
   void _updatePolylines() {
     if (_navigationState != null && _navigationState!.polyline.isNotEmpty) {
-      _polylines = [
-        MapPolyline(
-          id: 'navigation_route',
-          points: _navigationState!.polyline,
-          color: AppTheme.primaryColor,
-          width: 5.0,
-        ),
-      ];
+      _polylines = RouteMapHelpers.routePolylines(
+        _navigationState!.polyline,
+        color: AppTheme.primaryColor,
+      );
     }
   }
 
@@ -552,6 +552,11 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
                 lng: _dropoffLocation.longitude,
                 child: const Icon(Icons.location_on, color: Colors.red, size: 40),
                 title: 'Destination',
+              ),
+              // Numbered intermediate stops (Uber/Bolt style).
+              ...RouteMapHelpers.stopMarkers(
+                _stops,
+                statuses: _stops.map((s) => s.status).toList(),
               ),
             ],
             polylines: _polylines,

@@ -1288,21 +1288,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           child: PlatformMap(
             initialLat: _currentLocation.latitude,
             initialLng: _currentLocation.longitude,
-            markers: [
-              MapMarker(
-                id: 'current_loc',
-                title: 'You',
-                lat: _currentLocation.latitude,
-                lng: _currentLocation.longitude,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFF6B35).withOpacity(0.3),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
-                  ),
-                ),
-              ),
-            ],
+            // No custom position marker here: the native dot marks the user
+            // (with accuracy circle + recenter button) so pins never double up.
+            showMyLocationDot: true,
+            markers: const [],
           ),
         ),
 

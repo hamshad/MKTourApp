@@ -5,6 +5,8 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/platform_map.dart';
+import '../../core/widgets/route_map_helpers.dart';
+import '../../core/services/places_service.dart';
 import '../../core/auth_provider.dart';
 import '../../core/models/vehicle.dart';
 
@@ -25,6 +27,8 @@ class RideDetailScreen extends StatefulWidget {
 class _RideDetailScreenState extends State<RideDetailScreen> {
   Map<String, dynamic>? _rideData;
   bool _isLoading = true;
+  final PlacesService _placesService = PlacesService();
+  List<latlong.LatLng> _routePoints = [];
 
   @override
   void initState() {
@@ -44,6 +48,50 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
         }
         _isLoading = false;
       });
+      await _fetchRoutePolyline();
+    }
+  }
+
+  /// Real road route via get-directions, tracing through stops when present.
+  Future<void> _fetchRoutePolyline() async {
+    final data = _rideData;
+    if (data == null) return;
+    final pickup = data['pickupLocation'];
+    final dropoff = data['dropoffLocation'];
+    if (pickup is! Map || dropoff is! Map) return;
+    final pCoords = pickup['coordinates'];
+    final dCoords = dropoff['coordinates'];
+    if (pCoords is! List || dCoords is! List) return;
+    if (pCoords.length < 2 || dCoords.length < 2) return;
+    final pLng = (pCoords[0] as num).toDouble();
+    final pLat = (pCoords[1] as num).toDouble();
+    final dLng = (dCoords[0] as num).toDouble();
+    final dLat = (dCoords[1] as num).toDouble();
+    final stops = parseRideStops(data['stops']);
+    try {
+      final directions = await _placesService.getDirections(
+        pLat,
+        pLng,
+        dLat,
+        dLng,
+        stops: stops,
+      );
+      if (!mounted) return;
+      if (directions != null &&
+          directions['polyline'] is List &&
+          (directions['polyline'] as List).isNotEmpty) {
+        setState(() {
+          _routePoints = (directions['polyline'] as List).map((p) {
+            final m = Map<String, dynamic>.from(p as Map);
+            return latlong.LatLng(
+              (m['lat'] as num).toDouble(),
+              (m['lng'] as num).toDouble(),
+            );
+          }).toList();
+        });
+      }
+    } catch (e) {
+      debugPrint('⚠️ [ActivityRideDetail] waypoint route failed: $e');
     }
   }
 
@@ -101,7 +149,26 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
       ));
     }
 
-    if (pickupLat != null && pickupLng != null && dropoffLat != null && dropoffLng != null) {
+    // Numbered intermediate stops (Uber/Bolt style).
+    final rideStops = parseRideStops(_rideData?['stops']);
+    if (rideStops.isNotEmpty) {
+      markers.addAll(
+        RouteMapHelpers.stopMarkers(
+          rideStops,
+          statuses: rideStops.map((s) => s.status).toList(),
+        ),
+      );
+    }
+
+    if (_routePoints.isNotEmpty) {
+      // Real road route (already traces through stops via waypoints).
+      polylines.addAll(
+        RouteMapHelpers.routePolylines(
+          _routePoints,
+          color: AppTheme.primaryColor,
+        ),
+      );
+    } else if (pickupLat != null && pickupLng != null && dropoffLat != null && dropoffLng != null) {
       // Create a curved polyline between pickup and dropoff
       final start = latlong.LatLng(pickupLat, pickupLng);
       final end = latlong.LatLng(dropoffLat, dropoffLng);

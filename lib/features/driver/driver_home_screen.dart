@@ -8,6 +8,7 @@ import 'package:sliding_up_panel/sliding_up_panel.dart';
 import '../../core/api_service.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/platform_map.dart';
+import '../../core/widgets/route_map_helpers.dart';
 import 'driver_request_panel.dart';
 import 'driver_navigation_panel.dart';
 import '../../core/widgets/custom_snackbar.dart';
@@ -842,6 +843,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       originLng: _currentLocation.longitude,
       destLat: destination.latitude,
       destLng: destination.longitude,
+      // Trip leg traces through stops; pickup leg has no waypoints.
+      stops: (_status == 'in_progress' || _status == 'at_stop')
+          ? parseRideStops(_rideData?['stops'])
+          : null,
     );
   }
 
@@ -867,26 +872,26 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       currentLng: _currentLocation.longitude,
       destLat: destination.latitude,
       destLng: destination.longitude,
+      stops: (_status == 'in_progress' || _status == 'at_stop')
+          ? parseRideStops(_rideData?['stops'])
+          : null,
     );
   }
 
-  /// Update polylines with navigation route
+  /// Update polylines with navigation route (cased, Uber-style)
   void _updateNavigationPolylines() {
     if (_navigationState != null && _navigationState!.polyline.isNotEmpty) {
-      _navigationPolylines = [
-        MapPolyline(
-          id: 'navigation_route',
-          points: _navigationState!.polyline,
-          color: AppTheme.primaryColor,
-          width: 5.0,
-        ),
-      ];
+      _navigationPolylines = RouteMapHelpers.routePolylines(
+        _navigationState!.polyline,
+        color: AppTheme.primaryColor,
+      );
     } else {
       _navigationPolylines = [];
     }
   }
 
-  /// Open external navigation to the current target (pickup or stop).
+  /// Open external navigation to the current target, chaining remaining
+  /// stops as Google Maps waypoints during the trip (Uber-style).
   Future<void> _openExternalNavigation() async {
     double? lat;
     double? lng;
@@ -908,8 +913,32 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       }
     }
     if (lat == null || lng == null) return;
+    // During the trip, append remaining stops + final dropoff as waypoints
+    // so Google Maps routes through every stop.
+    String waypointsParam = '';
+    if ((_status == 'in_progress' || _status == 'at_stop') &&
+        _rideData != null) {
+      final stops = parseRideStops(_rideData!['stops']);
+      final remaining = <String>[];
+      for (final s in stops) {
+        final c = s.coordinates;
+        if (c == null || c.length < 2) continue;
+        if (s.isCompleted) continue;
+        remaining.add('${c[1]},${c[0]}');
+      }
+      final dCoords = _rideData!['dropoffLocation']?['coordinates'];
+      if (dCoords is List && dCoords.length >= 2) {
+        remaining.add(
+          '${(dCoords[1] as num).toDouble()},${(dCoords[0] as num).toDouble()}',
+        );
+      }
+      if (remaining.isNotEmpty) {
+        waypointsParam =
+            '&waypoints=${Uri.encodeComponent(remaining.join('|'))}';
+      }
+    }
     final uri = Uri.parse(
-      'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng',
+      'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng$waypointsParam',
     );
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -2912,7 +2941,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             ),
             if (_status == 'pickup' || _status == 'in_progress')
               MapMarker(
-                id: 'destination',
+                id: _status == 'pickup' ? 'pickup' : 'dropoff',
                 lat: destLat,
                 lng: destLng,
                 child: Icon(
@@ -2922,16 +2951,30 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
                 ),
                 title: _status == 'pickup' ? 'Pickup' : 'Dropoff',
               ),
+            // Numbered intermediate stops during the trip (Uber/Bolt style).
+            if (_status == 'in_progress' || _status == 'at_stop')
+              ...RouteMapHelpers.stopMarkers(
+                parseRideStops(_rideData?['stops']),
+                statuses: parseRideStops(
+                  _rideData?['stops'],
+                ).map((s) => s.status).toList(),
+              ),
           ],
           polylines: _navigationPolylines.isNotEmpty
               ? _navigationPolylines
               : [
                   if (_status == 'pickup' || _status == 'in_progress')
-                    MapPolyline(
-                      id: 'route',
-                      points: [_currentLocation, LatLng(destLat, destLng)],
+                    ...RouteMapHelpers.routePolylines(
+                      [
+                        _currentLocation,
+                        ...RouteMapHelpers.stopPoints(
+                          (_status == 'in_progress' || _status == 'at_stop')
+                              ? parseRideStops(_rideData?['stops'])
+                              : const [],
+                        ),
+                        LatLng(destLat, destLng),
+                      ],
                       color: AppTheme.primaryColor,
-                      width: 4.0,
                     ),
                 ],
         ),

@@ -26,21 +26,32 @@ class NavigationService {
   /// Get current navigation state
   NavigationState? get currentState => _currentState;
   
-  /// Fetch navigation route from origin to destination
+  /// Fetch navigation route from origin to destination.
+  ///
+  /// Pass the ride's `stops` array (or a pre-built `waypoints` string in
+  /// `lat,lng|lat,lng` form) so the route traces through every stop.
+  /// Falls back to plain origin→destination when no stops are given.
   Future<NavigationState?> fetchRoute({
     required double originLat,
     required double originLng,
     required double destLat,
     required double destLng,
+    List<dynamic>? stops,
+    String? waypoints,
   }) async {
     try {
       debugPrint('🧭 NavigationService: Fetching route from ($originLat, $originLng) to ($destLat, $destLng)');
+      if (stops != null && stops.isNotEmpty) {
+        debugPrint('🧭 NavigationService: Including ${stops.length} stop(s) as waypoints');
+      }
       
       final directions = await _placesService.getDirections(
         originLat,
         originLng,
         destLat,
         destLng,
+        stops: stops,
+        waypoints: waypoints,
       );
       
       if (directions == null) {
@@ -88,6 +99,8 @@ class NavigationService {
     required double currentLng,
     required double destLat,
     required double destLng,
+    List<dynamic>? stops,
+    String? waypoints,
   }) async {
     try {
       debugPrint('🧭 NavigationService: Updating route from current position');
@@ -99,6 +112,8 @@ class NavigationService {
           originLng: currentLng,
           destLat: destLat,
           destLng: destLng,
+          stops: stops,
+          waypoints: waypoints,
         );
       }
       
