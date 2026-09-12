@@ -1,7 +1,7 @@
 # MK Tours - Project State
 
 ## Current Position
-- **Phase:** 10-driver-request-stack — Complete (2/2 plans, 2026-09-12)
+- **Phase:** 10-driver-request-stack — Complete (3/3 plans, 2026-09-12)
 - **Next:** Phase transition (phase 10 done)
 
 ## Completed Plans
@@ -24,6 +24,7 @@
 - 09-02: Pending UI — status screen locked hero + RIDE BOOKED badge, home locked banner, no fare gates (`9f3d11b`, `4f46f90`)
 - 10-01: Driver request queue + eviction — 5-deep stack, per-ride dedupe, cancel/expire/unavailable single-card removal (`3977389`, `5dd66df`)
 - 10-02: Stacked request UX — 1-of-N pill with chevrons/dots, background rows, newest-at-0, per-card decline, stack-clearing accept (`1ee228c`, `e3ccf64`)
+- 10-03: Stack polish + address cache — snug cycle row, action bar pinned under visible card, compact background strip, per-ride geocode cache (`13f1423`, `d01371d`)
 
 ## Decisions
 - [02-01] OTP dialog UI left in place; only API call path made OTP-free (UI strip-out in 03-01)
@@ -72,12 +73,15 @@
 - [10-02] Newest request inserts at 0 and takes the visible card; prior card becomes background row
 - [10-02] Decline never stops audio while stack non-empty; stop only on drain
 - [10-02] Card switch clears accept error since banner is bound to visible card
+- [10-03] Single-request spacing pixel-identical via stacked-only conditional gaps
+- [10-03] Address cache keyed by canonical rideId (rideId/bookingId/_id/id), cap 20 oldest-first; same-rideId rebuilds skip refetch; stale-flip guard on store
 
 ## Blockers
 - None
 
 ## Session
-- Last session: Completed 10-02-PLAN.md (2026-09-12, 2 feat commits, SUMMARY at phases/10-driver-request-stack/10-02-SUMMARY.md). Phase 10 complete.
+- Last session: Completed 10-03-PLAN.md (2026-09-12, 2 feat commits, SUMMARY at phases/10-driver-request-stack/10-03-SUMMARY.md). Phase 10 complete.
+- Previous: Completed 10-02-PLAN.md (2026-09-12, 2 feat commits, SUMMARY at phases/10-driver-request-stack/10-02-SUMMARY.md). Phase 10 complete.
 - Previous: Completed 10-01-PLAN.md (2026-09-12, 2 feat commits, SUMMARY at phases/10-driver-request-stack/10-01-SUMMARY.md). Next: 10-02.
 - Previous: Completed 09-02-PLAN.md (2026-09-12, 2 feat commits, SUMMARY at phases/09-promo-pending-state/09-02-SUMMARY.md). Phase 09 complete.
 - Previous: Completed 09-01-PLAN.md (2026-09-12, test + feat commits, SUMMARY at phases/09-promo-pending-state/09-01-SUMMARY.md). Next: 09-02.
