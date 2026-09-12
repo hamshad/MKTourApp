@@ -2756,6 +2756,43 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     }
   }
 
+  /// Settle-check: after select-payment returns success WITHOUT confirming
+  /// the method (e.g. cash tapped right after a payment_link cancel while
+  /// the backend is still settling), wait briefly and re-read the ride. True
+  /// only if the server now reports the expected method — so a single tap
+  /// still lands instead of forcing the rider to tap twice.
+  Future<bool> _awaitMethodConfirmation(String expected, int seq) async {
+    if (mounted) {
+      _isPaymentLoadingShowing = true;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) =>
+            const Center(child: CircularProgressIndicator()),
+      );
+    }
+    try {
+      await Future.delayed(const Duration(seconds: 2));
+      if (!mounted || seq != _paymentSelectionSeq) return false;
+      final response = await _apiService.getRideDetails(widget.rideId);
+      final data = response['data'];
+      String? confirmed;
+      if (data is Map) {
+        confirmed = data['paymentMethod']?.toString() ??
+            (data['ride'] is Map
+                ? (data['ride'] as Map)['paymentMethod']?.toString()
+                : null);
+      }
+      debugPrint('💸 [Payment] Settle-check method: $confirmed');
+      return confirmed == expected;
+    } catch (e) {
+      debugPrint('⚠️ [Payment] Settle-check failed: $e');
+      return false;
+    } finally {
+      _closePaymentLoading();
+    }
+  }
+
   /// Map raw backend/exception text to a user-facing explanation.
   String _friendlyPaymentError(String raw) {
     final lower = raw.toLowerCase();
@@ -3256,7 +3293,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
           );
           return;
         }
-        if (paymentMethod == 'payment_link') {
+        if (paymentMethod == 'payment_link' && method != 'cash') {
           final paymentUrl = rideData['paymentUrl'];
           debugPrint('🔗 [Payment Link] URL present: ${paymentUrl != null}');
           if (paymentUrl != null) {
@@ -3328,7 +3365,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                   'No payment link provided by server. The online-payment provider may be down — try Cash.',
             );
           }
-        } else {
+        } else if (paymentMethod == 'cash') {
           // Cash payment — always dismiss the loader first, then drive the
           // status forward: the backend may have already started the ride,
           // so sync immediately instead of waiting on the socket event.
@@ -3351,6 +3388,82 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
           // Pull the authoritative status — flips to in_progress UI when the
           // server already started the trip.
           _syncRideStatus();
+        } else {
+          // success:true but the server did NOT confirm the requested method
+          // (missing/echoed value — typical right after a payment_link cancel
+          // while the backend is still settling). Never celebrate here: that
+          // fake success left the driver blocked at "select payment method".
+          _closePaymentLoading();
+          debugPrint(
+            '⚠️ [Payment] Server did not confirm "$method" (echo: $paymentMethod) — settle-check before failing',
+          );
+          var confirmed = await _awaitMethodConfirmation(method, seq);
+          if (!mounted || seq != _paymentSelectionSeq) return;
+          if (!confirmed) {
+            // One automatic retry: the first select raced the link-cancel
+            // settling server-side. This is the second tap the rider
+            // previously had to do manually.
+            debugPrint('💸 [Payment] Retrying select "$method" once...');
+            if (mounted) {
+              _isPaymentLoadingShowing = true;
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (context) =>
+                    const Center(child: CircularProgressIndicator()),
+              );
+            }
+            try {
+              final retry = await _apiService.selectPaymentMethod(
+                widget.rideId,
+                method,
+              );
+              _closePaymentLoading();
+              if (seq != _paymentSelectionSeq) return;
+              final retryData =
+                  retry['data'] is Map ? retry['data'] as Map : {};
+              final retryRide = retryData['ride'] is Map
+                  ? retryData['ride'] as Map
+                  : retryData;
+              if (retry['success'] == true &&
+                  retryRide['paymentMethod']?.toString() == method) {
+                confirmed = true;
+              } else {
+                confirmed = await _awaitMethodConfirmation(method, seq);
+                if (!mounted || seq != _paymentSelectionSeq) return;
+              }
+            } catch (e) {
+              debugPrint('⚠️ [Payment] Retry failed: $e');
+              _closePaymentLoading();
+              if (!mounted || seq != _paymentSelectionSeq) return;
+            }
+          }
+          if (confirmed) {
+            _paymentRetryCount = 0;
+            _completedPaymentMethod = method;
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  '${method == 'cash' ? 'Cash' : method} payment selected. You can now board.',
+                ),
+                backgroundColor: Colors.green,
+              ),
+            );
+            setState(() {
+              _isPaymentMethodSelected = true;
+              _selectedPaymentMethodDisplay =
+                  method == 'cash' ? 'Cash' : method;
+            });
+            _syncRideStatus();
+            return;
+          }
+          if (!mounted) return;
+          _showPaymentErrorDialog(
+            method: method,
+            serverMessage:
+                'The server has not confirmed "$method" yet — the previous step may still be settling. Please try again in a moment.',
+          );
         }
       } else {
         debugPrint('❌ [Payment] Response success = false');
