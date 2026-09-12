@@ -356,15 +356,22 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
               ),
             ],
           ),
-          // Stack cycling controls (only when 2+ queued)
+          // Stack cycling controls (only when 2+ queued) — snug row with
+          // 44px+ touch targets; tight spacing so no dead gap sits below it.
           if (_effectiveRequests.length > 1)
             Padding(
-              padding: const EdgeInsets.only(top: 8),
+              padding: const EdgeInsets.only(top: 4),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   IconButton(
                     icon: const Icon(Icons.chevron_left),
+                    iconSize: 26,
+                    padding: const EdgeInsets.all(8),
+                    constraints: const BoxConstraints(
+                      minWidth: 44,
+                      minHeight: 44,
+                    ),
                     color: AppTheme.primaryColor,
                     tooltip: 'Previous request',
                     onPressed: widget.isLoading
@@ -395,6 +402,12 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                   ),
                   IconButton(
                     icon: const Icon(Icons.chevron_right),
+                    iconSize: 26,
+                    padding: const EdgeInsets.all(8),
+                    constraints: const BoxConstraints(
+                      minWidth: 44,
+                      minHeight: 44,
+                    ),
                     color: AppTheme.primaryColor,
                     tooltip: 'Next request',
                     onPressed: widget.isLoading
@@ -404,7 +417,11 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                 ],
               ),
             ),
-          const SizedBox(height: 12),
+          // Tight when stacked (cycle row sits snug); unchanged for single.
+          if (_effectiveRequests.length > 1)
+            const SizedBox(height: 2)
+          else
+            const SizedBox(height: 12),
           if (widget.rideData?['isScheduled'] == true)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -445,7 +462,11 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                 ],
               ),
             ),
-          const SizedBox(height: 24),
+          // Tight when stacked; single-request gap unchanged.
+          if (_effectiveRequests.length > 1)
+            const SizedBox(height: 12)
+          else
+            const SizedBox(height: 24),
 
           // Passenger Info Card
           Container(
@@ -634,102 +655,6 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
             ],
           ),
 
-          // Background stacked requests (payload strings only — no geocode).
-          if (_effectiveRequests.length > 1) ...[
-            const SizedBox(height: 16),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Other requests (${_effectiveRequests.length - 1})',
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                ...List.generate(_effectiveRequests.length, (i) {
-                  if (i == _effectiveIndex) return const SizedBox.shrink();
-                  final r = _effectiveRequests[i];
-                  return GestureDetector(
-                    onTap: widget.isLoading ? null : () => _selectRequest(i),
-                    child: Container(
-                      width: double.infinity,
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[100],
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey[200]!),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.person_outline,
-                            size: 18,
-                            color: AppTheme.textSecondary,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  _requestName(r),
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppTheme.textPrimary,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                Text(
-                                  _payloadAddress(r, true),
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey[600],
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                _requestFare(r),
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppTheme.primaryColor,
-                                ),
-                              ),
-                              Text(
-                                _requestDistance(r),
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.grey[500],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                }),
-              ],
-            ),
-          ],
-
           // Accept Error Banner
           if (widget.acceptError != null) ...[
             Container(
@@ -760,7 +685,11 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
             const SizedBox(height: 12),
           ],
 
-          // Action Buttons
+          // Action Buttons — pinned directly under the visible card
+          // (route details + error banner), independent of stack size.
+          // Single-request layout unchanged (no extra gap injected).
+          if (_effectiveRequests.length > 1 && widget.acceptError == null)
+            const SizedBox(height: 12),
           Padding(
             padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
             child: Row(
@@ -839,6 +768,103 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
             ],
             ),
           ),
+
+          // Other stacked requests — compact strip BELOW the action bar so
+          // Accept/Decline never dive down the sheet. Payload strings only.
+          if (_effectiveRequests.length > 1) ...[
+            const SizedBox(height: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Other requests (${_effectiveRequests.length - 1})',
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                ...List.generate(_effectiveRequests.length, (i) {
+                  if (i == _effectiveIndex) return const SizedBox.shrink();
+                  final r = _effectiveRequests[i];
+                  return GestureDetector(
+                    onTap: widget.isLoading ? null : () => _selectRequest(i),
+                    child: Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.grey[200]!),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.person_outline,
+                            size: 16,
+                            color: AppTheme.textSecondary,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _requestName(r),
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppTheme.textPrimary,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  _payloadAddress(r, true),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                _requestFare(r),
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppTheme.primaryColor,
+                                ),
+                              ),
+                              Text(
+                                _requestDistance(r),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey[500],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ],
           const SizedBox(height: 16),
         ],
       ),
