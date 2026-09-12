@@ -13,6 +13,17 @@ class DriverRequestPanel extends StatefulWidget {
   final bool isLoading;
   final String? acceptError;
 
+  /// Full stacked queue. When absent, falls back to `[rideData]` so
+  /// previews/tests calling with only `rideData` render exactly like today.
+  final List<Map<String, dynamic>>? requests;
+
+  /// Index into [requests] of the visible card. 0 = newest.
+  final int requestIndex;
+
+  /// Called with the newly selected index when the driver cycles cards
+  /// (chevrons, dots, background rows). Never triggers accept/decline.
+  final ValueChanged<int>? onSelectRequest;
+
   const DriverRequestPanel({
     super.key,
     required this.onAccept,
@@ -20,6 +31,9 @@ class DriverRequestPanel extends StatefulWidget {
     this.rideData,
     this.isLoading = false,
     this.acceptError,
+    this.requests,
+    this.requestIndex = 0,
+    this.onSelectRequest,
   });
 
   @override
@@ -36,6 +50,75 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
   void initState() {
     super.initState();
     _fetchDetailedAddresses();
+  }
+
+  @override
+  void didUpdateWidget(DriverRequestPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Cycling cards swaps rideData — refetch the geocoded addresses for the
+    // newly visible card. Background rows reuse payload strings (no lookup).
+    if (oldWidget.rideData != widget.rideData) {
+      setState(() {
+        _pickupAddress = '';
+        _dropoffAddress = '';
+        _isLoadingAddresses = true;
+      });
+      _fetchDetailedAddresses();
+    }
+  }
+
+  /// Effective stack: explicit `requests` when non-empty, else `[rideData]`.
+  List<Map<String, dynamic>> get _effectiveRequests {
+    if (widget.requests != null && widget.requests!.isNotEmpty) {
+      return widget.requests!;
+    }
+    if (widget.rideData != null) return [widget.rideData!];
+    return const [];
+  }
+
+  int get _effectiveIndex {
+    final n = _effectiveRequests.length;
+    if (n == 0) return 0;
+    if (widget.requestIndex < 0) return 0;
+    if (widget.requestIndex >= n) return n - 1;
+    return widget.requestIndex;
+  }
+
+  void _selectRequest(int i) {
+    final n = _effectiveRequests.length;
+    if (n <= 1) return;
+    var next = i % n;
+    if (next < 0) next += n;
+    if (next == _effectiveIndex) return;
+    widget.onSelectRequest?.call(next);
+  }
+
+  /// Payload address string without any geocode lookup (background rows).
+  static String _payloadAddress(Map<String, dynamic> r, bool pickup) {
+    final key = pickup ? 'pickupLocation' : 'dropoffLocation';
+    final loc = r[key];
+    if (loc is Map && loc['address']?.toString().isNotEmpty == true) {
+      return loc['address'].toString();
+    }
+    return pickup ? 'Pickup Location' : 'Dropoff Location';
+  }
+
+  static String _requestName(Map<String, dynamic> r) {
+    final user = r['user'];
+    if (user is Map && user['name']?.toString().isNotEmpty == true) {
+      return user['name'].toString();
+    }
+    return 'Passenger';
+  }
+
+  static String _requestFare(Map<String, dynamic> r) {
+    final fare = double.tryParse(r['fare']?.toString() ?? '') ?? 0.0;
+    return '£${fare.toStringAsFixed(2)}';
+  }
+
+  static String _requestDistance(Map<String, dynamic> r) {
+    final d = double.tryParse(r['distance']?.toString() ?? '') ?? 0.0;
+    return '${d.toStringAsFixed(1)} mi';
   }
 
   Future<void> _fetchDetailedAddresses() async {
@@ -197,6 +280,32 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                   color: AppTheme.textPrimary,
                 ),
               ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_effectiveRequests.length > 1)
+                    Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppTheme.primaryColor.withOpacity(0.3),
+                        ),
+                      ),
+                      child: Text(
+                        '${_effectiveIndex + 1} of ${_effectiveRequests.length}',
+                        style: const TextStyle(
+                          color: AppTheme.primaryColor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
               if (widget.rideData?['isFallback']?.toString().toLowerCase() == 'true')
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -243,8 +352,58 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                     ),
                   ],
                 ),
+                ],
+              ),
             ],
           ),
+          // Stack cycling controls (only when 2+ queued)
+          if (_effectiveRequests.length > 1)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.chevron_left),
+                    color: AppTheme.primaryColor,
+                    tooltip: 'Previous request',
+                    onPressed: widget.isLoading
+                        ? null
+                        : () => _selectRequest(_effectiveIndex - 1),
+                  ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: List.generate(
+                      _effectiveRequests.length,
+                      (i) => GestureDetector(
+                        onTap: widget.isLoading
+                            ? null
+                            : () => _selectRequest(i),
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          margin: const EdgeInsets.symmetric(horizontal: 3),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: i == _effectiveIndex
+                                ? AppTheme.primaryColor
+                                : Colors.grey[300],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_right),
+                    color: AppTheme.primaryColor,
+                    tooltip: 'Next request',
+                    onPressed: widget.isLoading
+                        ? null
+                        : () => _selectRequest(_effectiveIndex + 1),
+                  ),
+                ],
+              ),
+            ),
           const SizedBox(height: 12),
           if (widget.rideData?['isScheduled'] == true)
             Container(
@@ -474,6 +633,102 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
               ),
             ],
           ),
+
+          // Background stacked requests (payload strings only — no geocode).
+          if (_effectiveRequests.length > 1) ...[
+            const SizedBox(height: 16),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Other requests (${_effectiveRequests.length - 1})',
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ...List.generate(_effectiveRequests.length, (i) {
+                  if (i == _effectiveIndex) return const SizedBox.shrink();
+                  final r = _effectiveRequests[i];
+                  return GestureDetector(
+                    onTap: widget.isLoading ? null : () => _selectRequest(i),
+                    child: Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey[200]!),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.person_outline,
+                            size: 18,
+                            color: AppTheme.textSecondary,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _requestName(r),
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppTheme.textPrimary,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  _payloadAddress(r, true),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                _requestFare(r),
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppTheme.primaryColor,
+                                ),
+                              ),
+                              Text(
+                                _requestDistance(r),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey[500],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ],
 
           // Accept Error Banner
           if (widget.acceptError != null) ...[
