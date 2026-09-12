@@ -1657,7 +1657,13 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         return;
       }
       setState(() {
-        _requestQueue.add(normalised);
+        // Newest surfaces first (index 0) — the fresh offer takes the card
+        // and the previous card becomes a background row.
+        _requestQueue.insert(0, normalised);
+        _requestIndex = 0;
+        _rideData = normalised;
+        _currentRideId = rideId;
+        _acceptError = null;
       });
       // No ringtone per append — only the empty→non-empty transition rings.
       CustomSnackbar.show(
@@ -1678,6 +1684,24 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       return _canonicalRideId(Map<String, dynamic>.from(data as Map));
     }
     return null;
+  }
+
+  /// Switch the visible card without accepting/declining. Clamps the index
+  /// so out-of-range panel calls can never desync _rideData/_currentRideId.
+  void _selectQueuedRequest(int index) {
+    if (_status != 'request' || _requestQueue.isEmpty) return;
+    var next = index;
+    if (next < 0) next = 0;
+    if (next >= _requestQueue.length) next = _requestQueue.length - 1;
+    if (next == _requestIndex) return;
+    setState(() {
+      _requestIndex = next;
+      final current = _requestQueue[_requestIndex];
+      _currentRideId = _canonicalRideId(current);
+      _rideData = current;
+      // Error banner belongs to the visible card — never carry it across.
+      _acceptError = null;
+    });
   }
 
   /// Remove one queued request by ride id. While requests remain, the current
@@ -2453,14 +2477,16 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   void _declineRide() {
     if (_currentRideId == null) return;
 
-    AudioService.instance.stop();
-
     // With stacked requests, declining drops the visible card and reveals
-    // the next one; only the last decline returns to online.
+    // the next one; only the last decline returns to online. Audio keeps
+    // ringing while the queue is non-empty (_removeQueuedRequest stops it
+    // only when drained), so no stop() here.
     if (_status == 'request' && _requestQueue.isNotEmpty) {
       _removeQueuedRequest(_currentRideId!);
       return;
     }
+
+    AudioService.instance.stop();
 
     // Just reset to online state without calling API
     setState(() {
@@ -3328,6 +3354,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     } else if (_status == 'request') {
       return DriverRequestPanel(
         rideData: _rideData,
+        requests: List<Map<String, dynamic>>.unmodifiable(_requestQueue),
+        requestIndex: _requestIndex,
+        onSelectRequest: _selectQueuedRequest,
         onAccept: _handleRideAction,
         onDecline: _declineRide,
         isLoading: _isLoading,
