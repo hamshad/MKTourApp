@@ -13,6 +13,7 @@
 | 07 | 2/2 | Complete   | 2026-09-10 | PREBOOK-03..07 |
 | 08 | 2/3 | Complete    | 2026-09-11 | SCHED-01..06 |
 | 09 | 2/2 | Complete    | 2026-09-12 | PROMO-01..04 |
+| 10 | Driver Request Stack | Planned | 2 | STACK-01..04 |
 
 ---
 
@@ -219,3 +220,26 @@ Plans:
 - `flutter analyze` clean on touched files
 - `flutter test test/promo_status_test.dart` passes
 - Zero fare/booking blocking logic added
+
+---
+
+## Phase 10: Driver Request Stack
+
+**Goal:** Driver never misses a request because a card is open — concurrent offers stack Uber-style, dead ones (rider-cancelled, taken by another driver) vanish with feedback.
+
+**Requirements:**
+- **STACK-01**: Concurrent ride requests queue while a request card is open (no drops)
+- **STACK-02**: Rider cancel removes only that ride from the stack, rest stay visible
+- **STACK-03**: `ride:unavailable` socket event removes the taken ride with a toast
+- **STACK-04**: Stacked UX — count badge, card cycling, per-card accept/decline
+
+**Plans:** 0/2 plans complete
+Plans:
+- [ ] `10-01-PLAN.md` — Queue state + per-ride removal + ride:unavailable listener
+- [ ] `10-02-PLAN.md` — Stacked panel UI + queue wiring
+
+**Success Criteria:**
+- 2+ concurrent requests all visible and operable, none dropped
+- Cancel/taken rides vanish with explanatory feedback; survivors stay
+- Single-request flow pixel-identical to today
+- `flutter analyze` clean on touched files
