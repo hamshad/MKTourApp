@@ -470,6 +470,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     _socketService.off('ride:expired');
     _socketService.off('ride:cancelled');
     _socketService.off('ride:cancelledByUser');
+    _socketService.off('ride:unavailable');
     _socketService.off('driver:status');
     _socketService.off('driver:locationUpdated');
     _socketService.off('payment:succeeded');
@@ -1110,6 +1111,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       _socketService.off('ride:expired');
       _socketService.off('ride:cancelled');
       _socketService.off('ride:cancelledByUser');
+      _socketService.off('ride:unavailable');
       _socketService.off('driver:status');
       _socketService.off('driver:locationUpdated');
       _socketService.off('payment:succeeded');
@@ -1321,6 +1323,17 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     _socketService.on('ride:cancelled', (data) {
       debugPrint('❌ [DriverHomeScreen] Ride Cancelled: $data');
       if (mounted) {
+        // Stacked request cancelled — evict just that card.
+        if (_status == 'request') {
+          final rideId = _socketRideId(data);
+          if (rideId != null) {
+            _removeQueuedRequest(
+              rideId,
+              goneMessage: 'A ride request was cancelled.',
+            );
+            return;
+          }
+        }
         final reason = data['reason'] ?? 'User cancelled the ride';
         setState(() {
           _status = 'online';
@@ -1350,6 +1363,21 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     _socketService.on('ride:cancelledByUser', (data) {
       debugPrint('❌ [DriverHomeScreen] Ride Cancelled By User: $data');
       if (mounted) {
+        // Stacked request cancelled — evict just that card.
+        if (_status == 'request') {
+          final rideId = _socketRideId(data);
+          if (rideId != null) {
+            final feeRaw = data is Map ? data['cancellationFee'] : null;
+            final fee = feeRaw is num
+                ? feeRaw.toDouble()
+                : double.tryParse(feeRaw?.toString() ?? '') ?? 0.0;
+            final message = fee > 0
+                ? 'User cancelled the ride.\nYou received £${fee.toStringAsFixed(2)} compensation.'
+                : 'User cancelled the ride.';
+            _removeQueuedRequest(rideId, goneMessage: message);
+            return;
+          }
+        }
         AudioService.instance.stop();
         final cancellationFee = data['cancellationFee'] ?? 0.0;
         setState(() {
@@ -1371,6 +1399,17 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     _socketService.on('ride:expired', (data) {
       debugPrint('⏰ [DriverHomeScreen] Ride Expired: $data');
       if (mounted) {
+        // Stacked request expired — evict just that card.
+        if (_status == 'request') {
+          final rideId = _socketRideId(data);
+          if (rideId != null) {
+            _removeQueuedRequest(
+              rideId,
+              goneMessage: 'Ride request expired.',
+            );
+            return;
+          }
+        }
         AudioService.instance.stop();
         setState(() {
           _status = 'online';
@@ -1384,6 +1423,21 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           message: 'Ride request expired.',
           type: SnackbarType.info,
         );
+      }
+    });
+
+    // Another driver took the ride — evict just that card. Toast only when
+    // something was actually removed; audio stops only if the queue drained.
+    _socketService.on('ride:unavailable', (data) {
+      debugPrint('🚫 [DriverHomeScreen] Ride Unavailable: $data');
+      if (mounted && _status == 'request') {
+        final rideId = _socketRideId(data);
+        if (rideId != null) {
+          _removeQueuedRequest(
+            rideId,
+            goneMessage: 'This ride was taken by another driver',
+          );
+        }
       }
     });
   }
@@ -1616,6 +1670,52 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         '⚠️ [DriverHomeScreen] Received request but status is $_status',
       );
     }
+  }
+
+  /// Extract a canonical ride id from a socket payload of unknown shape.
+  static String? _socketRideId(dynamic data) {
+    if (data is Map) {
+      return _canonicalRideId(Map<String, dynamic>.from(data as Map));
+    }
+    return null;
+  }
+
+  /// Remove one queued request by ride id. While requests remain, the current
+  /// card points at queue[_requestIndex] and status stays request; when the
+  /// last one goes, drains to online mirroring the _declineRide reset.
+  /// Returns true when something was actually removed.
+  bool _removeQueuedRequest(String rideId, {String? goneMessage}) {
+    final idx = _requestQueue.indexWhere((r) => _canonicalRideId(r) == rideId);
+    if (idx == -1) return false;
+    setState(() {
+      _requestQueue.removeAt(idx);
+      if (idx <= _requestIndex && _requestIndex > 0) _requestIndex--;
+      if (_requestQueue.isEmpty) {
+        _status = 'online';
+        _currentRideId = null;
+        _rideData = null;
+        _requestIndex = 0;
+        _clearNavigationUi();
+        _clearActiveRideStorage();
+        AudioService.instance.stop();
+      } else {
+        if (_requestIndex >= _requestQueue.length) {
+          _requestIndex = _requestQueue.length - 1;
+        }
+        final current = _requestQueue[_requestIndex];
+        _currentRideId = _canonicalRideId(current);
+        _rideData = current;
+        _status = 'request';
+      }
+    });
+    if (goneMessage != null && mounted) {
+      CustomSnackbar.show(
+        context,
+        message: goneMessage,
+        type: SnackbarType.info,
+      );
+    }
+    return true;
   }
 
   Future<void> _toggleOnline() async {
@@ -2354,6 +2454,13 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     if (_currentRideId == null) return;
 
     AudioService.instance.stop();
+
+    // With stacked requests, declining drops the visible card and reveals
+    // the next one; only the last decline returns to online.
+    if (_status == 'request' && _requestQueue.isNotEmpty) {
+      _removeQueuedRequest(_currentRideId!);
+      return;
+    }
 
     // Just reset to online state without calling API
     setState(() {
