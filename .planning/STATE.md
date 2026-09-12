@@ -1,8 +1,8 @@
 # MK Tours - Project State
 
 ## Current Position
-- **Phase:** 09-promo-pending-state — Complete (2/2 plans, 2026-09-12)
-- **Next:** Phase transition / milestone review
+- **Phase:** 10-driver-request-stack — In Progress (1/2 plans, 2026-09-12)
+- **Next:** 10-02 stack UI rendering
 
 ## Completed Plans
 - 02-01: Ride-flow API layer — no-OTP startRide, stopArrive/stopResume, stops-aware fare/create, reason cancel, fixed end-early (`c0c7d26`, `0e95c3b`)
@@ -22,6 +22,7 @@
 - 08-02: Day-of transitions + cancel reassignment — global arrival routing, started/completed verified, cancel banner + refresh (`cbcaa37`, `d1e8bd8`)
 - 09-01: PromoStatus foundation — 4-state typed model, ApiService docs, 8 unit tests (`de0080e`, `f4fff4e`)
 - 09-02: Pending UI — status screen locked hero + RIDE BOOKED badge, home locked banner, no fare gates (`9f3d11b`, `4f46f90`)
+- 10-01: Driver request queue + eviction — 5-deep stack, per-ride dedupe, cancel/expire/unavailable single-card removal (`3977389`, `5dd66df`)
 
 ## Decisions
 - [02-01] OTP dialog UI left in place; only API call path made OTP-free (UI strip-out in 03-01)
@@ -65,12 +66,15 @@
 - [09-01] getPromoStatus logic untouched (docs only); model consumed by UI in 09-02
 - [09-02] Status screen parses via PromoStatus.fromMap as source of truth; _isLoading/_error flow untouched
 - [09-02] Pending home banner branch before eligible check; _fetchPromoStatus unchanged, no fare/booking gates
+- [10-01] Decline drops visible card and reveals next stacked request; only last decline returns to online
+- [10-01] Queue cleared on accept and offline toggle so stale requests never resurface
 
 ## Blockers
 - None
 
 ## Session
-- Last session: Completed 09-02-PLAN.md (2026-09-12, 2 feat commits, SUMMARY at phases/09-promo-pending-state/09-02-SUMMARY.md). Phase 09 complete.
+- Last session: Completed 10-01-PLAN.md (2026-09-12, 2 feat commits, SUMMARY at phases/10-driver-request-stack/10-01-SUMMARY.md). Next: 10-02.
+- Previous: Completed 09-02-PLAN.md (2026-09-12, 2 feat commits, SUMMARY at phases/09-promo-pending-state/09-02-SUMMARY.md). Phase 09 complete.
 - Previous: Completed 09-01-PLAN.md (2026-09-12, test + feat commits, SUMMARY at phases/09-promo-pending-state/09-01-SUMMARY.md). Next: 09-02.
 - Previous: Completed 08-03-PLAN.md (2026-09-11, 2 commits, SUMMARY at phases/08-scheduled-screen-flow/08-03-SUMMARY.md). Next: 08-02.
 - Previous: Completed 08-01-PLAN.md (2026-09-11, 3 feat commits, SUMMARY at phases/08-scheduled-screen-flow/08-01-SUMMARY.md). Next: 08-02.

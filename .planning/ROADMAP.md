@@ -13,7 +13,7 @@
 | 07 | 2/2 | Complete   | 2026-09-10 | PREBOOK-03..07 |
 | 08 | 2/3 | Complete    | 2026-09-11 | SCHED-01..06 |
 | 09 | 2/2 | Complete    | 2026-09-12 | PROMO-01..04 |
-| 10 | Driver Request Stack | Planned | 2 | STACK-01..04 |
+| 10 | 1/2 | In Progress|  | STACK-01..04 |
 
 ---
 
@@ -233,7 +233,7 @@ Plans:
 - **STACK-03**: `ride:unavailable` socket event removes the taken ride with a toast
 - **STACK-04**: Stacked UX — count badge, card cycling, per-card accept/decline
 
-**Plans:** 0/2 plans complete
+**Plans:** 1/2 plans executed
 Plans:
 - [ ] `10-01-PLAN.md` — Queue state + per-ride removal + ride:unavailable listener
 - [ ] `10-02-PLAN.md` — Stacked panel UI + queue wiring
