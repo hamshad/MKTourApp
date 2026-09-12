@@ -1862,10 +1862,83 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         (promoData['completedRides'] as num?)?.toInt() ?? 0;
     final int ridesUntilEligible =
         (promoData['ridesUntilEligible'] as num?)?.toInt() ?? 0;
+    final String backendMessage = promoData['message']?.toString() ?? '';
     const int requiredRides = 5;
 
     // Don't show banner if promo already claimed
     if (status == 'claimed') return const SizedBox.shrink();
+
+    // Pending (free ride locked to an active booking) renders BEFORE the
+    // eligible check so it never falls into the progress-dots branch.
+    // No fare/booking gates here — backend treats pending as ineligible.
+    final bool isPending =
+        promoData['isPending'] == true || status == 'pending';
+    if (isPending) {
+      const bgColor = Color(0xFFFEF3C7);
+      const textColor = Color(0xFF92400E);
+      const subTextColor = Color(0xFFB45309);
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 20),
+        child: GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const PromoStatusScreen()),
+            );
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: bgColor,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.amber.withOpacity(0.15),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                const Text('🔒', style: TextStyle(fontSize: 28)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Free Ride Locked',
+                        style: GoogleFonts.outfit(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: textColor,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        backendMessage.isNotEmpty
+                            ? backendMessage
+                            : 'Free ride booked — complete or cancel it to regain eligibility.',
+                        style: GoogleFonts.outfit(
+                          fontSize: 12,
+                          color: subTextColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(
+                  Icons.arrow_forward_ios,
+                  color: subTextColor,
+                  size: 16,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     final bool isEligible = status == 'eligible';
     final Color bgColor = isEligible
