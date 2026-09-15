@@ -148,6 +148,52 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
     super.initState();
     _checkInitialPaymentStatus();
     _listenForPaymentUpdates();
+    _hydrateBillData();
+  }
+
+  /// Self-hydrate missing bill fields. The receipt can be built from a
+  /// payment event (fare only, no wait keys) while the full breakdown arrives
+  /// separately in ride:completed — whichever event wins the race, the
+  /// receipt backfills from the API so base + wait + total always render.
+  /// Only fills keys that are missing/null; never overwrites pushed values.
+  Future<void> _hydrateBillData() async {
+    final d = widget.rideData;
+    final hasBill = d.containsKey('totalWaitMinutes') ||
+        d.containsKey('totalWaitFee') ||
+        d.containsKey('actualFare');
+    if (hasBill) return;
+    if (_rideId.isEmpty) return;
+    try {
+      final res = await _apiService.getRideDetails(_rideId);
+      if (res['success'] != true || res['data'] == null) return;
+      final raw = res['data'];
+      final unwrapped = raw is Map ? (raw['ride'] ?? raw) : null;
+      if (unwrapped is! Map) return;
+      final m = Map<String, dynamic>.from(unwrapped);
+      if (!mounted) return;
+      setState(() {
+        for (final k in [
+          'fare',
+          'actualFare',
+          'totalWaitFee',
+          'totalWaitMinutes',
+          'originalFare',
+          'distance',
+          'actualDistance',
+          'stops',
+          'paymentMethod',
+          'paymentStatus',
+        ]) {
+          if ((!d.containsKey(k) || d[k] == null) &&
+              m.containsKey(k) &&
+              m[k] != null) {
+            d[k] = m[k];
+          }
+        }
+      });
+    } catch (e) {
+      debugPrint('⚠️ [RideCompleteScreen] Bill hydration failed: $e');
+    }
   }
 
   void _checkInitialPaymentStatus() {
