@@ -88,12 +88,26 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   bool _locationStale = false;
   DateTime? _lastPositionUpdateTime;
   Timer? _locationWatchdog;
+  // Resume grace: after phone sleep/background, the position stream needs
+  // time to deliver its first fix. Without this, the watchdog sees the
+  // background gap as signal loss and shows a false "NO GPS signal" warning.
+  DateTime? _appResumedAt;
+  static const int _resumeGraceSeconds = 30;
 
   // GPS health monitoring
   String? _gpsServiceProblem; // non-null when GPS is off or permission denied
   bool _noGpsSignal = false; // true when no location updates are received
   Timer? _gpsHealthTimer;
   String? _lastShownGpsWarning;
+  // Anti-spam: popup snackbar at most once per outage (cooldown), while the
+  // passive banner stays always accurate. Prevents repeated false popups
+  // when fixes jitter around the watchdog thresholds with healthy GPS.
+  DateTime? _lastGpsSnackbarAt;
+  static const int _gpsSnackbarCooldownMinutes = 5;
+  // Hysteresis: require sustained timeout before flagging no-signal, so a
+  // single slow fix doesn't flap the warning on/off.
+  int _noSignalStrikes = 0;
+  static const int _noSignalStrikesNeeded = 2;
 
   /// Banner message describing the current location problem, or null if healthy.
   String? get _locationBannerMessage {
@@ -197,6 +211,31 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     if (state == AppLifecycleState.resumed) {
       debugPrint('🔄 [DriverHomeScreen] App resumed, syncing state...');
 
+      // Resume grace: the background gap is NOT signal loss. Reset the
+      // watchdog clock and clear stale flags so a working GPS doesn't
+      // trigger a false "NO GPS signal" warning on unlock. The watchdog
+      // stays suppressed for _resumeGraceSeconds while GPS re-acquires.
+      _appResumedAt = DateTime.now();
+      _lastPositionUpdateTime ??= DateTime.now();
+      if (_noGpsSignal || _locationStale) {
+        // Only clear the signal-loss flags here; a genuinely dead GPS will
+        // re-trip the watchdog after the grace window expires.
+        _lastPositionUpdateTime = DateTime.now();
+        _noGpsSignal = false;
+        _locationStale = false;
+        _noSignalStrikes = 0;
+        if (mounted) setState(() {});
+      } else {
+        // Even when flags are clear, clamp the clock so the background gap
+        // doesn't instantly push diff past the 15s/20s thresholds.
+        final gap = DateTime.now()
+            .difference(_lastPositionUpdateTime!)
+            .inSeconds;
+        if (gap > _resumeGraceSeconds) {
+          _lastPositionUpdateTime = DateTime.now();
+        }
+      }
+
       // 0. Re-check GPS health (driver may have toggled location/permission)
       _checkGpsHealth();
 
@@ -216,6 +255,16 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       // 3. Resume location updates if driver is online
       if (_status == 'online' && _positionStreamSubscription == null) {
         _startLocationUpdates();
+      } else if (_status == 'online' ||
+          _status == 'pickup' ||
+          _status == 'arrived' ||
+          _status == 'driver_arrived' ||
+          _status == 'at_stop' ||
+          _status == 'in_progress') {
+        // Stream object still exists but the OS suspended delivery while
+        // asleep — kick a one-shot fix so _lastPositionUpdateTime refreshes
+        // quickly instead of waiting for the next stream/timer tick.
+        _refreshPositionAfterResume();
       }
     } else if (state == AppLifecycleState.paused) {
       debugPrint('🔴 [DriverHomeScreen] App paused');
@@ -533,16 +582,28 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
 
   void _updateGpsWarningState() {
     final msg = _locationBannerMessage;
-    if (msg != _lastShownGpsWarning) {
-      _lastShownGpsWarning = msg;
-      if (msg != null && mounted) {
-        CustomSnackbar.show(
-          context,
-          message: msg,
-          type: SnackbarType.warning,
-        );
+    if (msg == _lastShownGpsWarning) return;
+    _lastShownGpsWarning = msg;
+    if (msg == null || !mounted) return;
+    // Hard failures (GPS off / permission denied) always notify on change —
+    // actionable and rare. Soft "no signal" popups are cooldown-guarded so a
+    // flapping watchdog can't spam the driver while GPS is healthy. The
+    // persistent banner (orange/red) still reflects the current state.
+    final isHardFailure = _gpsServiceProblem != null;
+    if (!isHardFailure) {
+      final last = _lastGpsSnackbarAt;
+      if (last != null &&
+          DateTime.now().difference(last).inMinutes <
+              _gpsSnackbarCooldownMinutes) {
+        return;
       }
     }
+    _lastGpsSnackbarAt = DateTime.now();
+    CustomSnackbar.show(
+      context,
+      message: msg,
+      type: SnackbarType.warning,
+    );
   }
 
   /// Detect GPS-off / permission-denied and surface it to the driver.
@@ -573,9 +634,22 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   void _onLocationStreamError(dynamic error) {
     debugPrint('⚠️ [DriverHomeScreen] Location stream error: $error');
     _checkGpsHealth();
-    if (mounted) {
-      setState(() => _noGpsSignal = true);
-      _updateGpsWarningState();
+    // Don't set _noGpsSignal immediately on a transient stream error
+    // (very common right after resume while GPS re-acquires). The watchdog
+    // will flag genuine loss after its timeout; instant flagging is what
+    // caused the false "NO GPS signal" warning on unlock.
+  }
+
+  /// One-shot position refresh after app resume. Updates the watchdog clock
+  /// on success; silently ignores transient failures (watchdog decides).
+  void _refreshPositionAfterResume() async {
+    try {
+      final position = await _locationService.getCurrentLocation();
+      if (position != null && mounted) {
+        _handlePositionUpdate(position);
+      }
+    } catch (e) {
+      debugPrint('⚠️ [DriverHomeScreen] Resume position refresh failed: $e');
     }
   }
 
@@ -591,8 +665,13 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       _emitLocationUpdate(position.latitude, position.longitude);
     } else {
       // No fix at all — likely GPS off / permission denied / no signal.
-      setState(() => _noGpsSignal = true);
-      _updateGpsWarningState();
+      // Don't flag _noGpsSignal instantly here: a cold fix (esp. right after
+      // resume) often times out once while GPS is fine. _checkGpsHealth
+      // surfaces real service/permission problems; the watchdog flags real
+      // signal loss after its timeout.
+      debugPrint(
+        '⚠️ [DriverHomeScreen] Initial location fix unavailable — deferring to GPS health check + watchdog',
+      );
     }
 
     // Use ride tracking stream for active rides (more frequent updates)
@@ -635,12 +714,20 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     _locationWatchdog?.cancel();
     _locationWatchdog = Timer.periodic(const Duration(seconds: 5), (_) {
       if (!mounted) return;
+      // Resume grace: give GPS time to deliver its first post-resume fix
+      // before judging signal health. Prevents false warning on unlock.
+      if (_appResumedAt != null &&
+          DateTime.now().difference(_appResumedAt!).inSeconds <
+              _resumeGraceSeconds) {
+        return;
+      }
       final needsLoc = _status == 'online' ||
           _status == 'pickup' ||
           _status == 'arrived' ||
           _status == 'in_progress';
       if (!needsLoc) {
         if (_locationStale) setState(() => _locationStale = false);
+        _noSignalStrikes = 0;
         if (_noGpsSignal) {
           setState(() => _noGpsSignal = false);
           _updateGpsWarningState();
@@ -652,7 +739,16 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           : DateTime.now().difference(_lastPositionUpdateTime!).inSeconds;
       final stale = diff > 15;
       if (stale != _locationStale) setState(() => _locationStale = stale);
-      final noSignal = diff > 20;
+      // Hysteresis: only flag no-signal after SUSTAINED timeout (2 x 5s ticks
+      // past the 20s threshold ≈ 30s without any fix). A single slow fix with
+      // healthy GPS must not flap the warning on/off. Clears immediately on
+      // the next fix in _handlePositionUpdate.
+      if (diff > 20) {
+        _noSignalStrikes++;
+      } else {
+        _noSignalStrikes = 0;
+      }
+      final noSignal = _noSignalStrikes >= _noSignalStrikesNeeded;
       if (noSignal != _noGpsSignal) {
         setState(() => _noGpsSignal = noSignal);
         _updateGpsWarningState();
@@ -684,6 +780,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     });
 
     _lastPositionUpdateTime = DateTime.now();
+    _noSignalStrikes = 0;
     if (_locationStale) setState(() => _locationStale = false);
     if (_noGpsSignal) {
       setState(() => _noGpsSignal = false);

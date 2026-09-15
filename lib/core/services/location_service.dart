@@ -10,6 +10,12 @@ class LocationService {
   /// Stream controller for periodic updates
   StreamController<Position>? _periodicStreamController;
 
+  /// Guard against overlapping fixes: without this, a slow high-accuracy fix
+  /// (> interval) piles up concurrent getCurrentPosition calls and the emit
+  /// cadence becomes irregular, which the driver-screen watchdog reads as
+  /// signal loss (false "NO GPS signal" popups with healthy GPS).
+  bool _emitInFlight = false;
+
   Future<bool> handleLocationPermission() async {
     bool serviceEnabled;
     LocationPermission permission;
@@ -151,10 +157,16 @@ class LocationService {
 
   /// Helper to emit current position to the periodic stream
   Future<void> _emitCurrentPosition() async {
+    if (_emitInFlight) return;
+    _emitInFlight = true;
     try {
       final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
+          // Bound each fix so one slow/hung request can't stall the whole
+          // cadence and trip the watchdog. Failures stay silent here (the
+          // watchdog + hysteresis decide what counts as signal loss).
+          timeLimit: Duration(seconds: 10),
         ),
       );
 
@@ -164,6 +176,8 @@ class LocationService {
       }
     } catch (e) {
       debugPrint('📍 [LocationService] Error getting position: $e');
+    } finally {
+      _emitInFlight = false;
     }
   }
 
