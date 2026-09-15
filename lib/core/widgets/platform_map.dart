@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:latlong2/latlong.dart' as latlong;
@@ -97,8 +99,19 @@ class PlatformMap extends StatefulWidget {
   State<PlatformMap> createState() => _PlatformMapState();
 }
 
-class _PlatformMapState extends State<PlatformMap> {
+class _PlatformMapState extends State<PlatformMap>
+    with WidgetsBindingObserver {
   GoogleMapController? _controller;
+
+  /// Last camera position we applied. Used to (a) throttle follow-animation
+  /// so rapid location updates don't spam animateCamera (tiles never settle
+  /// → intermittent blank map), and (b) re-assert the camera on app resume
+  /// (iOS suspends the tile renderer in background → blank tiles with live
+  /// markers until the camera moves).
+  CameraPosition? _lastCameraPosition;
+
+  /// Minimum displacement before the follow-camera animates again.
+  static const double _followMinDistanceMeters = 15.0;
 
   /// Custom bitmap icons per marker key (`id + color + zoom bucket`). Filled
   /// in asynchronously; markers fall back to distinct hues until ready so
@@ -111,8 +124,59 @@ class _PlatformMapState extends State<PlatformMap> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _ensureIcons();
   }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // iOS suspends the tile renderer while backgrounded: the native view
+    // comes back with live markers but blank/stale tiles. Re-asserting the
+    // camera forces a tile refresh.
+    if (state == AppLifecycleState.resumed) {
+      final controller = _controller;
+      final camera = _lastCameraPosition;
+      if (controller != null && camera != null) {
+        controller.moveCamera(CameraUpdate.newCameraPosition(camera));
+      }
+    }
+  }
+
+  /// Haversine distance in meters between two points.
+  static double _distanceMeters(
+    double lat1,
+    double lng1,
+    double lat2,
+    double lng2,
+  ) {
+    const earthRadius = 6371000.0;
+    const toRad = math.pi / 180.0;
+    final dLat = (lat2 - lat1) * toRad;
+    final dLng = (lng2 - lng1) * toRad;
+    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(lat1 * toRad) *
+            math.cos(lat2 * toRad) *
+            math.sin(dLng / 2) *
+            math.sin(dLng / 2);
+    return 2 * earthRadius * math.asin(math.sqrt(a.clamp(0.0, 1.0)));
+  }
+
+  /// Camera targets outside the valid lat/lng range make the native renderer
+  /// drop tiles. Guard every programmatic camera move.
+  static bool _validTarget(double lat, double lng) =>
+      !lat.isNaN &&
+      !lng.isNaN &&
+      lat >= -90 &&
+      lat <= 90 &&
+      lng >= -180 &&
+      lng <= 180 &&
+      (lat != 0 || lng != 0);
 
   @override
   void didUpdateWidget(PlatformMap oldWidget) {
@@ -123,18 +187,35 @@ class _PlatformMapState extends State<PlatformMap> {
       _ensureIcons();
     }
     
-    // Animate to new location if coordinates changed
+    // Follow the driver, but throttled: location updates arrive every few
+    // seconds while driving, and spamming animateCamera keeps the tile
+    // renderer perpetually loading (intermittent blank map). Only animate
+    // once the target actually moved.
     if (widget.initialLat != oldWidget.initialLat || widget.initialLng != oldWidget.initialLng) {
-      _controller?.animateCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(
-            target: LatLng(widget.initialLat, widget.initialLng),
-            zoom: 16.0,
-            bearing: widget.bearing,
-            tilt: widget.tilt,
-          ),
-        ),
-      );
+      var shouldAnimate =
+          _validTarget(widget.initialLat, widget.initialLng);
+      final last = _lastCameraPosition;
+      if (shouldAnimate &&
+          last != null &&
+          _distanceMeters(
+                last.target.latitude,
+                last.target.longitude,
+                widget.initialLat,
+                widget.initialLng,
+              ) <
+              _followMinDistanceMeters) {
+        shouldAnimate = false;
+      }
+      if (shouldAnimate) {
+        final next = CameraPosition(
+          target: LatLng(widget.initialLat, widget.initialLng),
+          zoom: 16.0,
+          bearing: widget.bearing,
+          tilt: widget.tilt,
+        );
+        _lastCameraPosition = next;
+        _controller?.animateCamera(CameraUpdate.newCameraPosition(next));
+      }
     }
     
     if (widget.bounds != null && widget.bounds != oldWidget.bounds) {
@@ -151,16 +232,17 @@ class _PlatformMapState extends State<PlatformMap> {
     double? zoom,
   }) async {
     if (_controller == null) return;
-    
+    if (!_validTarget(lat, lng)) return;
+
+    final next = CameraPosition(
+      target: LatLng(lat, lng),
+      zoom: zoom ?? 16.0,
+      bearing: bearing ?? 0.0,
+      tilt: tilt ?? 0.0,
+    );
+    _lastCameraPosition = next;
     await _controller!.animateCamera(
-      CameraUpdate.newCameraPosition(
-        CameraPosition(
-          target: LatLng(lat, lng),
-          zoom: zoom ?? 16.0,
-          bearing: bearing ?? 0.0,
-          tilt: tilt ?? 0.0,
-        ),
-      ),
+      CameraUpdate.newCameraPosition(next),
     );
   }
   void _fitBounds() {
@@ -205,9 +287,11 @@ class _PlatformMapState extends State<PlatformMap> {
       // Fallback: try to at least center on the first marker
       if (widget.markers.isNotEmpty) {
         final m = widget.markers.first;
-        _controller?.moveCamera(
-          CameraUpdate.newLatLngZoom(LatLng(m.lat, m.lng), 14),
-        );
+        if (_validTarget(m.lat, m.lng)) {
+          _controller?.moveCamera(
+            CameraUpdate.newLatLngZoom(LatLng(m.lat, m.lng), 14),
+          );
+        }
       }
     }
   }
@@ -219,6 +303,7 @@ class _PlatformMapState extends State<PlatformMap> {
       markers.map((m) => '${m.id}_${m.markerColor?.value ?? 0}').toList();
 
   void _onCameraMove(CameraPosition position) {
+    _lastCameraPosition = position;
     final bucket = MapMarkerIcons.bucket(position.zoom);
     if (bucket != _zoomBucket) {
       setState(() => _zoomBucket = bucket);
@@ -332,8 +417,12 @@ class _PlatformMapState extends State<PlatformMap> {
       );
     }).toSet();
 
-    // Determine initial camera target: prefer center of bounds, fallback to initialLat/Lng
-    LatLng initialTarget = LatLng(widget.initialLat, widget.initialLng);
+    // Determine initial camera target: prefer center of bounds, fallback to initialLat/Lng.
+    // Invalid targets (0,0 / NaN / out of range) make the native renderer
+    // drop tiles, so fall back to London instead of passing them through.
+    LatLng initialTarget = _validTarget(widget.initialLat, widget.initialLng)
+        ? LatLng(widget.initialLat, widget.initialLng)
+        : const LatLng(51.5085, -0.1260);
     if (widget.bounds != null) {
       try {
         // Works with both google_maps_flutter and flutter_map LatLngBounds
@@ -371,6 +460,14 @@ class _PlatformMapState extends State<PlatformMap> {
       onMapCreated: (GoogleMapController controller) {
         debugPrint('🗺️ PlatformMap: Google Map created successfully');
         _controller = controller;
+        // Seed the resume-nudge target so a background/foreground cycle
+        // before any camera move still refreshes tiles.
+        _lastCameraPosition ??= CameraPosition(
+          target: initialTarget,
+          zoom: widget.bounds != null ? 12.0 : 14.0,
+          bearing: widget.bearing,
+          tilt: widget.tilt,
+        );
         if (widget.bounds != null) {
           // Extra delay to ensure layout is complete
           Future.delayed(const Duration(milliseconds: 600), _fitBounds);
