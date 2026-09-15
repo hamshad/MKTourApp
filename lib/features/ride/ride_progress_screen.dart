@@ -81,6 +81,22 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
   String? _lastNavigatedStatus;
   bool _isNavigatingToReceipt = false;
 
+  /// Forward-only trip order. The polling fallback must never rewind the UI
+  /// to an earlier stage on a stale response (same regression class as the
+  /// wake-time sync: live "in_progress" flipping back to an earlier label).
+  static const Map<String, int> _tripStatusRank = {
+    'accepted': 0,
+    'arrived': 1,
+    'driver_arrived': 1,
+    'in_progress': 2,
+    'at_stop': 3,
+    'completed': 4,
+    'early_completed': 4,
+    'cancelled': 4,
+    'cancelled_by_user': 4,
+    'cancelled_by_driver': 4,
+  };
+
   @override
   void initState() {
     super.initState();
@@ -309,7 +325,18 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
       final stops = parseRideStops(map['stops']);
       setState(() {
         if (status != null && status.isNotEmpty) {
-          _rideStatus = status;
+          // Forward-only: ignore a stale poll that ranks behind the live UI.
+          final currentRank = _tripStatusRank[_rideStatus];
+          final nextRank = _tripStatusRank[status];
+          final regressive = currentRank != null &&
+              nextRank != null &&
+              nextRank < currentRank;
+          if (regressive) {
+            debugPrint(
+              '🛡️ [RideProgressScreen] Ignoring regressive poll: $status after $_rideStatus',
+            );
+          } else {
+            _rideStatus = status;
           if (status == 'at_stop') {
             _status = 'Waiting at stop';
             _progress = 0.85;
@@ -319,6 +346,7 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
           } else if (status == 'completed') {
             _status = 'You have arrived!';
             _progress = 1.0;
+          }
           }
         }
         if (stops.isNotEmpty) _stops = stops;

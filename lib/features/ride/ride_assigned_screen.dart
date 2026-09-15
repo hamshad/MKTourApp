@@ -76,16 +76,37 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     return idOk || nameOk;
   }
 
+  /// Forward-only trip order for the rider UI. Resume-time sync must never
+  /// rewind the header to an earlier stage (e.g. a wake-time response with a
+  /// stale status or missing driver blob flipping "Trip in progress" back to
+  /// "Driver is on the way").
+  static const Map<String, int> _rideStatusRank = {
+    'searching': 0,
+    'requested': 0,
+    'accepted': 1,
+    'driver_assigned': 1,
+    'arrived': 2,
+    'driver_arrived': 2,
+    'in_progress': 3,
+    'at_stop': 3,
+    'completed': 4,
+    'early_completed': 4,
+    'cancelled': 4,
+    'cancelled_by_user': 4,
+    'cancelled_by_driver': 4,
+  };
+
   String _normalizeRideStatus(dynamic status, bool hasValidDriver) {
     final statusStr = status?.toString() ?? '';
     if (statusStr.isEmpty || statusStr == 'requested') {
       return 'searching';
     }
 
-    if (!hasValidDriver &&
-        (statusStr == 'accepted' ||
-            statusStr == 'driver_arrived' ||
-            statusStr == 'in_progress')) {
+    // Only the pre-pickup state depends on the driver blob (reassign flow).
+    // Once the driver arrived or the trip started, progress is physical fact:
+    // a missing driver object in a sync response (common right after wake)
+    // must not rewind the UI to "searching".
+    if (!hasValidDriver && statusStr == 'accepted') {
       return 'searching';
     }
 
@@ -292,6 +313,17 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
             '⚠️ [RideAssignedScreen] Status mismatch detected! Backend: $status, UI: $_rideStatus',
           );
 
+          // Forward-only guard: a stale sync (e.g. missing driver blob right
+          // after wake) must never rewind the rider UI to an earlier stage.
+          final currentRank = _rideStatusRank[_rideStatus];
+          final nextRank = _rideStatusRank[normalizedStatus];
+          if (currentRank != null &&
+              nextRank != null &&
+              nextRank < currentRank) {
+            debugPrint(
+              '🛡️ [RideAssignedScreen] Ignoring regressive sync: $normalizedStatus after $_rideStatus',
+            );
+          } else {
           // Update UI to match backend state
           if (mounted) {
             setState(() {
@@ -321,6 +353,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
             debugPrint(
               '✅ [RideAssignedScreen] UI updated to match backend status: $status',
             );
+            }
           }
         }
       }
