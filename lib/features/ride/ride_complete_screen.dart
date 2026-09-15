@@ -610,13 +610,19 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                               '£${_originalFare.toStringAsFixed(2)}',
                             ),
                           ],
-                          // Base fare + wait breakdown from API data (£ formatted,
-                          // rate from WaitFeePolicy — never hardcoded amounts).
-                          if (_hasWaitData) ...[
+                          // Base fare always shown (parsed from fare/estimatedFare,
+                          // always present on a receipt). The scheduled-airport
+                          // flow has its own Original/Deposit rows below, so it
+                          // is excluded to avoid a duplicated/confusing base.
+                          if (!(_isScheduled && _isAirportTransfer)) ...[
                             _buildFareRow(
                               'Base fare',
-                              '£${_summary.fare.toStringAsFixed(2)}',
+                              '£${(_summary.fare > 0 ? _summary.fare : _fare).toStringAsFixed(2)}',
                             ),
+                          ],
+                          // Wait row only when waiting actually happened.
+                          if (_summary.totalWaitMinutes > 0 ||
+                              _summary.totalWaitFee > 0) ...[
                             _buildFareRow(
                               'Wait ${_summary.totalWaitMinutes} min × £${_waitRate.toStringAsFixed(2)}',
                               '£${_summary.totalWaitFee.toStringAsFixed(2)}',
