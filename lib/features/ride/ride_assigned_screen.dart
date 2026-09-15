@@ -213,6 +213,27 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   // succeeded) are ignored once this is set.
   String? _completedPaymentMethod;
 
+  /// Rider-confirmed payment method for receipt building. Completion socket
+  /// payloads often omit paymentMethod (cash needs no server processing), so
+  /// fall back to what the rider actually selected on this screen. Without
+  /// this, cash receipts coerced null -> 'payment_link' ("Online Payment").
+  String? _resolveReceiptPaymentMethod([
+    Map<String, dynamic>? rideData,
+    Map<String, dynamic>? extraRideData,
+  ]) {
+    final fromPayload = rideData?['paymentMethod']?.toString() ??
+        extraRideData?['paymentMethod']?.toString();
+    if (fromPayload != null && fromPayload.isNotEmpty) return fromPayload;
+    if (_completedPaymentMethod != null &&
+        _completedPaymentMethod!.isNotEmpty) {
+      return _completedPaymentMethod;
+    }
+    final display = _selectedPaymentMethodDisplay.toLowerCase();
+    if (display.contains('cash')) return 'cash';
+    if (display.contains('payment link')) return 'payment_link';
+    return null;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1317,7 +1338,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
             'isScheduled': true,
             'isAirportTransfer': data['isAirportTransfer'] ?? false,
             'reason': reason,
-            'paymentMethod': data['paymentMethod'] ?? _deferredPaymentSuccessData!['paymentMethod'],
+            'paymentMethod': data['paymentMethod'] ?? _deferredPaymentSuccessData!['paymentMethod'] ?? _resolveReceiptPaymentMethod(),
           };
           _deferredPaymentSuccessData = null;
           Navigator.pushReplacement(
@@ -1358,7 +1379,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                           'earlyCompleted': true,
                           'isScheduled': _isScheduled || widget.isScheduled,
                           'isAirportTransfer': data['isAirportTransfer'] ?? false,
-                          'paymentMethod': data['paymentMethod'],
+                          'paymentMethod': data['paymentMethod'] ?? _resolveReceiptPaymentMethod(),
                           'paymentStatus': 'pending',
                         },
                       ),
@@ -2051,6 +2072,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         if (_isPromoRide && _promoOriginalFare > 0)
           'originalFare': _promoOriginalFare,
         if (_completedRideData != null) ..._completedRideData!,
+        // Resolve via rider-confirmed method: completed payloads often omit
+        // paymentMethod (cash), which otherwise mislabels as online/cash.
+        'paymentMethod': _resolveReceiptPaymentMethod(_completedRideData),
       };
       return RideCompleteScreen(rideData: completedData);
     }
@@ -2082,8 +2106,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   }) async {
     if (!mounted) return;
 
-    final method =
-        rideData?['paymentMethod'] ?? extraRideData?['paymentMethod'];
+    final method = _resolveReceiptPaymentMethod(rideData, extraRideData);
 
     // Payment interactions are now handled at "Driver Arrived" stage (Step 7).
     // So at completion, we just show the summary.
@@ -2154,7 +2177,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       if (originalFareValue != null) 'originalFare': originalFareValue,
       'isScheduled': _isScheduled || widget.isScheduled,
       ...rideData,
-      'paymentMethod': rideData['paymentMethod'] ?? 'payment_link',
+      'paymentMethod': _resolveReceiptPaymentMethod(rideData) ?? 'payment_link',
     };
 
     Navigator.pushReplacement(
