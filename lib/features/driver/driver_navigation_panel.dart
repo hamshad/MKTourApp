@@ -738,7 +738,20 @@ class DriverNavigationPanel extends StatelessWidget {
               child: ElevatedButton.icon(
                 onPressed: isLoading ? null : onStopResume,
                 icon: const Icon(Icons.play_arrow, size: 20),
-                label: const Text('Resume trip'),
+                label: const Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      'Resume trip',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.primaryColor,
                   foregroundColor: Colors.white,
@@ -755,7 +768,20 @@ class DriverNavigationPanel extends StatelessWidget {
               child: ElevatedButton.icon(
                 onPressed: isLoading ? null : onStopArrive,
                 icon: const Icon(Icons.flag, size: 20),
-                label: Text('Arrive at $stopLabel'),
+                label: Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      'Arrive at $stopLabel',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.primaryColor,
                   foregroundColor: Colors.white,
