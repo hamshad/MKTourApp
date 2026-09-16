@@ -658,6 +658,35 @@ class SocketService with WidgetsBindingObserver {
     off('payment:cashCollected');
   }
 
+  /// Excess owed after trip end (payment-flow.md §1 Outcome B, §4).
+  /// Payload: {rideId, excessAmount, paymentUrl?, clientSecret?, isReminder}.
+  void onPaymentBalanceDue(void Function(dynamic) handler) {
+    on('payment:balanceDue', handler);
+  }
+
+  void offPaymentBalanceDue() {
+    off('payment:balanceDue');
+  }
+
+  /// Payment fully settled (payment-flow.md §1 Outcome A, §4).
+  /// Payload: {rideId, amount, message}.
+  void onPaymentSucceeded(void Function(dynamic) handler) {
+    on('payment:succeeded', handler);
+  }
+
+  void offPaymentSucceeded() {
+    off('payment:succeeded');
+  }
+
+  /// Payment failure with retry hint (payment-flow.md §4).
+  void onPaymentFailed(void Function(dynamic) handler) {
+    on('payment:failed', handler);
+  }
+
+  void offPaymentFailed() {
+    off('payment:failed');
+  }
+
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   void disconnect() {

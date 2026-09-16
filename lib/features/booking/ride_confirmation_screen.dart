@@ -17,6 +17,8 @@ import '../../core/widgets/route_map_helpers.dart';
 import 'package:latlong2/latlong.dart' as lat_lng;
 import 'package:flutter_map/flutter_map.dart' as fmap;
 import '../../core/models/vehicle.dart';
+import '../../core/models/outstanding_balance.dart';
+import '../ride/outstanding_balance_screen.dart';
 import 'widgets/schedule_ride_sheet.dart';
 
 /// Ride Confirmation Screen - Shows ride details before final booking
@@ -590,12 +592,22 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
           );
         } else {
           setState(() => _isLoading = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(result.error ?? 'Failed to book ride'),
-              backgroundColor: Colors.red,
-            ),
-          );
+          // 403 outstanding-balance block (payment-flow.md §7): redirect to
+          // the balance screen instead of a dead-end error snackbar.
+          if (result.isBalanceBlocked) {
+            _openBalanceBlocked(
+              rideId: result.data?['rideId']?.toString(),
+              amount: (result.data?['outstandingBalance'] as num?)?.toDouble(),
+              message: result.error,
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(result.error ?? 'Failed to book ride'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
         }
       }
     } catch (e) {
@@ -612,8 +624,62 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     }
   }
 
-  Future<void> _handleScheduledPayment({
-    required String rideId,
+  /// 403 outstanding-balance block (payment-flow.md §7): fetch the live
+  /// balance and open the balance screen. Falls back to the known amount
+  /// when the re-fetch has nothing yet. When the block carries no rideId,
+  /// resolves it via the global balance endpoint before giving up.
+  Future<void> _openBalanceBlocked({
+    String? rideId,
+    double? amount,
+    String? message,
+  }) async {
+    if (rideId == null || rideId.isEmpty) {
+      try {
+        final global = await _apiService.getGlobalPaymentBalance();
+        final resolved = global['success'] == true
+            ? OutstandingBalance.fromBalanceEnvelope(global, '')
+            : null;
+        if (resolved != null &&
+            resolved.isOwed &&
+            resolved.rideId.isNotEmpty) {
+          rideId = resolved.rideId;
+          amount ??= resolved.amount;
+        }
+      } catch (_) {}
+    }
+    if (rideId == null || rideId.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message ?? 'Please clear your balance before booking.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    OutstandingBalance balance = OutstandingBalance(
+      rideId: rideId,
+      amount: amount ?? 0,
+      status: 'balance_due',
+      message: message ?? 'Please clear your balance before booking a new ride.',
+    );
+    try {
+      final res = await _apiService.getPaymentBalance(rideId);
+      final parsed = res['success'] == true
+          ? OutstandingBalance.fromBalanceEnvelope(res, rideId)
+          : null;
+      if (parsed != null) balance = parsed;
+    } catch (_) {}
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => OutstandingBalanceScreen(balance: balance),
+      ),
+    );
+  }
+
+  Future<void> _handleScheduledPayment({    required String rideId,
     required String paymentUrl,
     required DateTime scheduledAt,
   }) async {

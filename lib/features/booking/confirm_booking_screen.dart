@@ -5,6 +5,8 @@ import '../../core/theme.dart';
 import '../../core/constants.dart';
 import '../../core/api_service.dart';
 import '../../core/services/payment_service.dart';
+import '../../core/models/outstanding_balance.dart';
+import '../ride/outstanding_balance_screen.dart';
 import '../ride/payment_webview_screen.dart';
 import 'widgets/stops_editor_widget.dart';
 import 'widgets/schedule_ride_sheet.dart';
@@ -78,7 +80,17 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
         // Show success message
         _showSuccessDialog(result.message ?? 'Booking confirmed!', result.data);
       } else if (!result.success && mounted) {
-        _showErrorDialog(result.error ?? 'Payment failed');
+        // 403 outstanding-balance block (payment-flow.md §7): redirect to
+        // the balance screen instead of a dead-end error dialog.
+        if (result.isBalanceBlocked) {
+          _openBalanceBlocked(
+            rideId: result.data?['rideId']?.toString(),
+            amount: (result.data?['outstandingBalance'] as num?)?.toDouble(),
+            message: result.error,
+          );
+        } else {
+          _showErrorDialog(result.error ?? 'Payment failed');
+        }
       }
     } catch (e) {
       setState(() => _isLoading = false);
@@ -168,7 +180,15 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
         }
       } else {
         setState(() => _isLoading = false);
-        _showErrorDialog(result.error ?? 'Failed to create scheduled ride');
+        if (result.isBalanceBlocked) {
+          _openBalanceBlocked(
+            rideId: result.data?['rideId']?.toString(),
+            amount: (result.data?['outstandingBalance'] as num?)?.toDouble(),
+            message: result.error,
+          );
+        } else {
+          _showErrorDialog(result.error ?? 'Failed to create scheduled ride');
+        }
       }
     } catch (e) {
       setState(() => _isLoading = false);
@@ -284,6 +304,55 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
         _handleScheduleRide(payload, vehicle, destination, pickup);
       }
     }
+  }
+
+  /// 403 outstanding-balance block (payment-flow.md §7): fetch the live
+  /// balance and open the balance screen. Falls back to the known amount
+  /// when the re-fetch has no link yet. When the block carries no rideId,
+  /// resolves it via the global balance endpoint before giving up.
+  Future<void> _openBalanceBlocked({
+    String? rideId,
+    double? amount,
+    String? message,
+  }) async {
+    if (rideId == null || rideId.isEmpty) {
+      try {
+        final global = await _apiService.getGlobalPaymentBalance();
+        final resolved = global['success'] == true
+            ? OutstandingBalance.fromBalanceEnvelope(global, '')
+            : null;
+        if (resolved != null &&
+            resolved.isOwed &&
+            resolved.rideId.isNotEmpty) {
+          rideId = resolved.rideId;
+          amount ??= resolved.amount;
+        }
+      } catch (_) {}
+    }
+    if (rideId == null || rideId.isEmpty) {
+      _showErrorDialog(message ?? 'Please clear your balance before booking.');
+      return;
+    }
+    OutstandingBalance balance = OutstandingBalance(
+      rideId: rideId,
+      amount: amount ?? 0,
+      status: 'balance_due',
+      message: message ?? 'Please clear your balance before booking a new ride.',
+    );
+    try {
+      final res = await _apiService.getPaymentBalance(rideId);
+      final parsed = res['success'] == true
+          ? OutstandingBalance.fromBalanceEnvelope(res, rideId)
+          : null;
+      if (parsed != null) balance = parsed;
+    } catch (_) {}
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => OutstandingBalanceScreen(balance: balance),
+      ),
+    );
   }
 
   void _showSuccessDialog(

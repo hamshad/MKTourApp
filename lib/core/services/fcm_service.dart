@@ -60,6 +60,12 @@ class NotificationType {
   static const String rideReminder = 'ride_reminder';
   static const String scheduledRideCancelledByUser = 'scheduled_ride_cancelled_by_user';
 
+  // Payment Notifications (payment-flow.md §4-§5, cash + payment_link only)
+  static const String balanceDueReminder = 'balance_due_reminder';
+  static const String paymentBalanceDue = 'payment_balance_due';
+  static const String paymentSucceeded = 'payment_succeeded';
+  static const String paymentFailed = 'payment_failed';
+
   // System Notifications
   static const String healthCheck = 'health_check';
 
@@ -106,6 +112,10 @@ class FcmNotificationData {
   final String? paymentMethod;
   final String? driverName;
   final String? pickupAddress;
+  final double? excessAmount;
+  final String? clientSecret;
+  final String? paymentUrl;
+  final bool isReminder;
   final bool isFallback;
   final String? fallbackNote;
   final Map<String, dynamic> rawData;
@@ -123,6 +133,10 @@ class FcmNotificationData {
     this.paymentMethod,
     this.driverName,
     this.pickupAddress,
+    this.excessAmount,
+    this.clientSecret,
+    this.paymentUrl,
+    this.isReminder = false,
     this.isFallback = false,
     this.fallbackNote,
     required this.rawData,
@@ -142,6 +156,10 @@ class FcmNotificationData {
       paymentMethod: data['paymentMethod'],
       driverName: data['driverName'] ?? data['name'],
       pickupAddress: data['pickupAddress'] ?? data['pickup'],
+      excessAmount: _parseDouble(data['excessAmount']),
+      clientSecret: data['clientSecret']?.toString(),
+      paymentUrl: data['paymentUrl']?.toString(),
+      isReminder: data['isReminder']?.toString().toLowerCase() == 'true',
       isFallback: data['isFallback']?.toString().toLowerCase() == 'true',
       fallbackNote: data['fallbackNote'] ?? data['message'],
       rawData: data,
@@ -564,6 +582,13 @@ class FcmService {
           AudioService.instance.playNotification();
         }
         break;
+      // Balance-due reminders need action — always ring.
+      case NotificationType.balanceDueReminder:
+      case NotificationType.paymentBalanceDue:
+      case NotificationType.paymentSucceeded:
+      case NotificationType.paymentFailed:
+        AudioService.instance.playNotification();
+        break;
       default:
         // No sound for other notification types
         break;
@@ -687,6 +712,16 @@ mixin FcmNotificationHandler<T extends StatefulWidget> on State<T> {
       case NotificationType.cashCollected:
         onCashCollected(data);
         break;
+      case NotificationType.balanceDueReminder:
+      case NotificationType.paymentBalanceDue:
+        onBalanceDue(data);
+        break;
+      case NotificationType.paymentSucceeded:
+        onPaymentSucceeded(data);
+        break;
+      case NotificationType.paymentFailed:
+        onPaymentFailed(data);
+        break;
       case NotificationType.rideExpired:
         onRideExpired(data);
         break;
@@ -753,6 +788,9 @@ mixin FcmNotificationHandler<T extends StatefulWidget> on State<T> {
   void onRideDriverReassigning(FcmNotificationData data) {}
   void onRideCancelledTimeout(FcmNotificationData data) {}
   void onCashCollected(FcmNotificationData data) {}
+  void onBalanceDue(FcmNotificationData data) {}
+  void onPaymentSucceeded(FcmNotificationData data) {}
+  void onPaymentFailed(FcmNotificationData data) {}
 
   // Driver App notification handlers
   void onRideRequest(FcmNotificationData data) {}

@@ -1095,6 +1095,75 @@ class ApiService {
     return await _postRequest(ApiConstants.confirmCash(rideId), {});
   }
 
+  /// Global outstanding-balance check (no rideId).
+  ///
+  /// 200 + data object → account suspended (balance_due); 200 + data null
+  /// → clear. Never throws; returns the decoded envelope.
+  Future<Map<String, dynamic>> getGlobalPaymentBalance() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+      if (token == null) throw Exception('No auth token found');
+      final response = await http.get(
+        Uri.parse(ApiConstants.paymentBalanceGlobal),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      debugPrint(
+        '💰 [ApiService] getGlobalPaymentBalance → ${response.statusCode}: ${response.body}',
+      );
+      await _checkUnauthorized(response);
+      try {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) return decoded;
+        if (decoded is Map) return Map<String, dynamic>.from(decoded);
+      } catch (_) {}
+      return {'success': false, 'message': 'Request failed: ${response.statusCode}'};
+    } catch (e) {
+      debugPrint('🟠 [ApiService] getGlobalPaymentBalance exception: $e');
+      return {'success': false, 'message': 'Error: $e'};
+    }
+  }
+  /// Fetch outstanding balance for a ride (payment-flow.md §1 Step 6, §3).
+  ///
+  /// Never throws: returns decoded envelope on 200 (balance_due or
+  /// succeeded) and a `{success:false}` map on 404/other so callers can
+  /// branch without try/catch. Cash + payment_link only — a `clientSecret`
+  /// in the payload is surfaced but never presented (no Stripe sheet).
+  Future<Map<String, dynamic>> getPaymentBalance(String rideId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+      if (token == null) throw Exception('No auth token found');
+      final response = await http.get(
+        Uri.parse(ApiConstants.paymentBalance(rideId)),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      debugPrint(
+        '💰 [ApiService] getPaymentBalance $rideId → ${response.statusCode}: ${response.body}',
+      );
+      await _checkUnauthorized(response);
+      try {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) {
+          if (response.statusCode == 404) {
+            return {'success': false, 'message': decoded['message'] ?? 'No outstanding balance found for this ride.'};
+          }
+          return decoded;
+        }
+      } catch (_) {}
+      return {'success': false, 'message': 'Request failed: ${response.statusCode}'};
+    } catch (e) {
+      debugPrint('🟠 [ApiService] getPaymentBalance exception: $e');
+      return {'success': false, 'message': 'Error: $e'};
+    }
+  }
+
   Future<Map<String, dynamic>> _postRequest(
     String url,
     Map<String, dynamic> body,

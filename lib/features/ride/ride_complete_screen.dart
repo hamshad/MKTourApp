@@ -4,7 +4,9 @@ import '../../core/api_service.dart';
 import '../../core/services/socket_service.dart';
 import '../../core/widgets/custom_snackbar.dart';
 import '../../core/models/vehicle.dart';
+import '../../core/models/outstanding_balance.dart';
 import '../../core/models/error_display_helper.dart';
+import 'outstanding_balance_screen.dart';
 
 class RideCompleteScreen extends StatefulWidget {
   final Map<String, dynamic> rideData;
@@ -149,6 +151,21 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
     _checkInitialPaymentStatus();
     _listenForPaymentUpdates();
     _hydrateBillData();
+    // A balance-due that arrived mid-trip is handed over in `pendingBalance`
+    // — open the balance screen on top of the summary so the excess gets
+    // paid instead of stranding the rider.
+    final pending = widget.rideData['pendingBalance'];
+    if (pending is OutstandingBalance && pending.isOwed) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => OutstandingBalanceScreen(balance: pending),
+          ),
+        );
+      });
+    }
   }
 
   /// Self-hydrate missing bill fields. The receipt can be built from a

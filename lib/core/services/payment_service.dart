@@ -48,11 +48,67 @@ class PaymentResult {
   factory PaymentResult.failure({required String error}) {
     return PaymentResult(success: false, error: error);
   }
+
+  /// Structured failure for the 403 outstanding-balance block
+  /// (payment-flow.md §1 Step 2, §7). Callers redirect to the balance
+  /// screen using `data.rideId` instead of showing a generic error.
+  factory PaymentResult.balanceBlocked({
+    required String error,
+    String? rideId,
+    double? outstandingBalance,
+  }) {
+    return PaymentResult(
+      success: false,
+      error: error,
+      data: {
+        'balanceBlocked': true,
+        if (rideId != null) 'rideId': rideId,
+        if (outstandingBalance != null) 'outstandingBalance': outstandingBalance,
+      },
+    );
+  }
+
+  bool get isBalanceBlocked => data?['balanceBlocked'] == true;
 }
 
 /// Service for handling payments with Stripe
 class PaymentService {
   static const String _merchantDisplayName = 'MK Tours';
+
+  static Map<String, dynamic> _safeDecode(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map<String, dynamic>) return decoded;
+      if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    } catch (_) {}
+    return <String, dynamic>{};
+  }
+
+  static double? _numOrNull(dynamic v) {
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v);
+    return null;
+  }
+
+  /// Fetch outstanding balance for a ride (payment-flow.md §1 Step 6, §3).
+  /// Returns the raw envelope; `data.status == 'balance_due'` means owed.
+  static Future<Map<String, dynamic>> fetchBalance(String rideId) async {
+    try {
+      final headers = await ApiConfig.getAuthHeaders();
+      final response = await http.get(
+        Uri.parse(ApiConstants.paymentBalance(rideId)),
+        headers: headers,
+      );
+      debugPrint(
+        '💰 PaymentService: fetchBalance $rideId → ${response.statusCode}',
+      );
+      final decoded = _safeDecode(response.body);
+      if (decoded.isNotEmpty) return decoded;
+      return {'success': false, 'message': 'Request failed: ${response.statusCode}'};
+    } catch (e) {
+      return {'success': false, 'message': 'Error: $e'};
+    }
+  }
 
   static Future<void> _presentPaymentSheet({
     required Color primaryColor,
@@ -199,8 +255,49 @@ class PaymentService {
       debugPrint('💳 PaymentService: Response body: ${response.body}');
 
       if (response.statusCode != 201 && response.statusCode != 200) {
-        final errorData = jsonDecode(response.body);
-        throw Exception(errorData['message'] ?? 'Failed to create ride');
+        final errorData = _safeDecode(response.body);
+        final message = errorData['message']?.toString() ?? 'Failed to create ride';
+        // Outstanding-balance block (payment-flow.md §7): detected by shape,
+        // not just status code — backends vary (403 documented, but the
+        // message test catches any status). Fields may sit under `data` or
+        // top-level; both are tried so a shape drift can't strand the rider
+        // on a dead-end snackbar.
+        final dataObj = errorData['data'] is Map
+            ? Map<String, dynamic>.from(errorData['data'] as Map)
+            : <String, dynamic>{};
+        final blockedRideId = dataObj['rideId']?.toString() ??
+            errorData['rideId']?.toString();
+        final blockedAmount = _numOrNull(dataObj['outstandingBalance']) ??
+            _numOrNull(dataObj['excessAmount']) ??
+            _numOrNull(dataObj['amount']) ??
+            _numOrNull(errorData['outstandingBalance']) ??
+            _numOrNull(errorData['excessAmount']);
+        final lower = message.toLowerCase();
+        final looksLikeBalance = lower.contains('outstanding balance') ||
+            lower.contains('balance_due') ||
+            lower.contains('balance due') ||
+            (blockedRideId != null && blockedAmount != null);
+        if (response.statusCode == 403 && (looksLikeBalance || blockedRideId != null)) {
+          debugPrint(
+            '⛔ PaymentService: balance block ride=$blockedRideId amount=$blockedAmount',
+          );
+          return PaymentResult.balanceBlocked(
+            error: message,
+            rideId: blockedRideId,
+            outstandingBalance: blockedAmount,
+          );
+        }
+        if (looksLikeBalance) {
+          debugPrint(
+            '⛔ PaymentService: balance-like failure on ${response.statusCode} ride=$blockedRideId amount=$blockedAmount',
+          );
+          return PaymentResult.balanceBlocked(
+            error: message,
+            rideId: blockedRideId,
+            outstandingBalance: blockedAmount,
+          );
+        }
+        throw Exception(message);
       }
 
       final responseData = jsonDecode(response.body);

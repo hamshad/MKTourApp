@@ -1,8 +1,8 @@
 class ApiConstants {
   // Local development socket URL (commented when using live API)
-  // static const String socketUrl = 'http://192.168.1.11:5001';
+  static const String socketUrl = 'http://192.168.1.11:5001';
   // Live API socket URL
-  static const String socketUrl = 'https://api.mktours.co.uk';
+  // static const String socketUrl = 'https://api.mktours.co.uk';
   static const String baseUrl = '$socketUrl/api/v1';
 
   // Auth Endpoints
@@ -100,6 +100,16 @@ class ApiConstants {
   static String selectPaymentMethod(String id) =>
       '$baseUrl/rides/$id/select-payment';
   static String confirmCash(String id) => '$baseUrl/rides/$id/confirm-cash';
+
+  /// Outstanding balance for a ride (payment-flow.md §1 Step 6, §3).
+  /// 200 + status balance_due → still owed; 200 + succeeded → paid; 404 → none.
+  static String paymentBalance(String rideId) =>
+      '$baseUrl/payments/balance/$rideId';
+
+  /// Global outstanding-balance check (no rideId). 200 + data object →
+  /// account suspended, open the balance screen immediately; 200 + data
+  /// null → clear. Call on login / home mount.
+  static const String paymentBalanceGlobal = '$baseUrl/payments/balance';
 
   // Maps API Endpoints (proxied through backend for security)
   static const String mapsBaseUrl = '$baseUrl/maps';

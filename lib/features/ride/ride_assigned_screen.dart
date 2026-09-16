@@ -18,6 +18,8 @@ import '../../core/models/error_display_helper.dart';
 import '../../core/widgets/platform_map.dart';
 import '../../core/widgets/route_map_helpers.dart';
 import '../../core/models/vehicle.dart';
+import '../../core/models/outstanding_balance.dart';
+import 'outstanding_balance_screen.dart';
 import '../../core/widgets/ride_searching_overlay.dart';
 import 'ride_complete_screen.dart';
 import 'payment_webview_screen.dart';
@@ -212,6 +214,21 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   // superseded method (e.g. a cancelled payment_link resolving after cash
   // succeeded) are ignored once this is set.
   String? _completedPaymentMethod;
+
+  /// Balance-due event that arrived BEFORE the trip completed (backend may
+  /// emit it as wait fees accrue mid-trip). Opening a full-screen block
+  /// mid-trip strands the rider; instead it is stashed and handed to the
+  /// receipt via [consumePendingBalance], which auto-opens the balance
+  /// screen on top of the summary.
+  OutstandingBalance? _pendingBalanceDue;
+
+  /// Take the stashed mid-trip balance (if any) for the receipt payload.
+  Map<String, dynamic> consumePendingBalance() {
+    final b = _pendingBalanceDue;
+    _pendingBalanceDue = null;
+    if (b == null) return const {};
+    return {'pendingBalance': b};
+  }
 
   /// Rider-confirmed payment method for receipt building. Completion socket
   /// payloads often omit paymentMethod (cash needs no server processing), so
@@ -620,6 +637,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     _socketService.off('payment:succeeded');
     _socketService.off('payment:authorized');
     _socketService.off('payment:failed');
+    _socketService.off('payment:balanceDue');
     _socketService.off('ride:longRunning');
     _socketService.off('user:status');
     _socketService.off('ride:promoApplied');
@@ -1025,6 +1043,44 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
         _rideStatus = 'completed';
       });
+
+      // Cash / payment_link need no server capture wait: show the receipt
+      // now (Outcome A). If an excess follows, `payment:balanceDue` opens
+      // the balance screen on top; its success pops back to this receipt.
+      // Guarded by _didNavigateToReceipt so a later payment:succeeded for
+      // the same ride never pushes a second receipt.
+      final completedMap =
+          data is Map<String, dynamic> ? data : <String, dynamic>{};
+      // A balance-due that arrived mid-trip is handed to the receipt, which
+      // auto-opens the balance screen on top of the summary.
+      _showPaymentSuccessScreen({
+        ...completedMap,
+        ...consumePendingBalance(),
+      });
+    });
+
+    // Excess owed after trip end (payment-flow.md §1 Outcome B, §4).
+    // Cash + payment_link only: open the balance screen, never a
+    // Stripe sheet. FCM balance_due_reminder duplicates this — one screen.
+    _socketService.onPaymentBalanceDue((data) {
+      if (!mounted) return;
+      debugPrint('💰 [RideAssignedScreen] Balance due: $data');
+      final map = data is Map<String, dynamic>
+          ? data
+          : data is Map
+              ? Map<String, dynamic>.from(data)
+              : <String, dynamic>{};
+      final eventRideId =
+          map['rideId']?.toString() ?? map['bookingId']?.toString();
+      if (eventRideId != null && eventRideId != widget.rideId) return;
+      if (!RideEventDedupe.shouldHandleEvent(
+        source: 'socket',
+        type: 'payment_balance_due',
+        data: map,
+      )) {
+        return;
+      }
+      _openBalanceScreen(map);
     });
 
     // Listen for promo applied event (user's 6th ride within Milton Keynes)
@@ -1170,10 +1226,36 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       final bool hasPendingConfirmation =
           _isAwaitingPaymentConfirmation || _pendingPaymentRideData != null;
 
-      if (!hasPendingConfirmation && _rideStatus != 'completed') {
+      // Mid-trip captures (e.g. base-fare authorized while the trip is still
+      // running) are NOT terminal: the balance may still be owed and the
+      // ride not completed. Never consume the receipt guard here — only a
+      // post-completion succeeded (or an explicit pay-later confirmation)
+      // may push the receipt. Otherwise the later ride:completed finds a
+      // spent guard and the rider sticks on "Trip in progress".
+      final bool rideDone = _rideStatus == 'completed' ||
+          _rideStatus == 'early_completed' ||
+          (data is Map &&
+              (data['status']?.toString() == 'completed' ||
+                  data['status']?.toString() == 'early_completed'));
+      if (!hasPendingConfirmation && !rideDone) {
+        final amount = data is Map ? data['amount']?.toString() : null;
         debugPrint(
-          'ℹ️ [RideAssignedScreen] Payment succeeded without pending state; showing success screen anyway.',
+          'ℹ️ [RideAssignedScreen] Mid-trip payment succeeded (amount $amount) — trip still running, not opening receipt.',
         );
+        if (mounted && context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                amount != null
+                    ? 'Payment of £$amount processed.'
+                    : 'Payment processed.',
+              ),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
       }
 
       final Map<String, dynamic> mergedRideData = {
@@ -1339,6 +1421,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
             'isAirportTransfer': data['isAirportTransfer'] ?? false,
             'reason': reason,
             'paymentMethod': data['paymentMethod'] ?? _deferredPaymentSuccessData!['paymentMethod'] ?? _resolveReceiptPaymentMethod(),
+            ...consumePendingBalance(),
           };
           _deferredPaymentSuccessData = null;
           Navigator.pushReplacement(
@@ -1381,6 +1464,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                           'isAirportTransfer': data['isAirportTransfer'] ?? false,
                           'paymentMethod': data['paymentMethod'] ?? _resolveReceiptPaymentMethod(),
                           'paymentStatus': 'pending',
+                          ...consumePendingBalance(),
                         },
                       ),
                     ),
@@ -1900,6 +1984,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     _socketService.off('payment:succeeded');
     _socketService.off('payment:authorized');
     _socketService.off('payment:failed');
+    _socketService.off('payment:balanceDue');
     _socketService.off('ride:longRunning');
     _socketService.off('ride:promoApplied');
     _socketService.offDriverReassigning();
@@ -2122,6 +2207,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       'paymentMethod': method,
       // If cash, it's pending collection. If card, it's considered processed/authorized.
       'paymentStatus': method == 'cash' ? 'pending' : 'completed',
+      ...consumePendingBalance(),
     };
 
     _showPaymentSuccessScreen(finalRideData);
@@ -2154,8 +2240,44 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     });
   }
 
-  void _showPaymentSuccessScreen(Map<String, dynamic> rideData) {
+  /// Open the outstanding-balance screen from a `payment:balanceDue`
+  /// socket event or a `balance_due_reminder` FCM tap. Cash + payment_link
+  /// only — no Stripe sheet is ever presented.
+  ///
+  /// Mid-trip arrivals are stashed (see [_pendingBalanceDue]): the receipt
+  /// picks them up via [consumePendingBalance] and opens the screen on top
+  /// of the summary, so the rider is never yanked out of live tracking.
+  Future<void> _openBalanceScreen(Map<String, dynamic> event) async {
     if (!mounted) return;
+    final balance = OutstandingBalance.fromBalanceDueEvent({
+      ...event,
+      'rideId': event['rideId'] ?? event['bookingId'] ?? widget.rideId,
+    });
+    if (_rideStatus != 'completed' && _rideStatus != 'early_completed') {
+      debugPrint(
+        '💰 [RideAssignedScreen] Balance due mid-trip (£${balance.amount.toStringAsFixed(2)}) — stashing for receipt.',
+      );
+      setState(() => _pendingBalanceDue = balance);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Wait fee £${balance.amount.toStringAsFixed(2)} added — settle it when the trip ends.',
+          ),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => OutstandingBalanceScreen(balance: balance),
+      ),
+    );
+  }
+
+  void _showPaymentSuccessScreen(Map<String, dynamic> rideData) {    if (!mounted) return;
 
     // Status-sequence navigation guard: completed/early-completed events can
     // arrive twice (socket + FCM + pay-later path) — push receipt exactly once.

@@ -19,6 +19,10 @@ import '../../core/services/audio_service.dart';
 import '../../core/ui_frame.dart';
 import '../../core/services/active_ride_storage.dart';
 import '../../core/api_service.dart';
+import '../../core/models/outstanding_balance.dart';
+import '../../core/services/fcm_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../ride/outstanding_balance_screen.dart';
 import '../ride/ride_assigned_screen.dart';
 import '../booking/ride_confirmation_screen.dart';
 import 'airport_selection_screen.dart';
@@ -62,6 +66,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // Promo status
   Map<String, dynamic>? _promoStatusData;
 
+  /// Outstanding balance (payment-flow.md §3). Persisted rideId survives
+  /// restarts so the banner returns until `payment:succeeded` clears it.
+  /// Cash + payment_link only — tap opens [OutstandingBalanceScreen].
+  static const String _pendingBalanceKey = 'pending_balance_ride_id';
+  OutstandingBalance? _pendingBalance;
+  StreamSubscription<FcmNotificationData>? _balanceForegroundSub;
+  StreamSubscription<FcmNotificationData>? _balanceTapSub;
+
   // Connection status subscription
   StreamSubscription<bool>? _connectionSubscription;
   bool _socketListenersInitialized = false;
@@ -86,6 +98,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _setupSocketListeners();
     _setupConnectionListener();
     _restoreActiveRide();
+    _checkPendingBalance();
+    _listenBalanceFcm();
   }
 
   @override
@@ -200,6 +214,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       });
     });
 
+    // Balance listeners dropped by force-reconnect — re-register.
+    _registerBalanceSocketListeners();
+
     debugPrint('✅ [HomeScreen] Socket listeners restored');
   }
 
@@ -222,6 +239,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (_activeRide != null && widget.runtimeType == HomeScreen) {
         _syncRideStatus();
       }
+
+      // 4. Re-check global balance on every app open — a balance can go
+      // stale while backgrounded (paid elsewhere, or newly accrued).
+      _checkPendingBalance();
     }
   }
 
@@ -624,6 +645,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _socketService.off('ride:scheduledExpired');
     _socketService.off('ride:noShow');
     _socketService.offDriverReassigning();
+    _socketService.offPaymentBalanceDue();
+    _socketService.offPaymentSucceeded();
 
     // Listen for ride accepted event
     _socketService.on('ride:accepted', (data) {
@@ -765,6 +788,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         );
       }
     });
+
+    // Outstanding balance (payment-flow.md §1 Outcome B, §3).
+    // Shared with reconnect-restore (force-reconnect drops handlers).
+    _registerBalanceSocketListeners();
 
     _socketService.on('ride:scheduledActivated', (data) {
       debugPrint('🚀 [HomeScreen] Scheduled Ride Activated: $data');
@@ -1073,6 +1100,195 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// Status drives the exact screen: searching → overlay, accepted/arrived →
   /// assigned, in_progress/at_stop → trip progress. Stale (>24h) or final
   /// statuses clear to home.
+  /// Startup balance check: global `GET /payments/balance` first (account
+  /// suspended → banner immediately), falling back to the persisted rideId
+  /// check when the global call fails. Clears the banner when paid.
+  Future<void> _checkPendingBalance() async {
+    try {
+      final res = await _apiService.getGlobalPaymentBalance();
+      if (!mounted) return;
+      if (res['success'] == true) {
+        // data null → clear; data object → suspended, raise the banner.
+        if (res['data'] == null) {
+          await _clearPendingBalance();
+          return;
+        }
+        final parsed = OutstandingBalance.fromBalanceEnvelope(res, '');
+        if (parsed != null &&
+            parsed.isOwed &&
+            parsed.rideId.isNotEmpty &&
+            mounted) {
+          await _persistPendingBalance(parsed);
+          return;
+        }
+        if (parsed != null && parsed.isPaid) {
+          await _clearPendingBalance();
+          return;
+        }
+      }
+      // Global call failed or inconclusive → per-ride fallback.
+      await _checkPersistedRideBalance();
+    } catch (e) {
+      debugPrint('⚠️ [HomeScreen] Pending balance check failed: $e');
+      await _checkPersistedRideBalance();
+    }
+  }
+
+  /// Per-ride fallback for the startup check: re-fetches the persisted
+  /// pending ride; clears the banner when paid.
+  Future<void> _checkPersistedRideBalance() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final rideId = prefs.getString(_pendingBalanceKey);
+      if (rideId == null || rideId.isEmpty) return;
+      final res = await _apiService.getPaymentBalance(rideId);
+      if (!mounted) return;
+      final status = res['data'] is Map
+          ? (res['data'] as Map)['status']?.toString()
+          : null;
+      if (res['success'] == true && status == 'succeeded') {
+        await _clearPendingBalance();
+        return;
+      }
+      final parsed = res['success'] == true
+          ? OutstandingBalance.fromBalanceEnvelope(res, rideId)
+          : null;
+      if (parsed != null && parsed.isOwed && mounted) {
+        setState(() => _pendingBalance = parsed);
+      } else if (res['success'] != true) {
+        // 404 → no balance: drop stale persistence silently.
+        await _clearPendingBalance();
+      }
+    } catch (e) {
+      debugPrint('⚠️ [HomeScreen] Persisted ride balance check failed: $e');
+    }
+  }
+
+  /// FCM balance taps (payment-flow.md §3, §5): reminder tap opens the
+  /// balance screen; succeeded clears the banner.
+  void _listenBalanceFcm() {
+    _balanceForegroundSub = FcmService.instance.onForegroundNotification.listen((
+      data,
+    ) {
+      if (!mounted) return;
+      if (data.type == NotificationType.balanceDueReminder ||
+          data.type == NotificationType.paymentBalanceDue) {
+        _setPendingBalanceFromFcm(data);
+      } else if (data.type == NotificationType.paymentSucceeded ||
+          data.type == NotificationType.cashCollected) {
+        _clearPendingBalance();
+      }
+    });
+    _balanceTapSub = FcmService.instance.onNotificationTap.listen((data) {
+      if (!mounted) return;
+      if (data.type == NotificationType.balanceDueReminder ||
+          data.type == NotificationType.paymentBalanceDue) {
+        _setPendingBalanceFromFcm(data);
+        _openPendingBalance();
+      }
+    });
+  }
+
+  Future<void> _setPendingBalanceFromFcm(FcmNotificationData data) async {
+    final rideId = data.rideId;
+    if (rideId == null || rideId.isEmpty) return;
+    // Prefer the live API (carries paymentUrl); fall back to FCM amounts.
+    try {
+      final res = await _apiService.getPaymentBalance(rideId);
+      final parsed = res['success'] == true
+          ? OutstandingBalance.fromBalanceEnvelope(res, rideId)
+          : null;
+      if (parsed != null && parsed.isOwed) {
+        await _persistPendingBalance(parsed);
+        return;
+      }
+    } catch (_) {}
+    await _persistPendingBalance(
+      OutstandingBalance(
+        rideId: rideId,
+        amount: data.excessAmount ?? data.amount ?? 0,
+        status: 'balance_due',
+        message: 'You have an unpaid balance. Please pay now to continue using the app.',
+        paymentUrl: data.paymentUrl,
+        clientSecret: data.clientSecret,
+        isReminder: true,
+      ),
+    );
+  }
+
+  Future<void> _persistPendingBalance(OutstandingBalance balance) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_pendingBalanceKey, balance.rideId);
+    if (mounted) setState(() => _pendingBalance = balance);
+  }
+
+  Future<void> _clearPendingBalance() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_pendingBalanceKey);
+    if (mounted) setState(() => _pendingBalance = null);
+  }
+
+  /// Registers balance socket listeners. Called from both initial setup
+  /// and reconnect-restore (force-reconnect disposes the socket object,
+  /// dropping handlers).
+  void _registerBalanceSocketListeners() {
+    _socketService.offPaymentBalanceDue();
+    _socketService.offPaymentSucceeded();
+    // Outstanding balance (payment-flow.md §1 Outcome B, §3): persist the
+    // rideId and raise the banner. FCM reminder duplicates this — one banner.
+    _socketService.onPaymentBalanceDue((data) {
+      debugPrint('💰 [HomeScreen] Balance due: $data');
+      if (!mounted) return;
+      final map = data is Map<String, dynamic>
+          ? data
+          : data is Map
+              ? Map<String, dynamic>.from(data)
+              : <String, dynamic>{};
+      if (!RideEventDedupe.shouldHandleEvent(
+        source: 'socket',
+        type: 'payment_balance_due',
+        data: map,
+      )) {
+        return;
+      }
+      final balance = OutstandingBalance.fromBalanceDueEvent(map);
+      if (balance.rideId.isEmpty) return;
+      _persistPendingBalance(balance);
+      if (mounted) {
+        CustomSnackbar.show(
+          context,
+          message: balance.message,
+          type: SnackbarType.warning,
+          duration: const Duration(seconds: 6),
+        );
+      }
+    });
+
+    // Balance cleared → drop the banner.
+    _socketService.onPaymentSucceeded((data) {
+      debugPrint('✅ [HomeScreen] Payment succeeded: $data');
+      if (!mounted) return;
+      _clearPendingBalance();
+    });
+  }
+
+  Future<void> _openPendingBalance() async {    final balance = _pendingBalance;
+    if (balance == null || !mounted) return;
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => OutstandingBalanceScreen(balance: balance),
+      ),
+    );
+    if (!mounted) return;
+    if (result is Map && result['success'] == true) {
+      await _clearPendingBalance();
+    } else {
+      // Re-verify: user may have paid outside the screen (cash handoff).
+      await _checkPendingBalance();
+    }
+  }
+
   Future<void> _restoreActiveRide() async {
     final id = await ActiveRideStorage.getRideId();
     final role = await ActiveRideStorage.getRole();
@@ -1221,6 +1437,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     // CRITICAL: Clean up socket listeners to prevent memory leaks
     debugPrint('🧹 [HomeScreen] Cleaning up socket listeners...');
+    _balanceForegroundSub?.cancel();
+    _balanceTapSub?.cancel();
     _socketService.off('ride:accepted');
     _socketService.off('ride:expired');
     _socketService.off('ride:cancelled');
@@ -1235,6 +1453,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _socketService.off('ride:scheduledExpired');
     _socketService.off('ride:noShow');
     _socketService.offDriverReassigning();
+    _socketService.offPaymentBalanceDue();
+    _socketService.offPaymentSucceeded();
 
     _pageController.dispose();
     _bannerTimer?.cancel();
@@ -1418,6 +1638,65 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
 
                   const SizedBox(height: 12),
+
+                  // Outstanding-balance banner (payment-flow.md §3): persists
+                  // until payment:succeeded clears it. Tap opens the balance
+                  // screen (cash info + payment-link WebView).
+                  if (_pendingBalance != null)
+                    GestureDetector(
+                      onTap: _openPendingBalance,
+                      child: Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade50,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: Colors.orange.shade300,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.account_balance_wallet_outlined,
+                              color: Colors.orange.shade700,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Outstanding balance: £${_pendingBalance!.amount.toStringAsFixed(2)}',
+                                    style: TextStyle(
+                                      color: Colors.orange.shade800,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  Text(
+                                    'Tap to pay and unlock booking',
+                                    style: TextStyle(
+                                      color: Colors.orange.shade700,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Icon(
+                              Icons.chevron_right,
+                              color: Colors.orange.shade700,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
 
                   const SizedBox(height: 12),
                 ],
