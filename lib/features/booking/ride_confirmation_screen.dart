@@ -1496,41 +1496,109 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     );
   }
 
+  // Compact ride-hail payment row (11.1): single tappable row showing
+  // current choice; expands inline to reveal Online / Cash options.
+  // Writes the existing [_selectedPaymentMethod] state; no logic change.
+  bool _isPaymentExpanded = false;
+
+  String get _selectedPaymentLabel =>
+      _selectedPaymentMethod == 'payment_link' ? 'Online' : 'Cash';
+
+  IconData get _selectedPaymentIcon =>
+      _selectedPaymentMethod == 'payment_link'
+          ? Icons.credit_card
+          : Icons.money;
+
   /// Mandatory upfront payment selector (11-02): Online (Card via Link)
   /// vs Cash. Bound to [_selectedPaymentMethod]; no third option.
   Widget _buildPaymentMethodSelector() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Payment Method',
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: Colors.grey[700],
-          ),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: _buildPaymentMethodOption(
-                icon: Icons.credit_card,
-                label: 'Online (Card via Link)',
-                value: 'payment_link',
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            onTap: () =>
+                setState(() => _isPaymentExpanded = !_isPaymentExpanded),
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    _selectedPaymentIcon,
+                    size: 18,
+                    color: AppTheme.primaryColor,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _selectedPaymentLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    _selectedPaymentMethod == 'payment_link'
+                        ? 'Card via Link'
+                        : 'Pay driver',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                  const SizedBox(width: 4),
+                  AnimatedRotation(
+                    turns: _isPaymentExpanded ? 0.25 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: Icon(
+                      Icons.chevron_right,
+                      color: Colors.grey[500],
+                      size: 20,
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _buildPaymentMethodOption(
-                icon: Icons.money,
-                label: 'Cash',
-                value: 'cash',
+          ),
+          if (_isPaymentExpanded) ...[
+            Divider(height: 1, color: Colors.grey[200]),
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _buildPaymentMethodOption(
+                      icon: Icons.credit_card,
+                      label: 'Online',
+                      value: 'payment_link',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildPaymentMethodOption(
+                      icon: Icons.money,
+                      label: 'Cash',
+                      value: 'cash',
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -1541,14 +1609,17 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   }) {
     final isSelected = _selectedPaymentMethod == value;
     return GestureDetector(
-      onTap: () => setState(() => _selectedPaymentMethod = value),
+      onTap: () => setState(() {
+        _selectedPaymentMethod = value;
+        _isPaymentExpanded = false;
+      }),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
         decoration: BoxDecoration(
           color: isSelected
               ? AppTheme.primaryColor.withOpacity(0.08)
-              : Colors.grey[50],
-          borderRadius: BorderRadius.circular(12),
+              : Colors.white,
+          borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: isSelected ? AppTheme.primaryColor : Colors.grey[200]!,
             width: isSelected ? 1.5 : 1,
@@ -1559,7 +1630,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
           children: [
             Icon(
               icon,
-              size: 18,
+              size: 16,
               color: isSelected ? AppTheme.primaryColor : Colors.grey[600],
             ),
             const SizedBox(width: 6),
@@ -1567,6 +1638,8 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
               child: Text(
                 label,
                 textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight:
@@ -1582,297 +1655,378 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     );
   }
 
+  /// Compact bottom-sheet card (11.1): drag handle + one fare row
+  /// (category/ETA left, price right) + single payment row + one Confirm
+  /// CTA with price + compact Schedule affordance. Error/retry and
+  /// loading gating identical to pre-compaction behavior.
   Widget _buildBottomBar() {
     // Check if there's a fare error
     final hasError = _fareError != null;
+    final isPrebooked =
+        widget.isScheduled && widget.scheduledDateTime != null;
+    final confirmLabel = isPrebooked ? 'Confirm Prebook' : 'Confirm';
+    final priceLabel = _isFetchingFare
+        ? '...'
+        : '£${_fare.toStringAsFixed(2)}';
 
     return Container(
-      padding: EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 16),
       decoration: BoxDecoration(
         color: Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 12,
             offset: const Offset(0, -2),
           ),
         ],
       ),
       child: SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Error Message (if any)
-            if (hasError) ...[
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.red.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.red.shade200),
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Drag handle
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.error_outline,
-                      color: Colors.red.shade700,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _fareError!,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.red.shade700,
+              ),
+              const SizedBox(height: 8),
+
+              // Error Message (if any)
+              if (hasError) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.red.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.error_outline,
+                        color: Colors.red.shade700,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _fareError!,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.red.shade700,
+                          ),
                         ),
                       ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+
+              // Fare row (only show if no error): category/ETA left, price right
+              if (!hasError)
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            widget.categoryName == widget.categorySlug ||
+                                    widget.categoryName == 'Unknown'
+                                ? VehicleCategory.formatSlug(
+                                    widget.categorySlug,
+                                  )
+                                : widget.categoryName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          _isFetchingFare
+                              ? Container(
+                                  width: 90,
+                                  height: 12,
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey[200],
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                )
+                              : Text(
+                                  'ETA $_estimatedArrival'
+                                  '${_durationText.isNotEmpty ? ' • $_durationText' : ''}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                        ],
+                      ),
                     ),
+                    const SizedBox(width: 8),
+                    _isFetchingFare
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppTheme.primaryColor,
+                            ),
+                          )
+                        : Flexible(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerRight,
+                              child: _buildCompactPrice(),
+                            ),
+                          ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 12),
-            ],
 
-            // Fare Row (only show if no error)
-            if (!hasError)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Total Fare',
-                    style: TextStyle(fontSize: 16, color: AppTheme.textPrimary),
-                  ),
-                  _isFetchingFare
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: AppTheme.primaryColor,
-                          ),
-                        )
-                      : Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            if (_currentFareData['promo_applied'] == true &&
-                                _currentFareData['original_fare'] != null) ...[
-                              Text(
-                                '£${(_currentFareData['original_fare'] as num).toStringAsFixed(2)}',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.grey[500],
-                                  decoration: TextDecoration.lineThrough,
-                                ),
-                              ),
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    _fare == 0
-                                        ? 'FREE'
-                                        : '£${_fare.toStringAsFixed(2)}',
-                                    style: TextStyle(
-                                      fontSize: 24,
-                                      fontWeight: FontWeight.bold,
-                                      color: _fare == 0
-                                          ? AppTheme.successColor
-                                          : AppTheme.primaryColor,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  const Icon(
-                                    Icons.card_giftcard,
-                                    size: 20,
-                                    color: AppTheme.successColor,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    '-£${(_currentFareData['discount'] as num? ?? 0).toStringAsFixed(2)}',
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.bold,
-                                      color: AppTheme.successColor,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ] else ...[
-                              Text(
-                                '£${_fare.toStringAsFixed(2)}',
-                                style: const TextStyle(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppTheme.primaryColor,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                ],
-              ),
-
-            if (!hasError) ...[
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withOpacity(0.05),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: AppTheme.primaryColor.withOpacity(0.1),
-                  ),
-                ),
-                child: Row(
+              // Fare-variance note folded to a single-line caption w/ tooltip
+              if (!hasError) ...[
+                const SizedBox(height: 6),
+                Row(
                   children: [
                     const Icon(
                       Icons.info_outline,
-                      size: 16,
+                      size: 14,
                       color: AppTheme.primaryColor,
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 6),
                     Expanded(
-                      child: Text(
-                        'Note: Final fare may vary based on actual distance traveled (e.g. if the ride ends early).',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey[700],
-                          height: 1.3,
+                      child: Tooltip(
+                        message:
+                            'Final fare may vary based on actual distance traveled (e.g. if the ride ends early).',
+                        child: Text(
+                          'Final fare may vary with actual distance',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey[600],
+                            height: 1.2,
+                          ),
                         ),
                       ),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 16),
-            ],
+                const SizedBox(height: 8),
+              ],
 
-            // Mandatory payment selector (11-02) — above the Confirm button.
-            if (!hasError) ...[
-              _buildPaymentMethodSelector(),
-              const SizedBox(height: 16),
-            ],
+              // Single payment-method row (11-02 toggle, compact idiom).
+              if (!hasError) ...[
+                _buildPaymentMethodSelector(),
+                const SizedBox(height: 10),
+              ],
 
-            // Button Row
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: double.infinity,
-                  height: 54,
-                  child: hasError
-                      ? ElevatedButton.icon(
-                          onPressed: _isFetchingFare ? null : _retryFetchFare,
-                          icon: _isFetchingFare
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    color: Colors.white,
-                                    strokeWidth: 2,
+              // Confirm CTA row: one full-width primary button + compact
+              // Schedule affordance beside it (not a second 54px button).
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: hasError
+                    ? ElevatedButton.icon(
+                        onPressed: _isFetchingFare ? null : _retryFetchFare,
+                        icon: _isFetchingFare
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.refresh),
+                        label: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            _isFetchingFare ? 'Retrying...' : 'Retry',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 0,
+                        ),
+                      )
+                    : Row(
+                        children: [
+                          Expanded(
+                            child: SizedBox(
+                              height: 50,
+                              child: ElevatedButton(
+                                onPressed: (_isLoading || _isFetchingFare)
+                                    ? null
+                                    : isPrebooked
+                                        ? _confirmPrebook
+                                        : _confirmRide,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppTheme.primaryColor,
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
                                   ),
-                                )
-                              : const Icon(Icons.refresh),
-                          label: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              _isFetchingFare ? 'Retrying...' : 'Retry',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
+                                  elevation: 0,
+                                ),
+                                child: _isLoading
+                                    ? const SizedBox(
+                                        width: 24,
+                                        height: 24,
+                                        child: CircularProgressIndicator(
+                                          color: Colors.white,
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        child: Text(
+                                          '$confirmLabel • $priceLabel',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
                               ),
                             ),
                           ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.orange,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            elevation: 0,
-                          ),
-                        )
-                      : ElevatedButton(
-                          onPressed: (_isLoading || _isFetchingFare)
-                              ? null
-                              : (widget.isScheduled &&
-                                    widget.scheduledDateTime != null)
-                              ? _confirmPrebook
-                              : _confirmRide,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.primaryColor,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            elevation: 0,
-                          ),
-                          child: _isLoading
-                              ? const SizedBox(
-                                  width: 24,
-                                  height: 24,
-                                  child: CircularProgressIndicator(
-                                    color: Colors.white,
-                                    strokeWidth: 2,
+                          // Compact Schedule/Prebook affordance (hidden for
+                          // prebooked rides, same rule as before).
+                          if (!isPrebooked) ...[
+                            const SizedBox(width: 8),
+                            SizedBox(
+                              height: 50,
+                              child: OutlinedButton(
+                                onPressed: (_isLoading || _isFetchingFare)
+                                    ? null
+                                    : _showScheduleSheet,
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: AppTheme.primaryColor,
+                                  side: BorderSide(
+                                    color: AppTheme.primaryColor
+                                        .withOpacity(0.4),
                                   ),
-                                )
-                              : FittedBox(
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                  ),
+                                  minimumSize: const Size(0, 50),
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                child: const FittedBox(
                                   fit: BoxFit.scaleDown,
-                                  child: Text(
-                                    // Change button text based on whether it's a prebooked ride
-                                    (widget.isScheduled &&
-                                            widget.scheduledDateTime != null)
-                                        ? 'Confirm Prebook'
-                                        : 'Confirm Ride',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.calendar_month,
+                                        size: 16,
+                                      ),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'Schedule',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                        ),
-                ),
-                // Only show "Schedule for Later" button if NOT a prebooked ride
-                if (!hasError &&
-                    !(widget.isScheduled &&
-                        widget.scheduledDateTime != null)) ...[
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 54,
-                    child: OutlinedButton.icon(
-                      onPressed: (_isLoading || _isFetchingFare)
-                          ? null
-                          : _showScheduleSheet,
-                      icon: const Icon(Icons.calendar_month),
-                      label: const Text(
-                        'Prebook',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.blue,
-                        side: const BorderSide(color: Colors.blue),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+
+  /// Compact price block preserving promo FREE/discount rendering.
+  Widget _buildCompactPrice() {
+    if (_currentFareData['promo_applied'] == true &&
+        _currentFareData['original_fare'] != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '£${(_currentFareData['original_fare'] as num).toStringAsFixed(2)}',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey[500],
+              decoration: TextDecoration.lineThrough,
+            ),
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _fare == 0 ? 'FREE' : '£${_fare.toStringAsFixed(2)}',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: _fare == 0
+                      ? AppTheme.successColor
+                      : AppTheme.primaryColor,
+                ),
+              ),
+              const SizedBox(width: 4),
+              const Icon(
+                Icons.card_giftcard,
+                size: 16,
+                color: AppTheme.successColor,
+              ),
+            ],
+          ),
+        ],
+      );
+    }
+    return Text(
+      '£${_fare.toStringAsFixed(2)}',
+      style: const TextStyle(
+        fontSize: 20,
+        fontWeight: FontWeight.bold,
+        color: AppTheme.primaryColor,
       ),
     );
   }
