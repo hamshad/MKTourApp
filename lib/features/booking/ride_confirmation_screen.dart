@@ -532,11 +532,11 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
         vehicleCategorySlug: widget.categorySlug,
         distance: (distanceMiles as num).toDouble(),
         fare: _fare,
+        paymentMethod: paymentMethod ?? _selectedPaymentMethod,
         paymentTiming: timing,
         scheduledAt: scheduledAt,
         notes: notes,
         stops: widget.stops?.isNotEmpty == true ? widget.stops : null,
-        paymentMethod: paymentMethod,
       );
 
       if (mounted) {

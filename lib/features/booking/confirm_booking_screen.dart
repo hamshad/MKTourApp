@@ -69,6 +69,8 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
         vehicleCategorySlug: vehicle['categorySlug'] ?? 'sedan',
         distance: (vehicle['distance'] as num?)?.toDouble() ?? 5.0,
         fare: (vehicle['basePrice'] as num?)?.toDouble() ?? 15.0,
+        paymentMethod:
+            _paymentTiming == PaymentTiming.payNow ? 'payment_link' : 'cash',
         paymentTiming: _paymentTiming,
         notes: _notesController.text.isNotEmpty ? _notesController.text : null,
         stops: _stops.isNotEmpty ? _stops : null,
