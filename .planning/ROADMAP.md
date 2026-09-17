@@ -249,7 +249,7 @@ Plans:
 
 **Goal:** In-car excess-balance settlement — rider picks Cash (driver confirms) or Online (WebView) on the live trip-completion screen via POST /payments/balance/:rideId/select-method; driver gets excessCashRequested modal + confirm-driver-cash; startup balance stays online-only. Full backend contract in phase dir INTEGRATION-GUIDE.md.
 **Depends on:** Phase 11
-**Plans:** 3 plans
+**Plans:** 3/3 plans complete
 
 Plans:
 - [x] `12-01-PLAN.md` — API foundation: select-method + confirm-driver-cash, tolerant parser, socket passthroughs, contract tests
@@ -260,10 +260,11 @@ Plans:
 
 **Goal:** Startup suspension gate — on GET /payments/balance with accountSuspended:true + allowCash:false, lock Book/Schedule buttons and show pay-online-only modal; unlock on payment:succeeded. Live in-car settlement stays in Phase 12. Full backend contract in phase dir INTEGRATION-GUIDE.md.
 **Depends on:** Phase 12
-**Plans:** 0 plans
+**Plans:** 2 plans
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 13 to break down)
+- [ ] `13-01-PLAN.md` — Suspension-flag parsing foundation (model + contract tests) + 403 backstop verification
+- [ ] `13-02-PLAN.md` — Home startup gate (entry lock + pay-online modal + succeeded/clear unlock)
 
 ---
 
