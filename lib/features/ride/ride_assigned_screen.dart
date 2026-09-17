@@ -33,6 +33,9 @@ class RideAssignedScreen extends StatefulWidget {
   final Map<String, dynamic>? driver; // Added initial driver data
   final String? paymentTiming; // 'pay_now' or 'pay_later'
   final String? clientSecret; // for pay_later (saved from createRide)
+  // Upfront payment contract (11-02): picked method + link URL for display.
+  final String? paymentMethod; // 'cash' or 'payment_link'
+  final String? paymentUrl; // Stripe Checkout URL for payment_link
   final bool isScheduled;
   final List<Map<String, dynamic>>? stops; // Intermediate stops (max 3)
 
@@ -50,6 +53,8 @@ class RideAssignedScreen extends StatefulWidget {
     this.driver,
     this.paymentTiming,
     this.clientSecret,
+    this.paymentMethod,
+    this.paymentUrl,
     this.isScheduled = false,
     this.initialStatus,
     this.stops,

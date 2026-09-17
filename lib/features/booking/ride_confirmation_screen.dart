@@ -337,8 +337,8 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   }
 
   Future<void> _confirmRide() async {
-    // Proceed with Pay Later (Auth now, charge later) by default
-    _processBooking(PaymentTiming.payLater);
+    // Upfront contract (11-02): mandatory method, sheet-skipping payNow semantics.
+    _processBooking(PaymentTiming.payNow, paymentMethod: _selectedPaymentMethod);
 
     /* Original Pay Now / Pay Later selection logic - Commented for future iteration
     // Show payment choice popup
@@ -509,7 +509,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     PaymentTiming timing, {
     DateTime? scheduledAt,
     String? notes,
-    String? paymentMethod,
+    required String paymentMethod,
   }) async {
     debugPrint(
       '🚀 RideConfirmationScreen: Processing booking with timing: $timing',
@@ -532,7 +532,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
         vehicleCategorySlug: widget.categorySlug,
         distance: (distanceMiles as num).toDouble(),
         fare: _fare,
-        paymentMethod: paymentMethod ?? _selectedPaymentMethod,
+        paymentMethod: paymentMethod,
         paymentTiming: timing,
         scheduledAt: scheduledAt,
         notes: notes,
@@ -568,6 +568,73 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
             return;
           }
 
+          // Upfront contract (11-02): link opens WebView immediately at
+          // booking time; cash goes straight to driver-matching. Only a
+          // successful WebView result continues to driver search.
+          final dataMethod =
+              result.data!['paymentMethod']?.toString() ?? paymentMethod;
+          final isLink =
+              dataMethod == 'payment_link' || paymentMethod == 'payment_link';
+          if (isLink) {
+            final paymentUrl = result.data!['paymentUrl']?.toString();
+            if (paymentUrl == null || paymentUrl.isEmpty) {
+              if (mounted) {
+                setState(() => _isLoading = false);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Payment link missing. Please try again or choose Cash.',
+                    ),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+              }
+              return;
+            }
+            final webViewResult = await Navigator.of(context)
+                .push<Map<String, dynamic>>(
+                  MaterialPageRoute(
+                    builder: (_) => PaymentWebViewScreen(
+                      paymentUrl: paymentUrl,
+                      rideId: rideId,
+                    ),
+                  ),
+                );
+            if (!mounted) return;
+            if (webViewResult?['success'] == true) {
+              debugPrint(
+                '🚀 [RideConfirmationScreen] Payment success, navigating to RideAssignedScreen',
+              );
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(
+                  builder: (context) => RideAssignedScreen(
+                    rideId: rideId,
+                    driver: null, // No driver yet - will come via socket
+                    pickup: widget.pickupLocation,
+                    dropoff: widget.dropoffLocation,
+                    fare: _fare,
+                    paymentTiming: 'pay_now',
+                    clientSecret: result.data!['clientSecret']?.toString(),
+                    paymentMethod: dataMethod,
+                    paymentUrl: paymentUrl,
+                    stops: widget.stops,
+                  ),
+                ),
+              );
+            } else {
+              setState(() => _isLoading = false);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Payment cancelled. Your booking is not confirmed yet.',
+                  ),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+            }
+            return;
+          }
+
           debugPrint(
             '🚀 [RideConfirmationScreen] Navigating directly to RideAssignedScreen',
           );
@@ -586,6 +653,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                     ? 'pay_now'
                     : 'pay_later',
                 clientSecret: result.data!['clientSecret']?.toString(),
+                paymentMethod: dataMethod,
                 stops: widget.stops,
               ),
             ),
@@ -599,6 +667,15 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
               rideId: result.data?['rideId']?.toString(),
               amount: (result.data?['outstandingBalance'] as num?)?.toDouble(),
               message: result.error,
+            );
+          } else if (result.data?['missingPaymentMethod'] == true) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Please choose a payment method (Online or Cash).',
+                ),
+                backgroundColor: Colors.orange,
+              ),
             );
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -1419,6 +1496,92 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     );
   }
 
+  /// Mandatory upfront payment selector (11-02): Online (Card via Link)
+  /// vs Cash. Bound to [_selectedPaymentMethod]; no third option.
+  Widget _buildPaymentMethodSelector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Payment Method',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey[700],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _buildPaymentMethodOption(
+                icon: Icons.credit_card,
+                label: 'Online (Card via Link)',
+                value: 'payment_link',
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _buildPaymentMethodOption(
+                icon: Icons.money,
+                label: 'Cash',
+                value: 'cash',
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPaymentMethodOption({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    final isSelected = _selectedPaymentMethod == value;
+    return GestureDetector(
+      onTap: () => setState(() => _selectedPaymentMethod = value),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppTheme.primaryColor.withOpacity(0.08)
+              : Colors.grey[50],
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? AppTheme.primaryColor : Colors.grey[200]!,
+            width: isSelected ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 18,
+              color: isSelected ? AppTheme.primaryColor : Colors.grey[600],
+            ),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight:
+                      isSelected ? FontWeight.w600 : FontWeight.w500,
+                  color:
+                      isSelected ? AppTheme.primaryColor : Colors.grey[700],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildBottomBar() {
     // Check if there's a fare error
     final hasError = _fareError != null;
@@ -1584,6 +1747,12 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                   ],
                 ),
               ),
+              const SizedBox(height: 16),
+            ],
+
+            // Mandatory payment selector (11-02) — above the Confirm button.
+            if (!hasError) ...[
+              _buildPaymentMethodSelector(),
               const SizedBox(height: 16),
             ],
 
