@@ -14,6 +14,7 @@
 | 08 | 2/3 | Complete    | 2026-09-11 | SCHED-01..06 |
 | 09 | 2/2 | Complete    | 2026-09-12 | PROMO-01..04 |
 | 10 | 2/2 | Complete    | 2026-09-12 | STACK-01..04 |
+| 11 | Upfront Ride Payments | Planned | 3 | UPFRONT-01..05 |
 
 ---
 
@@ -243,3 +244,28 @@ Plans:
 - Cancel/taken rides vanish with explanatory feedback; survivors stay
 - Single-request flow pixel-identical to today
 - `flutter analyze` clean on touched files
+
+---
+
+## Phase 11: Upfront Ride Payments
+
+**Goal:** Payment method fixed at booking — rider picks Online (payment_link) or Cash upfront, pays via immediate WebView or rides cash, never re-prompted on driver arrival.
+
+**Requirements:**
+- **UPFRONT-01**: Mandatory payment selection (payment_link|cash) on booking screen before request
+- **UPFRONT-02**: paymentMethod sent in POST /rides/create and POST /rides/schedule; 400/403 handled
+- **UPFRONT-03**: payment_link opens paymentUrl WebView immediately at booking; cash goes direct to matching
+- **UPFRONT-04**: No POST /rides/:id/select-payment on driver arrival (display booking method only)
+- **UPFRONT-05**: Startup GET /payments/balance surfaces outstanding balance with pay link
+
+**Plans:** 3 plans
+Plans:
+- [ ] `11-01-PLAN.md` — API contract: mandatory paymentMethod, instant paymentUrl parsing, 400/403, balance tolerance + tests
+- [ ] `11-02-PLAN.md` — Booking UI: mandatory Online-vs-Cash toggle + immediate link/cash routing (instant + scheduled)
+- [ ] `11-03-PLAN.md` — Arrival cleanup: remove late select-payment, display-only method chip, mapper copy, startup banner verify
+
+**Success Criteria:**
+- Every booking POST carries cash|payment_link; link opens WebView at booking, cash skips it
+- Zero select-payment calls on driver arrival; arrival shows Continue only
+- 400/403 produce friendly actionable UI; startup debt banner opens pay link
+- `flutter analyze` clean; contract tests green
