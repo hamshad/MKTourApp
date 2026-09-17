@@ -64,6 +64,81 @@ class OutstandingBalance {
     );
   }
 
+  /// Parse `POST /payments/balance/:rideId/select-method` response envelope.
+  ///
+  /// Tolerates flat `paymentUrl` AND nested `data.payment.paymentUrl`,
+  /// amount keys `excessAmount ?? outstandingBalance ?? amount`, a flat
+  /// envelope with keys at top level (no `data` wrapper), and a list
+  /// envelope (first entry wins). Cash selections carry no `paymentUrl`
+  /// (null); `payment_link` selections carry one. `succeeded` status
+  /// parses as paid with zero amount. Mirrors `fromBalanceEnvelope`.
+  static OutstandingBalance? fromSelectMethodEnvelope(
+    Map<String, dynamic> envelope,
+    String fallbackRideId,
+  ) {
+    var data = envelope['data'];
+    // Tolerate a list envelope (first entry wins).
+    if (data is List && data.isNotEmpty) data = data.first;
+    late final Map<String, dynamic> m;
+    if (data is Map) {
+      m = Map<String, dynamic>.from(data);
+    } else if (data == null) {
+      // Tolerate a flat envelope with keys at top level (no `data` wrapper).
+      m = Map<String, dynamic>.from(envelope)..remove('success');
+    } else {
+      return null;
+    }
+    final status =
+        m['status']?.toString() ?? envelope['status']?.toString() ?? '';
+    if (status == 'succeeded') {
+      return OutstandingBalance(
+        rideId:
+            m['rideId']?.toString() ??
+            envelope['rideId']?.toString() ??
+            fallbackRideId,
+        amount: 0,
+        status: status,
+        message:
+            m['message']?.toString() ??
+            envelope['message']?.toString() ??
+            'Balance already paid.',
+      );
+    }
+    // paymentUrl may be nested under data.payment.paymentUrl.
+    final nestedPayment = m['payment'];
+    final String? paymentUrl = (nestedPayment is Map
+            ? nestedPayment['paymentUrl']?.toString()
+            : null) ??
+        m['paymentUrl']?.toString() ??
+        envelope['paymentUrl']?.toString();
+    final rideId =
+        m['rideId']?.toString() ??
+        envelope['rideId']?.toString() ??
+        fallbackRideId;
+    final hasAmount = m.containsKey('excessAmount') ||
+        m.containsKey('outstandingBalance') ||
+        m.containsKey('amount');
+    if ((rideId.isEmpty && fallbackRideId.isEmpty) &&
+        !hasAmount &&
+        paymentUrl == null &&
+        status.isEmpty) {
+      return null;
+    }
+    return OutstandingBalance(
+      rideId: rideId.isEmpty ? fallbackRideId : rideId,
+      amount: _num(
+        m['excessAmount'] ?? m['outstandingBalance'] ?? m['amount'],
+      ),
+      status: status.isEmpty ? 'balance_due' : status,
+      message: m['message']?.toString() ??
+          envelope['message']?.toString() ??
+          'Outstanding balance. Please complete payment.',
+      paymentUrl: paymentUrl,
+      clientSecret:
+          m['clientSecret']?.toString() ?? envelope['clientSecret']?.toString(),
+    );
+  }
+
   /// Parse the 403 block from `POST /rides/create` (payment-flow.md §7).
   /// Accepts excessAmount fallback and copies paymentUrl when present.
   static OutstandingBalance? fromForbiddenEnvelope(Map<String, dynamic> envelope) {

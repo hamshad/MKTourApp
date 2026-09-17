@@ -687,6 +687,26 @@ class SocketService with WidgetsBindingObserver {
     off('payment:failed');
   }
 
+  /// Rider requested to pay excess balance in cash (INTEGRATION-GUIDE.md §2A).
+  /// Driver shows "Collect Cash £X" modal. Payload: {rideId, excessAmount}.
+  void onExcessCashRequested(void Function(dynamic) handler) {
+    on('payment:excessCashRequested', handler);
+  }
+
+  void offExcessCashRequested() {
+    off('payment:excessCashRequested');
+  }
+
+  /// Rider switched back to online payment; driver auto-closes the cash
+  /// confirmation modal (INTEGRATION-GUIDE.md §2C).
+  void onExcessCashCancelled(void Function(dynamic) handler) {
+    on('payment:excessCashCancelled', handler);
+  }
+
+  void offExcessCashCancelled() {
+    off('payment:excessCashCancelled');
+  }
+
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   void disconnect() {
