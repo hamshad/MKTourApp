@@ -13,7 +13,6 @@ import '../../core/api_service.dart';
 import '../../core/services/navigation_service.dart';
 import '../../core/services/places_service.dart';
 import '../../core/services/marker_interpolation_service.dart';
-import '../../core/services/payment_service.dart';
 import '../../core/models/error_display_helper.dart';
 import '../../core/widgets/platform_map.dart';
 import '../../core/widgets/route_map_helpers.dart';
@@ -22,7 +21,6 @@ import '../../core/models/outstanding_balance.dart';
 import 'outstanding_balance_screen.dart';
 import '../../core/widgets/ride_searching_overlay.dart';
 import 'ride_complete_screen.dart';
-import 'payment_webview_screen.dart';
 import 'widgets/driver_arrived_sheet.dart';
 
 class RideAssignedScreen extends StatefulWidget {
@@ -171,8 +169,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   bool _isPaymentMethodSelected = false;
   String _selectedPaymentMethodDisplay = '';
 
-  // Chrome Custom Tab payment link tracking
-  // Payment link now uses PaymentWebViewScreen (direct result via Navigator)
+  // Upfront-payments: online payment happens at booking time (prebooking
+  // WebView). No arrival-time payment sheet lives on this screen.
 
   // Prevent concurrent socket listener re-registration (initState vs reconnect)
   bool _setupInProgress = false;
@@ -191,17 +189,12 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   // Deferred payment data for scheduled airport rides (waiting for ride:earlyCompleted)
   Map<String, dynamic>? _deferredPaymentSuccessData;
 
-  // Payment sheet/loading guards — prevent stacked sheets and popping wrong routes.
-  // Without these, every API/WebView failure re-showed the same sheet -> infinite loop.
-  bool _isPaymentSheetOpen = false;
   // Arrived-sheet guard — the driverArrived socket event can refire; never
-  // stack a second arrived sheet over the payment flow.
+  // stack a second arrived sheet.
   bool _isArrivedSheetOpen = false;
-  bool _isPaymentLoadingShowing = false;
-  int _paymentRetryCount = 0;
-  static const int _maxPaymentRetries = 3;
-  // In-flight guard: blocks double-tap on payment rows while a
-  // select-payment request is still running.
+  // Payment attempt guards — retained for the `payment:failed` socket
+  // deferral below. No arrival-time selection flow exists on this screen
+  // (upfront-payments: method fixed at booking).
   bool _isSelectingPayment = false;
   // Selection generation: each new payment attempt bumps this. Stale async
   // callbacks (e.g. a cancelled payment_link WebView resolving after the
@@ -212,9 +205,6 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   // Receipt navigation guard: completed events fan out from several sources
   // (socket, FCM, pay-later completion) — the receipt pushes exactly once.
   bool _didNavigateToReceipt = false;
-  // Inline sheet error (e.g. invalid-method 400) — rendered inside the
-  // bottom sheet so the rider stays on the sheet instead of dead-ending.
-  String? _paymentSheetError;
   // Method of the last successful selection. Late failure callbacks for a
   // superseded method (e.g. a cancelled payment_link resolving after cash
   // succeeded) are ignored once this is set.
@@ -254,6 +244,59 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     if (display.contains('cash')) return 'cash';
     if (display.contains('payment link')) return 'payment_link';
     return null;
+  }
+
+  /// Booking-time payment method for the display-only arrival chip.
+  ///
+  /// Upfront-payments: the method was fixed at booking (`POST /rides/create`
+  /// with `paymentMethod`), so arrival never POSTs `select-payment`. Same
+  /// source as [_resolveReceiptPaymentMethod].
+  String? _bookingPaymentMethod() {
+    if (_promoFullyCovered) return 'free';
+    return _resolveReceiptPaymentMethod(_completedRideData);
+  }
+
+  /// Non-tappable chip showing the booking-time method throughout the trip.
+  /// Cash → "pay driver directly", payment_link → "paid via link".
+  Widget _buildBookingMethodChip() {
+    final method = _bookingPaymentMethod();
+    if (method == null || method.isEmpty) return const SizedBox.shrink();
+    final bool isCash = method == 'cash';
+    final bool isFree = method == 'free' ||
+        _selectedPaymentMethodDisplay.toLowerCase().contains('free');
+    final String label = isFree
+        ? 'Free ride — no payment needed'
+        : isCash
+            ? 'Cash — pay driver directly'
+            : 'Online — paid via link';
+    final IconData icon =
+        isFree ? Icons.card_giftcard : isCash ? Icons.money : Icons.link;
+    final Color color =
+        isFree ? const Color(0xFF16A34A) : Colors.grey.shade700;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -2061,6 +2104,15 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
             }
             if (fare != null) _currentFare = fare;
             if (rideData['isScheduled'] == true) _isScheduled = true;
+            // Upfront-payments: capture the booking-time method so the
+            // display-only arrival chip has data (never re-asked).
+            final arrivedPm = rideData['paymentMethod']?.toString() ??
+                (rideData['ride'] is Map
+                    ? (rideData['ride'] as Map)['paymentMethod']?.toString()
+                    : null);
+            if (arrivedPm != null && arrivedPm.isNotEmpty) {
+              _completedPaymentMethod = arrivedPm;
+            }
           });
         }
       }).catchError((e) {
@@ -2079,11 +2131,12 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   /// bottom sheet is scroll-bounded, thumb-friendly, and matches the Uber /
   /// Bolt arrival pattern.
   ///
+  /// Upfront-payments: the payment method was fixed at booking, so Continue
+  /// only dismisses the sheet into the trip flow — no payment modal follows.
+  ///
   /// NOTE: no PopScope here on purpose — PopScope(canPop: false) also vetoes
-  /// the *programmatic* Navigator.pop in onContinue, which left this sheet
-  /// stuck open underneath the payment sheet (rider had to tap twice).
-  /// Dismissal is locked via isDismissible/enableDrag; a back-button dismiss
-  /// is safe because the status panel keeps a "Continue to Payment" fallback.
+  /// the *programmatic* Navigator.pop in onContinue, which would leave this
+  /// sheet stuck open. Dismissal is locked via isDismissible/enableDrag.
   void _showDriverArrivedDialog() {
     if (!mounted || _isArrivedSheetOpen) return;
     _isArrivedSheetOpen = true;
@@ -2113,11 +2166,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         vehicleColor: vehicleColor,
         vehicleNumber: vehicleNumber,
         pickupAddress: _pickupAddress,
-        continueLabel:
-            _promoFullyCovered ? 'Continue' : 'Continue to Payment',
+        continueLabel: 'Continue',
         onContinue: () {
           Navigator.pop(context);
-          _showPaymentSelectionModal();
         },
       ),
     ).whenComplete(() {
@@ -2222,27 +2273,25 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     if (!mounted) return;
     // Never pop failure UI over the live trip.
     if (_rideStatus == 'in_progress') return;
+    // Upfront-payments: the booking-time method is fixed, so there is no
+    // arrival-time sheet to retry with — surface central mapper copy only.
+    final info = RideErrorMapper.map(message);
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Text('Payment Failed'),
-        content: Text(message),
+        title: Text(info.title),
+        content: Text(info.copy),
         actions: [
           TextButton(
             onPressed: () {
-              Navigator.pop(context); // Close dialog
-              _showPaymentSelectionModal(); // Allow retry
+              Navigator.pop(context);
             },
-            child: const Text('Select Payment Method'),
+            child: const Text('OK'),
           ),
         ],
       ),
     );
-
-    setState(() {
-      _isPaymentMethodSelected = false;
-    });
   }
 
   /// Open the outstanding-balance screen from a `payment:balanceDue`
@@ -2592,97 +2641,15 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
               ),
             ),
 
-            // Payment Method Badge
-            if (_isPaymentMethodSelected &&
-                _selectedPaymentMethodDisplay.isNotEmpty)
-              Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.grey[100],
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.grey[300]!),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      _selectedPaymentMethodDisplay.toLowerCase().contains(
-                            'link',
-                          )
-                          ? Icons.link
-                          : _selectedPaymentMethodDisplay
-                                .toLowerCase()
-                                .contains('card')
-                          ? Icons.credit_card
-                          : _selectedPaymentMethodDisplay
-                                .toLowerCase()
-                                .contains('free')
-                          ? Icons.card_giftcard
-                          : Icons.money,
-                      size: 14,
-                      color:
-                          _selectedPaymentMethodDisplay.toLowerCase().contains(
-                            'free',
-                          )
-                          ? const Color(0xFF16A34A)
-                          : Colors.grey[700],
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Payment: $_selectedPaymentMethodDisplay',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color:
-                            _selectedPaymentMethodDisplay
-                                .toLowerCase()
-                                .contains('free')
-                            ? const Color(0xFF16A34A)
-                            : Colors.grey[700],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+            // Booking-time payment method (upfront-payments): display-only
+            // chip. The method was fixed at booking — never re-asked here.
+            _buildBookingMethodChip(),
 
-            // Fallback entry to payment: if the arrived sheet was dismissed
-            // (e.g. back button), the rider can still continue from here and
-            // is never stranded without a next step.
-            if (_rideStatus == 'driver_arrived' && !_isPaymentMethodSelected)
-              Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed:
-                      _isPaymentSheetOpen ? null : _showPaymentSelectionModal,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    elevation: 2,
-                  ),
-                  child: Text(
-                    _promoFullyCovered ? 'Continue' : 'Continue to Payment',
-                    style: const TextStyle(
-                      fontSize: 15.5,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
-
-            // No-code boarding in the new flow. Once payment is
-            // selected, the rider just boards; driver starts without a code.
-            if ((_rideStatus == 'accepted' ||
-                    _rideStatus == 'driver_arrived') &&
-                _isPaymentMethodSelected)
+            // No-code boarding in the new flow. The rider just boards;
+            // driver starts without a code. Upfront-payments: no payment
+            // gate — the chip above is display-only.
+            if (_rideStatus == 'accepted' ||
+                _rideStatus == 'driver_arrived')
               Container(
                 margin: const EdgeInsets.only(bottom: 16),
                 padding: const EdgeInsets.symmetric(
@@ -2926,774 +2893,5 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       ],
     );
   }
-
-  void _closePaymentLoading() {
-    if (_isPaymentLoadingShowing && mounted) {
-      _isPaymentLoadingShowing = false;
-      try {
-        Navigator.of(context, rootNavigator: true).pop();
-        debugPrint('💸 [Payment] ✅ Closed loading dialog');
-      } catch (e) {
-        debugPrint('⚠️ [Payment] Loading dialog pop failed: $e');
-      }
-    }
-  }
-
-  /// Settle-check: after select-payment returns success WITHOUT confirming
-  /// the method (e.g. cash tapped right after a payment_link cancel while
-  /// the backend is still settling), wait briefly and re-read the ride. True
-  /// only if the server now reports the expected method — so a single tap
-  /// still lands instead of forcing the rider to tap twice.
-  Future<bool> _awaitMethodConfirmation(String expected, int seq) async {
-    if (mounted) {
-      _isPaymentLoadingShowing = true;
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) =>
-            const Center(child: CircularProgressIndicator()),
-      );
-    }
-    try {
-      await Future.delayed(const Duration(seconds: 2));
-      if (!mounted || seq != _paymentSelectionSeq) return false;
-      final response = await _apiService.getRideDetails(widget.rideId);
-      final data = response['data'];
-      String? confirmed;
-      if (data is Map) {
-        confirmed = data['paymentMethod']?.toString() ??
-            (data['ride'] is Map
-                ? (data['ride'] as Map)['paymentMethod']?.toString()
-                : null);
-      }
-      debugPrint('💸 [Payment] Settle-check method: $confirmed');
-      return confirmed == expected;
-    } catch (e) {
-      debugPrint('⚠️ [Payment] Settle-check failed: $e');
-      return false;
-    } finally {
-      _closePaymentLoading();
-    }
-  }
-
-  /// Map raw backend/exception text to a user-facing explanation.
-  String _friendlyPaymentError(String raw) {
-    final lower = raw.toLowerCase();
-    if (lower.contains('no auth token') ||
-        lower.contains('unauthorized') ||
-        lower.contains('401') ||
-        lower.contains('token')) {
-      return 'Your session expired. Please log out and log back in, then try again.';
-    }
-    if (lower.contains('already') && lower.contains('payment')) {
-      return 'The backend says a payment method is already set for this ride. Pull-to-refresh or restart the app to sync, then continue.';
-    }
-    if (lower.contains('invalid payment method')) {
-      return 'The app sent a payment type the server does not accept. This is an app/backend version mismatch — please update the app.';
-    }
-    if (lower.contains('not found') ||
-        lower.contains('no ride') ||
-        lower.contains('cancelled') ||
-        lower.contains('expired')) {
-      return 'This ride is no longer active on the server (expired or cancelled). Please book again.';
-    }
-    if (lower.contains('sockethost') ||
-        lower.contains('socketexception') ||
-        lower.contains('failed host') ||
-        lower.contains('connection') ||
-        lower.contains('network') ||
-        lower.contains('timeout')) {
-      return 'Network problem — the request never reached the server. Check your connection and try again.';
-    }
-    if (lower.contains('no payment link')) {
-      return 'The server did not return a payment link. The online-payment provider may be down — try Cash or retry in a moment.';
-    }
-    return 'The server rejected the payment request. See the server message below.';
-  }
-
-  /// Backendfailure dialog: explains WHAT failed and WHY instead of silently
-  /// re-showing the same bottom sheet (the old infinite-loop behaviour).
-  void _showPaymentErrorDialog({
-    required String method,
-    required String serverMessage,
-  }) {
-    if (!mounted) return;
-    _paymentRetryCount++;
-    final friendly = _friendlyPaymentError(serverMessage);
-    final limitReached = _paymentRetryCount >= _maxPaymentRetries;
-    debugPrint('❌ [Payment] Showing error dialog (retry $_paymentRetryCount): $serverMessage');
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.error_outline, color: Colors.red),
-            SizedBox(width: 8),
-            Text('Payment failed'),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                friendly,
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Method: $method',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Server: $serverMessage',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Ride: ${widget.rideId}',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
-              if (limitReached) ...[
-                const SizedBox(height: 12),
-                const Text(
-                  'Tried several times without success. Please contact support with the ride ID above.',
-                  style: TextStyle(fontSize: 12, color: Colors.red),
-                ),
-              ],
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Close'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(dialogContext); // Close dialog
-              _showPaymentSelectionModal(); // Let user pick again
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-            child: const Text(
-              'Try Again',
-              style: TextStyle(color: Colors.white),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showPaymentSelectionModal() {
-    if (!mounted) return;
-    if (_isPaymentSheetOpen) {
-      debugPrint('⚠️ [Payment] Sheet already open — skipping duplicate show');
-      return;
-    }
-    // Skip the modal entirely if the ride is fully covered by a promo.
-    // Also infer it at call-time: if it's a promo ride and fare is 0, treat as fully covered.
-    final bool effectivelyFree =
-        _promoFullyCovered ||
-        (_isPromoRide && _currentFare != null && _currentFare == 0.0);
-    if (effectivelyFree) {
-      if (!_promoFullyCovered) {
-        setState(() => _promoFullyCovered = true);
-      }
-      _handlePaymentSelection('cash', fromAutoSelect: true);
-      return;
-    }
-    _isPaymentSheetOpen = true;
-    _paymentSheetError = null;
-    final fareHint = _currentFare ?? widget.fare;
-    showModalBottomSheet(
-      context: context,
-      isDismissible: false,
-      enableDrag: false,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (sheetContext) => WillPopScope(
-        onWillPop: () async => false,
-        child: SafeArea(
-          child: SingleChildScrollView(
-            padding: EdgeInsets.only(
-              left: 24,
-              right: 24,
-              top: 24,
-              bottom: 24 + MediaQuery.of(sheetContext).padding.bottom,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Select Payment Method',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textPrimary,
-                  ),
-                ),
-                if (_isPromoRide) ...[
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF22C55E).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: const Color(0xFF22C55E).withOpacity(0.3),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        Text('🎁 ', style: TextStyle(fontSize: 14)),
-                        Text(
-                          '£4.45 discount applied!',
-                          style: TextStyle(
-                            color: Color(0xFF16A34A),
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 24),
-                if (_paymentSheetError != null) ...[
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.red.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.red.shade200),
-                    ),
-                    child: Text(
-                      _paymentSheetError!,
-                      style: TextStyle(
-                        color: Colors.red.shade700,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                ],
-                // Cash option — close sheet with its own context first,
-                // then run selection (avoids popping the wrong route).
-                _buildPaymentOption(
-                  icon: Icons.payments_outlined,
-                  title: 'Cash',
-                  subtitle:
-                      'Pay £${fareHint.toStringAsFixed(2)} directly to driver · no fee',
-                  onTap: () {
-                    Navigator.pop(sheetContext);
-                    _handlePaymentSelection('cash', fromAutoSelect: true);
-                  },
-                ),
-                const SizedBox(height: 16),
-                // Payment Link option - available on both iOS and Android
-                _buildPaymentOption(
-                  icon: Icons.link_outlined,
-                  title: 'Payment Link',
-                  subtitle:
-                      'Pay £${fareHint.toStringAsFixed(2)} via online link · no fee',
-                  onTap: () {
-                    Navigator.pop(sheetContext);
-                    _handlePaymentSelection(
-                      'payment_link',
-                      fromAutoSelect: true,
-                    );
-                  },
-                ),
-                const SizedBox(height: 24),
-              ],
-            ),
-          ),
-        ),
-      ),
-    ).whenComplete(() {
-      _isPaymentSheetOpen = false;
-    });
-  }
-
-  void _reopenPaymentSelectionModal({int? seq}) {
-    if (!mounted) return;
-    final captured = seq ?? _paymentSelectionSeq;
-    scheduleMicrotask(() {
-      if (!mounted) return;
-      // Superseded by a newer payment attempt (e.g. cash picked after a
-      // payment_link cancel) — never reopen over the newer flow.
-      if (captured != _paymentSelectionSeq) {
-        debugPrint(
-          '⚠️ [Payment] Ignoring stale sheet reopen (seq $captured < $_paymentSelectionSeq)',
-        );
-        return;
-      }
-      _showPaymentSelectionModal();
-    });
-  }
-
-  Widget _buildPaymentOption({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.grey[300]!),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(icon, color: AppTheme.primaryColor),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.textPrimary,
-                    ),
-                  ),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppTheme.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Spacer(),
-            const Icon(Icons.chevron_right, color: Colors.grey),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _handlePaymentSelection(
-    String method, {
-    bool fromAutoSelect = false,
-  }) async {
-    // In-flight guard: ignore double-taps while a selection is running.
-    if (_isSelectingPayment) {
-      debugPrint('⚠️ [Payment] Selection already in flight — ignoring $method');
-      return;
-    }
-    _isSelectingPayment = true;
-    // New attempt supersedes any pending callbacks from an earlier one.
-    _paymentSelectionSeq++;
-    try {
-      await _runPaymentSelection(
-        method,
-        fromAutoSelect: fromAutoSelect,
-        seq: _paymentSelectionSeq,
-      );
-    } finally {
-      _isSelectingPayment = false;
-    }
-  }
-
-  Future<void> _runPaymentSelection(
-    String method, {
-    bool fromAutoSelect = false,
-    required int seq,
-  }) async {
-    debugPrint('═══════════════════════════════════════════════════════════');
-    debugPrint(
-      '💸 [Payment] ============ PAYMENT SELECTION START ============',
-    );
-    debugPrint('💸 [Payment] Method selected: $method');
-    debugPrint('💸 [Payment] Ride ID: ${widget.rideId}');
-
-    // NOTE: the sheet is already closed by the onTap handler using the
-    // sheet's own context. The legacy `if (!fromAutoSelect) pop` path is
-    // kept only for callers that show the sheet differently.
-    if (!fromAutoSelect) {
-      if (_isPaymentSheetOpen && Navigator.canPop(context)) {
-        Navigator.pop(context); // Close selection modal
-        debugPrint('💸 [Payment] ✅ Closed payment modal');
-      }
-    }
-
-    // Show loading (tracked so only the dialog is ever popped)
-    if (mounted) {
-      _isPaymentLoadingShowing = true;
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(child: CircularProgressIndicator()),
-      );
-      debugPrint('💸 [Payment] ✅ Showing loading dialog');
-    }
-
-    try {
-      debugPrint('💸 [Payment] 📤 Sending request to backend...');
-      final response = await _apiService.selectPaymentMethod(
-        widget.rideId,
-        method,
-      );
-
-      // Superseded while the request was in flight (a newer attempt started)
-      // — dismiss our loader and bail; the newer flow owns the UI now.
-      if (!mounted || seq != _paymentSelectionSeq) {
-        _closePaymentLoading();
-        debugPrint(
-          '⚠️ [Payment] Ignoring stale $method response (seq $seq < $_paymentSelectionSeq)',
-        );
-        return;
-      }
-
-      debugPrint('💸 [Payment] 📥 Received response from backend');
-      debugPrint('💸 [Payment] Response: $response');
-
-      // Keep loading dialog open while payment sheet initializes
-      // Will be closed after payment completes or fails
-
-      if (response['success'] == true) {
-        debugPrint('💸 [Payment] ✅ Response success = true');
-        final data = response['data'];
-        debugPrint('💸 [Payment] Data: $data');
-
-        // Handle nested ride structure (data.ride) or flat structure (data)
-        final rideData = data['ride'] ?? data;
-        debugPrint('💸 [Payment] Ride data: $rideData');
-
-        // NEW: Handle promo fields
-        final bool isPromoRide = rideData['isPromoRide'] == true;
-        final bool promoFullyCovered = rideData['promoFullyCovered'] == true;
-        final double? originalFare = rideData['originalFare'] != null
-            ? (rideData['originalFare'] as num).toDouble()
-            : null;
-        final double? newFare = rideData['amount'] != null
-            ? (rideData['amount'] as num).toDouble() /
-                  100.0 // assumed amount is in pence/cents
-            : null;
-
-        // Infer fully-covered from amount==0 when backend omits promoFullyCovered
-        final bool effectiveFullyCovered =
-            promoFullyCovered ||
-            (isPromoRide &&
-                rideData['amount'] != null &&
-                (rideData['amount'] as num) == 0);
-
-        if (isPromoRide || effectiveFullyCovered) {
-          setState(() {
-            _isPromoRide = true;
-            _promoFullyCovered = effectiveFullyCovered;
-            if (originalFare != null) _promoOriginalFare = originalFare;
-            if (newFare != null) _currentFare = newFare;
-          });
-        }
-
-        if (effectiveFullyCovered) {
-          // Skip payment entirely as it's a free ride
-          _closePaymentLoading();
-          _paymentRetryCount = 0;
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('🎁 Your ride is free! No payment needed.'),
-              backgroundColor: Colors.green,
-              duration: Duration(seconds: 4),
-            ),
-          );
-
-          setState(() {
-            _isPaymentMethodSelected = true;
-            _selectedPaymentMethodDisplay = 'Free Ride 🎁';
-          });
-          return;
-        }
-
-        if (isPromoRide) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('🎁 £4.45 discount applied!'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-
-        final paymentMethod = rideData['paymentMethod'];
-        debugPrint('💸 [Payment] Method from response: $paymentMethod');
-
-        // Backend only supports `cash` and `payment_link` — any other echoed
-        // method is a version mismatch; surface it instead of branching into
-        // a client flow the server rejects.
-        if (paymentMethod != null &&
-            paymentMethod != 'cash' &&
-            paymentMethod != 'payment_link') {
-          _closePaymentLoading();
-          if (!mounted) return;
-          _showPaymentErrorDialog(
-            method: method,
-            serverMessage:
-                'Unsupported payment method "$paymentMethod" returned by server. Please update the app and try Cash.',
-          );
-          return;
-        }
-        if (paymentMethod == 'payment_link' && method != 'cash') {
-          final paymentUrl = rideData['paymentUrl'];
-          debugPrint('🔗 [Payment Link] URL present: ${paymentUrl != null}');
-          if (paymentUrl != null) {
-            debugPrint('🔗 [Payment Link] URL: $paymentUrl');
-          }
-
-          // Close loading dialog before opening browser / WebView
-          _closePaymentLoading();
-          if (paymentUrl != null) {
-            // ── In-app WebView (same as prebooking) ──────────────────
-            debugPrint('✅ [Payment Link] Opening in-app WebView');
-
-            final result = await Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => PaymentWebViewScreen(
-                  paymentUrl: paymentUrl,
-                  rideId: widget.rideId,
-                ),
-              ),
-            );
-
-            // The WebView may resolve after the rider moved on (cancelled the
-            // link, then picked cash and the trip started) — a stale success
-            // or cancel here must not touch the newer flow.
-            if (!mounted || seq != _paymentSelectionSeq) {
-              debugPrint(
-                '⚠️ [Payment] Ignoring stale payment_link WebView result (seq $seq < $_paymentSelectionSeq)',
-              );
-              return;
-            }
-
-            if (result != null && result['success'] == true) {
-              debugPrint('✅ [Payment Link] Payment completed successfully');
-              _paymentRetryCount = 0;
-              _completedPaymentMethod = 'payment_link';
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Payment successful! You can now board.'),
-                  backgroundColor: Colors.green,
-                ),
-              );
-              setState(() {
-                _isPaymentMethodSelected = true;
-                _selectedPaymentMethodDisplay = 'Payment Link';
-              });
-            } else {
-              // User cancelled/closed WebView (NOT a backend failure):
-              // let them pick again, no error dialog needed.
-              debugPrint('❌ [Payment Link] Payment cancelled or failed');
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'Payment was not completed. Please try again.',
-                  ),
-                  backgroundColor: Colors.orange,
-                ),
-              );
-              _reopenPaymentSelectionModal(seq: seq);
-            }
-          } else {
-            debugPrint('❌ [Payment Link] URL missing in response');
-            if (!mounted) return;
-            _showPaymentErrorDialog(
-              method: method,
-              serverMessage:
-                  'No payment link provided by server. The online-payment provider may be down — try Cash.',
-            );
-          }
-        } else if (paymentMethod == 'cash') {
-          // Cash payment — always dismiss the loader first, then drive the
-          // status forward: the backend may have already started the ride,
-          // so sync immediately instead of waiting on the socket event.
-          _closePaymentLoading();
-          _paymentRetryCount = 0;
-          _completedPaymentMethod = 'cash';
-
-          debugPrint('💵 [Cash] Payment method selected');
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Cash payment selected. You can now board.'),
-              backgroundColor: Colors.green,
-            ),
-          );
-          setState(() {
-            _isPaymentMethodSelected = true;
-            _selectedPaymentMethodDisplay = 'Cash';
-          });
-          // Pull the authoritative status — flips to in_progress UI when the
-          // server already started the trip.
-          _syncRideStatus();
-        } else {
-          // success:true but the server did NOT confirm the requested method
-          // (missing/echoed value — typical right after a payment_link cancel
-          // while the backend is still settling). Never celebrate here: that
-          // fake success left the driver blocked at "select payment method".
-          _closePaymentLoading();
-          debugPrint(
-            '⚠️ [Payment] Server did not confirm "$method" (echo: $paymentMethod) — settle-check before failing',
-          );
-          var confirmed = await _awaitMethodConfirmation(method, seq);
-          if (!mounted || seq != _paymentSelectionSeq) return;
-          if (!confirmed) {
-            // One automatic retry: the first select raced the link-cancel
-            // settling server-side. This is the second tap the rider
-            // previously had to do manually.
-            debugPrint('💸 [Payment] Retrying select "$method" once...');
-            if (mounted) {
-              _isPaymentLoadingShowing = true;
-              showDialog(
-                context: context,
-                barrierDismissible: false,
-                builder: (context) =>
-                    const Center(child: CircularProgressIndicator()),
-              );
-            }
-            try {
-              final retry = await _apiService.selectPaymentMethod(
-                widget.rideId,
-                method,
-              );
-              _closePaymentLoading();
-              if (seq != _paymentSelectionSeq) return;
-              final retryData =
-                  retry['data'] is Map ? retry['data'] as Map : {};
-              final retryRide = retryData['ride'] is Map
-                  ? retryData['ride'] as Map
-                  : retryData;
-              if (retry['success'] == true &&
-                  retryRide['paymentMethod']?.toString() == method) {
-                confirmed = true;
-              } else {
-                confirmed = await _awaitMethodConfirmation(method, seq);
-                if (!mounted || seq != _paymentSelectionSeq) return;
-              }
-            } catch (e) {
-              debugPrint('⚠️ [Payment] Retry failed: $e');
-              _closePaymentLoading();
-              if (!mounted || seq != _paymentSelectionSeq) return;
-            }
-          }
-          if (confirmed) {
-            _paymentRetryCount = 0;
-            _completedPaymentMethod = method;
-            if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  '${method == 'cash' ? 'Cash' : method} payment selected. You can now board.',
-                ),
-                backgroundColor: Colors.green,
-              ),
-            );
-            setState(() {
-              _isPaymentMethodSelected = true;
-              _selectedPaymentMethodDisplay =
-                  method == 'cash' ? 'Cash' : method;
-            });
-            _syncRideStatus();
-            return;
-          }
-          if (!mounted) return;
-          _showPaymentErrorDialog(
-            method: method,
-            serverMessage:
-                'The server has not confirmed "$method" yet — the previous step may still be settling. Please try again in a moment.',
-          );
-        }
-      } else {
-        debugPrint('❌ [Payment] Response success = false');
-        debugPrint('💸 [Payment] Error message: ${response['message']}');
-
-        // Backend rejected the request — explain it, don't loop the sheet.
-        _closePaymentLoading();
-
-        if (!mounted) return;
-        final serverMessage = (response['message']?.toString() ??
-            'Failed to select payment method');
-        // Invalid-method 400 → inline error via RideErrorMapper, stay on
-        // the sheet so the rider can pick another method (no dead-end).
-        if (serverMessage.toLowerCase().contains('invalid payment method')) {
-          final info = RideErrorMapper.map(
-            serverMessage,
-            response['errors'],
-          );
-          setState(() {
-            _paymentSheetError = '${info.title}: ${info.copy}';
-          });
-          if (mounted) {
-            ErrorDisplayHelper.showRideError(
-              context,
-              serverMessage,
-              errors: response['errors'],
-              onAction: _reopenPaymentSelectionModal,
-            );
-          }
-          _reopenPaymentSelectionModal(seq: seq);
-          return;
-        }
-        _showPaymentErrorDialog(
-          method: method,
-          serverMessage: serverMessage,
-        );
-      }
-    } catch (e) {
-      debugPrint('❌ [Payment] EXCEPTION CAUGHT: $e');
-      debugPrint('💸 [Payment] Stack trace: $e');
-
-      // Close loading dialog on exception
-      _closePaymentLoading();
-
-      if (!mounted) return;
-      _showPaymentErrorDialog(method: method, serverMessage: 'Error: $e');
-      debugPrint('═══════════════════════════════════════════════════════════');
-    }
-  }
 }
+
