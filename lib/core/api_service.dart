@@ -1095,6 +1095,24 @@ class ApiService {
     return await _postRequest(ApiConstants.confirmCash(rideId), {});
   }
 
+  /// Stage 2 settlement: rider selects cash or payment_link for excess balance
+  /// (INTEGRATION-GUIDE.md §1A). payment_link returns paymentUrl for WebView;
+  /// cash puts the flow in driver-confirm waiting state. Never throws.
+  Future<Map<String, dynamic>> selectBalanceMethod(
+    String rideId,
+    String paymentMethod,
+  ) async {
+    return await _postRequest(ApiConstants.selectBalanceMethod(rideId), {
+      'paymentMethod': paymentMethod,
+    });
+  }
+
+  /// Driver confirms cash receipt for excess balance (INTEGRATION-GUIDE.md §2B).
+  /// Rider closes on payment:succeeded. Never throws.
+  Future<Map<String, dynamic>> confirmDriverCash(String rideId) async {
+    return await _postRequest(ApiConstants.confirmDriverCash(rideId), {});
+  }
+
   /// Global outstanding-balance check (no rideId).
   ///
   /// 200 + data object → account suspended (balance_due) with shape

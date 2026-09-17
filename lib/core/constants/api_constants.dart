@@ -108,6 +108,15 @@ class ApiConstants {
   static String paymentBalance(String rideId) =>
       '$baseUrl/payments/balance/$rideId';
 
+  /// Stage 2 settlement method selection (INTEGRATION-GUIDE.md §1A).
+  /// Rider picks cash (driver confirms) or payment_link (WebView paymentUrl).
+  static String selectBalanceMethod(String rideId) =>
+      '$baseUrl/payments/balance/$rideId/select-method';
+
+  /// Driver confirms cash receipt for excess balance (INTEGRATION-GUIDE.md §2B).
+  static String confirmDriverCash(String rideId) =>
+      '$baseUrl/payments/balance/$rideId/confirm-driver-cash';
+
   /// Global outstanding-balance check (no rideId). 200 + data object →
   /// account suspended, open the balance screen immediately; 200 + data
   /// null → clear. Call on login / home mount.
