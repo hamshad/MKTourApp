@@ -70,7 +70,7 @@ Each task was committed atomically:
 1. **Task 1: Mandatory method toggle + immediate routing on RideConfirmationScreen** - `a1def91` (feat)
 2. **Task 2: Same upfront contract on legacy ConfirmBookingScreen + schedule sheet check** - `238037e` (feat)
 
-**Plan metadata:** pending (docs: complete plan)
+**Plan metadata:** `7b99063` (docs: complete plan)
 
 ## Files Created/Modified
 
