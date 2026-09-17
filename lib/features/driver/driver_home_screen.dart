@@ -148,6 +148,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   int? _freeWaitMinutes;
   double? _freeWaitRate;
 
+  // Stage 2 excess-cash collect modal (STAGE2-04/05/06). Flag guards
+  // duplicate opens + cancelled auto-close; dialog context pops the modal
+  // from socket callbacks without touching the outer BuildContext.
+  bool _excessCashDialogOpen = false;
+  BuildContext? _excessCashDialogContext;
+
   @override
   void initState() {
     super.initState();
@@ -528,6 +534,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     _socketService.off('payment:failed');
     _socketService.off('payment:cancelled');
     _socketService.off('ride:paymentSelected'); // Listener for payment choice
+    _socketService.offExcessCashRequested();
+    _socketService.offExcessCashCancelled();
 
     // Stop and clean up notification playback if still playing
     AudioService.instance.stop();
@@ -1217,6 +1225,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       _socketService.off('payment:failed');
       _socketService.off('payment:cancelled');
       _socketService.off('ride:paymentSelected');
+      _socketService.offExcessCashRequested();
+      _socketService.offExcessCashCancelled();
     }
 
     _socketListenersSetup = true;
@@ -1333,6 +1343,33 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           type: SnackbarType.warning,
         );
       }
+    });
+
+    // Stage 2 excess-cash request: rider chose cash for the excess balance.
+    // Raises the Collect-Cash modal once per event (dedupe-guarded).
+    _socketService.onExcessCashRequested((data) {
+      debugPrint('💰 [DriverHomeScreen] Excess cash requested: $data');
+      if (!mounted) return;
+      final map = data is Map<String, dynamic>
+          ? data
+          : data is Map
+              ? Map<String, dynamic>.from(data as Map)
+              : <String, dynamic>{};
+      if (!RideEventDedupe.shouldHandleEvent(
+        source: 'socket',
+        type: 'payment_excess_cash_requested',
+        data: map,
+      )) {
+        return;
+      }
+      final rideId = _socketRideId(map);
+      if (_currentRideId == null || rideId != _currentRideId) return;
+      final rawAmount = map['excessAmount'] ?? map['amount'];
+      final amount = rawAmount is num
+          ? rawAmount.toDouble()
+          : double.tryParse(rawAmount?.toString() ?? '');
+      if (amount == null) return;
+      _showExcessCashDialog(rideId!, amount);
     });
 
     // Listen for location update confirmation
@@ -2379,6 +2416,108 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         ],
       ),
     );
+  }
+
+  /// Stage 2 excess-cash collect modal (STAGE2-04/05): rider requested to
+  /// pay the excess balance in cash. `barrierDismissible:false` so the
+  /// driver must confirm; failure keeps the modal open with inline
+  /// mapper copy, success pops + toasts.
+  void _showExcessCashDialog(String rideId, double amount) {
+    if (_excessCashDialogOpen || !mounted) return;
+    _excessCashDialogOpen = true;
+    final amountLabel = '£${amount.toStringAsFixed(2)}';
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        _excessCashDialogContext = dialogContext;
+        bool confirming = false;
+        String? sheetError;
+        return StatefulBuilder(
+          builder: (sheetContext, setDialogState) => AlertDialog(
+            title: Text('Collect Cash: $amountLabel'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Passenger requested to pay $amountLabel excess '
+                  'balance in cash.',
+                ),
+                if (sheetError != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    sheetError!,
+                    style: const TextStyle(color: Colors.red, fontSize: 12),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              ElevatedButton(
+                onPressed: confirming
+                    ? null
+                    : () async {
+                        setDialogState(() {
+                          confirming = true;
+                          sheetError = null;
+                        });
+                        final response =
+                            await _apiService.confirmDriverCash(rideId);
+                        if (!mounted) return;
+                        if (response['success'] == true) {
+                          _excessCashDialogOpen = false;
+                          _excessCashDialogContext = null;
+                          Navigator.pop(dialogContext);
+                          CustomSnackbar.show(
+                            context,
+                            message:
+                                'Cash payment confirmed! Ride fully completed.',
+                            type: SnackbarType.success,
+                          );
+                        } else {
+                          final info = RideErrorMapper.map(
+                            response['message']?.toString() ??
+                                'Failed to confirm cash',
+                            response['errors'],
+                          );
+                          setDialogState(() {
+                            confirming = false;
+                            sheetError = '${info.title}: ${info.copy}';
+                          });
+                        }
+                      },
+                child: confirming
+                    ? const SizedBox(
+                        height: 18,
+                        width: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text('Confirm Cash Received'),
+              ),
+            ],
+          ),
+        );
+      },
+    ).then((_) {
+      _excessCashDialogOpen = false;
+      _excessCashDialogContext = null;
+    });
+  }
+
+  /// Pop the excess-cash modal if open. Used by the cancelled/succeeded
+  /// auto-close paths — silent, no toast.
+  void _closeExcessCashDialogIfOpen() {
+    if (!_excessCashDialogOpen) return;
+    _excessCashDialogOpen = false;
+    final dialogCtx = _excessCashDialogContext;
+    _excessCashDialogContext = null;
+    if (dialogCtx != null && mounted) {
+      Navigator.pop(dialogCtx);
+    }
   }
 
   /// Fare receipt after completion: actualFare + accumulated wait totals.
