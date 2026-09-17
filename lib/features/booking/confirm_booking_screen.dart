@@ -23,6 +23,8 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
   bool _isLoading = false;
   final TextEditingController _notesController = TextEditingController();
   PaymentTiming _paymentTiming = PaymentTiming.payLater;
+  // Mandatory upfront method selector (11-02): 'cash' or 'payment_link'.
+  String _selectedPaymentMethod = 'cash';
   List<Map<String, dynamic>> _stops = [];
   // Pending unpaid scheduled ride — switch payment via select-payment, no duplicate create.
   String? _pendingScheduledRideId;
@@ -69,8 +71,7 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
         vehicleCategorySlug: vehicle['categorySlug'] ?? 'sedan',
         distance: (vehicle['distance'] as num?)?.toDouble() ?? 5.0,
         fare: (vehicle['basePrice'] as num?)?.toDouble() ?? 15.0,
-        paymentMethod:
-            _paymentTiming == PaymentTiming.payNow ? 'payment_link' : 'cash',
+        paymentMethod: _selectedPaymentMethod,
         paymentTiming: _paymentTiming,
         notes: _notesController.text.isNotEmpty ? _notesController.text : null,
         stops: _stops.isNotEmpty ? _stops : null,
@@ -79,6 +80,57 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
       setState(() => _isLoading = false);
 
       if (result.success && mounted) {
+        // Upfront contract (11-02): link opens WebView immediately, cash
+        // goes straight to the success dialog (this screen uses dialogs,
+        // not a RideAssigned push — preserved).
+        final dataMethod =
+            result.data?['paymentMethod']?.toString() ?? _selectedPaymentMethod;
+        final isLink = dataMethod == 'payment_link' ||
+            _selectedPaymentMethod == 'payment_link';
+        if (isLink) {
+          final paymentUrl = result.data?['paymentUrl']?.toString();
+          if (paymentUrl == null || paymentUrl.isEmpty) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Payment link missing. Please try again or choose Cash.',
+                ),
+                backgroundColor: Colors.orange,
+              ),
+            );
+            return;
+          }
+          final rideId =
+              result.data!['_id']?.toString() ??
+              result.data!['rideId']?.toString() ??
+              '';
+          final webViewResult = await Navigator.of(context)
+              .push<Map<String, dynamic>>(
+                MaterialPageRoute(
+                  builder: (_) => PaymentWebViewScreen(
+                    paymentUrl: paymentUrl,
+                    rideId: rideId,
+                  ),
+                ),
+              );
+          if (!mounted) return;
+          if (webViewResult?['success'] == true) {
+            _showSuccessDialog(
+              result.message ?? 'Booking confirmed!',
+              result.data,
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Payment cancelled. Your booking is not confirmed yet.',
+                ),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+          return;
+        }
         // Show success message
         _showSuccessDialog(result.message ?? 'Booking confirmed!', result.data);
       } else if (!result.success && mounted) {
@@ -89,6 +141,15 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
             rideId: result.data?['rideId']?.toString(),
             amount: (result.data?['outstandingBalance'] as num?)?.toDouble(),
             message: result.error,
+          );
+        } else if (result.data?['missingPaymentMethod'] == true) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Please choose a payment method (Online or Cash).',
+              ),
+              backgroundColor: Colors.orange,
+            ),
           );
         } else {
           _showErrorDialog(result.error ?? 'Payment failed');
@@ -353,6 +414,96 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => OutstandingBalanceScreen(balance: balance),
+      ),
+    );
+  }
+
+  /// Mandatory upfront payment selector (11-02): Online (Card via Link)
+  /// vs Cash. File-local compact segmented widget (no shared extract).
+  Widget _buildPaymentMethodSelector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Payment Method',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey[700],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _buildPaymentMethodOption(
+                icon: Icons.credit_card,
+                label: 'Online (Card via Link)',
+                value: 'payment_link',
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _buildPaymentMethodOption(
+                icon: Icons.money,
+                label: 'Cash',
+                value: 'cash',
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPaymentMethodOption({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    final isSelected = _selectedPaymentMethod == value;
+    return GestureDetector(
+      onTap: () => setState(() {
+        _selectedPaymentMethod = value;
+        _paymentTiming =
+            value == 'payment_link' ? PaymentTiming.payNow : PaymentTiming.payLater;
+      }),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppTheme.primaryColor.withOpacity(0.08)
+              : Colors.grey[50],
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? AppTheme.primaryColor : Colors.grey[200]!,
+            width: isSelected ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 18,
+              color: isSelected ? AppTheme.primaryColor : Colors.grey[600],
+            ),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight:
+                      isSelected ? FontWeight.w600 : FontWeight.w500,
+                  color:
+                      isSelected ? AppTheme.primaryColor : Colors.grey[700],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -721,6 +872,11 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
                       ],
                     ),
                   ),
+
+                  const SizedBox(height: 16),
+
+                  // Mandatory payment selector (11-02) — above Confirm.
+                  _buildPaymentMethodSelector(),
                 ],
               ),
             ),
