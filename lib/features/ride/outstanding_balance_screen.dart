@@ -28,6 +28,7 @@ class _OutstandingBalanceScreenState extends State<OutstandingBalanceScreen> {
   late OutstandingBalance _balance;
   bool _isRefreshing = false;
   bool _isOpeningLink = false;
+  bool _settled = false;
 
   @override
   void initState() {
@@ -49,7 +50,7 @@ class _OutstandingBalanceScreenState extends State<OutstandingBalanceScreen> {
         ? (data['rideId'] ?? data['bookingId'] ?? data['_id'])?.toString()
         : null;
     if (id != null && id != _balance.rideId) return;
-    if (!mounted) return;
+    if (!mounted || _settled) return;
     // A succeeded event is NOT proof this balance cleared — the backend
     // also emits it for mid-trip base-fare captures (different amount).
     // Re-fetch authoritatively; pop only when the balance is really gone.
@@ -61,7 +62,7 @@ class _OutstandingBalanceScreenState extends State<OutstandingBalanceScreen> {
         ? (data['rideId'] ?? data['bookingId'] ?? data['_id'])?.toString()
         : null;
     if (id != null && id != _balance.rideId) return;
-    if (!mounted) return;
+    if (!mounted || _settled) return;
     _refresh(fromEvent: true);
   }
 
@@ -71,10 +72,11 @@ class _OutstandingBalanceScreenState extends State<OutstandingBalanceScreen> {
   /// a 404 (nothing owed) also pops — combined with the event, cleared is
   /// the likely reading. Manual refresh keeps the informational message.
   Future<void> _refresh({bool fromEvent = false}) async {
+    if (_settled) return;
     setState(() => _isRefreshing = true);
     try {
       final res = await _apiService.getPaymentBalance(_balance.rideId);
-      if (!mounted) return;
+      if (!mounted || _settled) return;
       final status = res['data'] is Map
           ? (res['data'] as Map)['status']?.toString()
           : null;
@@ -84,6 +86,7 @@ class _OutstandingBalanceScreenState extends State<OutstandingBalanceScreen> {
           message: 'Balance already paid.',
           type: SnackbarType.success,
         );
+        _settled = true;
         Navigator.pop(context, {'success': true});
         return;
       }
@@ -101,6 +104,7 @@ class _OutstandingBalanceScreenState extends State<OutstandingBalanceScreen> {
           message: 'Balance paid successfully! Your ride is fully settled.',
           type: SnackbarType.success,
         );
+        _settled = true;
         Navigator.pop(context, {'success': true});
         return;
       } else {
@@ -131,6 +135,7 @@ class _OutstandingBalanceScreenState extends State<OutstandingBalanceScreen> {
           message: 'Balance paid successfully! Your ride is fully settled.',
           type: SnackbarType.success,
         );
+        _settled = true;
         Navigator.pop(context, {'success': true});
         return;
       }
@@ -162,7 +167,9 @@ class _OutstandingBalanceScreenState extends State<OutstandingBalanceScreen> {
     if (result is Map && result['success'] == true) {
       // WebView success is optimistic — backend confirms via
       // payment:succeeded which pops this screen. Refresh to check.
-      await _refresh();
+      // fromEvent:true: a post-paid 404 means "balance gone → pop with
+      // success", not a manual-refresh info message.
+      await _refresh(fromEvent: true);
     } else {
       CustomSnackbar.show(
         context,
