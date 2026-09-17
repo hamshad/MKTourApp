@@ -1,8 +1,8 @@
 # MK Tours - Project State
 
 ## Current Position
-- **Phase:** 11-upfront-payments — Complete (3/3 plans, 2026-09-17)
-- **Next:** Phase 11 done; await roadmap direction
+- **Phase:** 11.1-booking-screen-bottom-sheet-ui-compaction — Complete (1/1 plans, 2026-09-17)
+- **Next:** Phase 11.1 done; manual QA of compact bottom-sheet card, then roadmap direction
 
 ## Completed Plans
 - 02-01: Ride-flow API layer — no-OTP startRide, stopArrive/stopResume, stops-aware fare/create, reason cancel, fixed end-early (`c0c7d26`, `0e95c3b`)
@@ -28,6 +28,7 @@
 - 11-01: Upfront payment contract — mandatory paymentMethod booking, instant 201 paymentUrl parsing, 400/403 actionable results, balance tolerance, contract tests (`1404868`, `47f08ee`, `a8994d5`, `add0f8c`)
 - 11-03: Arrival payment removal + error polish — Continue-only arrival, booking-method chip, mapper 400/403 copy, balance banner intact (`5f01d0c`, `a45f0e7`)
 - 11-02: Mandatory upfront toggle + instant routing — Online-vs-Cash selector on both booking screens, link opens WebView at booking, cash straight to matching (`a1def91`, `238037e`)
+- 11.1-01: Booking bottom-sheet compaction — fare row + expandable Online/Cash row + Confirm-with-price CTA on both screens, contract intact (`712705d`, `65ed6e5`)
 
 ## Decisions
 - [02-01] OTP dialog UI left in place; only API call path made OTP-free (UI strip-out in 03-01)
@@ -87,6 +88,9 @@
 - [11-02] RideAssignedScreen gains optional paymentMethod/paymentUrl fields so 11-03 can display them without further constructor churn
 - [11-02] Instant WebView cancel returns to booking screen with orange snackbar; unpaid rides never enter driver-matching
 - [11-02] Legacy confirm keeps dialog-based success flow; only routing branches, no RideAssigned push added there
+- [11.1-01] Expandable payment row replaces always-visible toggle; writes existing _selectedPaymentMethod, no new source of truth
+- [11.1-01] Fare-variance note folded to single-line caption with full-text Tooltip (main screen)
+- [11.1-01] Confirm CTA carries price (Confirm • £X); Schedule demoted to compact button/text-button, hidden for prebooked rides per prior rule
 
 ## Blockers
 - None
@@ -97,7 +101,8 @@
 - Phase 11.1 inserted after Phase 11: booking screen bottom-sheet UI compaction — ride booking bottom section (price + Online/Cash + Confirm + Prebook) takes too much screen, needs compact redesign (URGENT)
 
 ## Session
-- Last session: Completed 11-03-PLAN.md (2026-09-17, 3 commits, SUMMARY at phases/11-upfront-payments/11-03-SUMMARY.md). Phase 11 complete (11-01, 11-02, 11-03).
+- Last session: Completed 11.1-01-PLAN.md (2026-09-17, 2 commits, SUMMARY at phases/11.1-booking-screen-bottom-sheet-ui-compaction/11.1-01-SUMMARY.md). Phase 11.1 complete.
+- Previous: Completed 11-03-PLAN.md (2026-09-17, 3 commits, SUMMARY at phases/11-upfront-payments/11-03-SUMMARY.md). Phase 11 complete (11-01, 11-02, 11-03).
 - Previous: Completed 11-01-PLAN.md (2026-09-17, 4 commits, SUMMARY at phases/11-upfront-payments/11-01-SUMMARY.md). Next: 11-02.
 - Last session: Completed 10-03-PLAN.md (2026-09-12, 2 feat commits, SUMMARY at phases/10-driver-request-stack/10-03-SUMMARY.md). Phase 10 complete.
 - Previous: Completed 10-02-PLAN.md (2026-09-12, 2 feat commits, SUMMARY at phases/10-driver-request-stack/10-02-SUMMARY.md). Phase 10 complete.

@@ -274,7 +274,7 @@ Plans:
 
 **Goal:** Ride booking screen bottom section (fare price + Online/Cash method buttons + Confirm ride + Prebook/Schedule buttons) currently fills too much of the screen after Phase 11 added the mandatory payment toggle — redesign into a compact bottom sheet so the map stays visible and the layout looks clean.
 **Depends on:** Phase 11
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
-- [ ] `11.1-01-PLAN.md` — Compact bottom-sheet card on both booking screens + contract verification
+- [x] `11.1-01-PLAN.md` — Compact bottom-sheet card on both booking screens + contract verification
