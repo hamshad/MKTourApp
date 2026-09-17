@@ -1,8 +1,8 @@
 # MK Tours - Project State
 
 ## Current Position
-- **Phase:** 12-excess-balance-stage-2-settlement-rider-cash-online-plus-driver-cash-confirm — In Progress (1/3 plans, 2026-09-17)
-- **Next:** 12-02 rider settlement sheet, then 12-03 driver cash modal
+- **Phase:** 12-excess-balance-stage-2-settlement-rider-cash-online-plus-driver-cash-confirm — In Progress (2/3 plans, 2026-09-17)
+- **Next:** 12-03 driver cash modal
 
 ## Completed Plans
 - 02-01: Ride-flow API layer — no-OTP startRide, stopArrive/stopResume, stops-aware fare/create, reason cancel, fixed end-early (`c0c7d26`, `0e95c3b`)
@@ -30,6 +30,7 @@
 - 11-02: Mandatory upfront toggle + instant routing — Online-vs-Cash selector on both booking screens, link opens WebView at booking, cash straight to matching (`a1def91`, `238037e`)
 - 11.1-01: Booking bottom-sheet compaction — fare row + expandable Online/Cash row + Confirm-with-price CTA on both screens, contract intact (`712705d`, `65ed6e5`)
 - 12-01: Stage 2 settlement transport — select-method + confirm-driver-cash endpoints, tolerant select-method parser, excess-cash socket passthroughs, 9 contract tests (`54f9154`, `c29981b`)
+- 12-02: Rider live-settlement sheet — ExcessSettlementSheet cash/online/waiting/WebView on receipt modal, succeeded pop-only-when-cleared, select-method mapper copy (`874bae9`, `729a7fa`)
 
 ## Decisions
 - [02-01] OTP dialog UI left in place; only API call path made OTP-free (UI strip-out in 03-01)
@@ -95,6 +96,9 @@
 - [12-01] fromSelectMethodEnvelope tolerates flat top-level envelope (no data wrapper) since live shape unverified
 - [12-01] Excess-cash socket passthroughs use exact colon-camelCase strings only, no snake_case variants
 - [12-01] Deprecated selectPaymentMethod left untouched; zero new select-payment references
+- [12-02] Settlement as modal bottom sheet so receipt + rating stay mounted underneath (dismiss reveals intact)
+- [12-02] payment:balanceDue listener on receipt with dedupe + rideId guards for post-completion excess
+- [12-02] select-method mapper strings are tolerant substring matches since live backend copy unverified
 
 ## Blockers
 - None
@@ -107,7 +111,8 @@
 - Phase 13 added: account suspension safeguard — startup lock of Book/Schedule + pay-online-only modal on accountSuspended:true per updated backend guide (live settlement stays in Phase 12)
 
 ## Session
-- Last session: Completed 12-01-PLAN.md (2026-09-17, 2 commits, SUMMARY at phases/12-excess-balance-stage-2-settlement-rider-cash-online-plus-driver-cash-confirm/12-01-SUMMARY.md). Next: 12-02.
+- Last session: Completed 12-02-PLAN.md (2026-09-17, 2 commits, SUMMARY at phases/12-excess-balance-stage-2-settlement-rider-cash-online-plus-driver-cash-confirm/12-02-SUMMARY.md). Next: 12-03.
+- Previous: Completed 12-01-PLAN.md (2026-09-17, 2 commits, SUMMARY at phases/12-excess-balance-stage-2-settlement-rider-cash-online-plus-driver-cash-confirm/12-01-SUMMARY.md). Next: 12-02.
 - Previous: Completed 11.1-01-PLAN.md (2026-09-17, 2 commits, SUMMARY at phases/11.1-booking-screen-bottom-sheet-ui-compaction/11.1-01-SUMMARY.md). Phase 11.1 complete.
 - Previous: Completed 11-03-PLAN.md (2026-09-17, 3 commits, SUMMARY at phases/11-upfront-payments/11-03-SUMMARY.md). Phase 11 complete (11-01, 11-02, 11-03).
 - Previous: Completed 11-01-PLAN.md (2026-09-17, 4 commits, SUMMARY at phases/11-upfront-payments/11-01-SUMMARY.md). Next: 11-02.
