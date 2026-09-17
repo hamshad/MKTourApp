@@ -14,7 +14,7 @@
 | 08 | 2/3 | Complete    | 2026-09-11 | SCHED-01..06 |
 | 09 | 2/2 | Complete    | 2026-09-12 | PROMO-01..04 |
 | 10 | 2/2 | Complete    | 2026-09-12 | STACK-01..04 |
-| 11 | 1/3 | In Progress|  | UPFRONT-01..05 |
+| 11 | 2/3 | In Progress|  | UPFRONT-01..05 |
 
 ---
 
@@ -258,7 +258,7 @@ Plans:
 - **UPFRONT-04**: No POST /rides/:id/select-payment on driver arrival (display booking method only)
 - **UPFRONT-05**: Startup GET /payments/balance surfaces outstanding balance with pay link
 
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 Plans:
 - [ ] `11-01-PLAN.md` — API contract: mandatory paymentMethod, instant paymentUrl parsing, 400/403, balance tolerance + tests
 - [ ] `11-02-PLAN.md` — Booking UI: mandatory Online-vs-Cash toggle + immediate link/cash routing (instant + scheduled)
