@@ -1,8 +1,8 @@
 # MK Tours - Project State
 
 ## Current Position
-- **Phase:** 11-upfront-payments — In progress (2/3 plans, 2026-09-17)
-- **Next:** 11-03-PLAN.md
+- **Phase:** 11-upfront-payments — Complete (3/3 plans, 2026-09-17)
+- **Next:** Phase 11 done; await roadmap direction
 
 ## Completed Plans
 - 02-01: Ride-flow API layer — no-OTP startRide, stopArrive/stopResume, stops-aware fare/create, reason cancel, fixed end-early (`c0c7d26`, `0e95c3b`)
@@ -26,6 +26,7 @@
 - 10-02: Stacked request UX — 1-of-N pill with chevrons/dots, background rows, newest-at-0, per-card decline, stack-clearing accept (`1ee228c`, `e3ccf64`)
 - 10-03: Stack polish + address cache — snug cycle row, action bar pinned under visible card, compact background strip, per-ride geocode cache (`13f1423`, `d01371d`)
 - 11-01: Upfront payment contract — mandatory paymentMethod booking, instant 201 paymentUrl parsing, 400/403 actionable results, balance tolerance, contract tests (`1404868`, `47f08ee`, `a8994d5`, `add0f8c`)
+- 11-03: Arrival payment removal + error polish — Continue-only arrival, booking-method chip, mapper 400/403 copy, balance banner intact (`5f01d0c`, `a45f0e7`)
 - 11-02: Mandatory upfront toggle + instant routing — Online-vs-Cash selector on both booking screens, link opens WebView at booking, cash straight to matching (`a1def91`, `238037e`)
 
 ## Decisions
@@ -77,6 +78,9 @@
 - [10-02] Card switch clears accept error since banner is bound to visible card
 - [10-03] Single-request spacing pixel-identical via stacked-only conditional gaps
 - [10-03] Address cache keyed by canonical rideId (rideId/bookingId/_id/id), cap 20 oldest-first; same-rideId rebuilds skip refetch; stale-flip guard on store
+- [11-03] Arrival select-payment machinery fully deleted (not stubbed) to keep analyze/rg verification clean
+- [11-03] Balance 403 action label `Pay now` (button text); semantic open-balance documented in code comment
+- [11-03] No home_screen logic change; paymentUrl already threaded to balance screen WebView
 - [11-01] Legacy instant caller maps payNow/payLater to payment_link/cash; required paymentMethod compiles with no behavior change
 - [11-01] PaymentResult.failure extended with optional data/message for missingPaymentMethod flag; 403 balanceBlocked factory untouched
 - [11-01] selectPaymentMethod kept (deprecated) for scheduled-switch fallback; removal in 11-03 ride_assigned sites only
@@ -88,7 +92,7 @@
 - None
 
 ## Session
-- Last session: Completed 11-02-PLAN.md (2026-09-17, 2 commits, SUMMARY at phases/11-upfront-payments/11-02-SUMMARY.md). Next: 11-03.
+- Last session: Completed 11-03-PLAN.md (2026-09-17, 3 commits, SUMMARY at phases/11-upfront-payments/11-03-SUMMARY.md). Phase 11 complete (11-01, 11-02, 11-03).
 - Previous: Completed 11-01-PLAN.md (2026-09-17, 4 commits, SUMMARY at phases/11-upfront-payments/11-01-SUMMARY.md). Next: 11-02.
 - Last session: Completed 10-03-PLAN.md (2026-09-12, 2 feat commits, SUMMARY at phases/10-driver-request-stack/10-03-SUMMARY.md). Phase 10 complete.
 - Previous: Completed 10-02-PLAN.md (2026-09-12, 2 feat commits, SUMMARY at phases/10-driver-request-stack/10-02-SUMMARY.md). Phase 10 complete.
