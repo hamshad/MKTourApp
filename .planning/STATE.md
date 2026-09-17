@@ -1,8 +1,8 @@
 # MK Tours - Project State
 
 ## Current Position
-- **Phase:** 11.1-booking-screen-bottom-sheet-ui-compaction — Complete (1/1 plans, 2026-09-17)
-- **Next:** Phase 11.1 done; manual QA of compact bottom-sheet card, then roadmap direction
+- **Phase:** 12-excess-balance-stage-2-settlement-rider-cash-online-plus-driver-cash-confirm — In Progress (1/3 plans, 2026-09-17)
+- **Next:** 12-02 rider settlement sheet, then 12-03 driver cash modal
 
 ## Completed Plans
 - 02-01: Ride-flow API layer — no-OTP startRide, stopArrive/stopResume, stops-aware fare/create, reason cancel, fixed end-early (`c0c7d26`, `0e95c3b`)
@@ -29,6 +29,7 @@
 - 11-03: Arrival payment removal + error polish — Continue-only arrival, booking-method chip, mapper 400/403 copy, balance banner intact (`5f01d0c`, `a45f0e7`)
 - 11-02: Mandatory upfront toggle + instant routing — Online-vs-Cash selector on both booking screens, link opens WebView at booking, cash straight to matching (`a1def91`, `238037e`)
 - 11.1-01: Booking bottom-sheet compaction — fare row + expandable Online/Cash row + Confirm-with-price CTA on both screens, contract intact (`712705d`, `65ed6e5`)
+- 12-01: Stage 2 settlement transport — select-method + confirm-driver-cash endpoints, tolerant select-method parser, excess-cash socket passthroughs, 9 contract tests (`54f9154`, `c29981b`)
 
 ## Decisions
 - [02-01] OTP dialog UI left in place; only API call path made OTP-free (UI strip-out in 03-01)
@@ -91,6 +92,9 @@
 - [11.1-01] Expandable payment row replaces always-visible toggle; writes existing _selectedPaymentMethod, no new source of truth
 - [11.1-01] Fare-variance note folded to single-line caption with full-text Tooltip (main screen)
 - [11.1-01] Confirm CTA carries price (Confirm • £X); Schedule demoted to compact button/text-button, hidden for prebooked rides per prior rule
+- [12-01] fromSelectMethodEnvelope tolerates flat top-level envelope (no data wrapper) since live shape unverified
+- [12-01] Excess-cash socket passthroughs use exact colon-camelCase strings only, no snake_case variants
+- [12-01] Deprecated selectPaymentMethod left untouched; zero new select-payment references
 
 ## Blockers
 - None
@@ -99,9 +103,12 @@
 
 ### Roadmap Evolution
 - Phase 11.1 inserted after Phase 11: booking screen bottom-sheet UI compaction — ride booking bottom section (price + Online/Cash + Confirm + Prebook) takes too much screen, needs compact redesign (URGENT)
+- Phase 12 added: excess balance Stage 2 settlement — rider in-car cash/online selection + driver cash-confirm flow per backend integration guide (see phase dir INTEGRATION-GUIDE.md)
+- Phase 13 added: account suspension safeguard — startup lock of Book/Schedule + pay-online-only modal on accountSuspended:true per updated backend guide (live settlement stays in Phase 12)
 
 ## Session
-- Last session: Completed 11.1-01-PLAN.md (2026-09-17, 2 commits, SUMMARY at phases/11.1-booking-screen-bottom-sheet-ui-compaction/11.1-01-SUMMARY.md). Phase 11.1 complete.
+- Last session: Completed 12-01-PLAN.md (2026-09-17, 2 commits, SUMMARY at phases/12-excess-balance-stage-2-settlement-rider-cash-online-plus-driver-cash-confirm/12-01-SUMMARY.md). Next: 12-02.
+- Previous: Completed 11.1-01-PLAN.md (2026-09-17, 2 commits, SUMMARY at phases/11.1-booking-screen-bottom-sheet-ui-compaction/11.1-01-SUMMARY.md). Phase 11.1 complete.
 - Previous: Completed 11-03-PLAN.md (2026-09-17, 3 commits, SUMMARY at phases/11-upfront-payments/11-03-SUMMARY.md). Phase 11 complete (11-01, 11-02, 11-03).
 - Previous: Completed 11-01-PLAN.md (2026-09-17, 4 commits, SUMMARY at phases/11-upfront-payments/11-01-SUMMARY.md). Next: 11-02.
 - Last session: Completed 10-03-PLAN.md (2026-09-12, 2 feat commits, SUMMARY at phases/10-driver-request-stack/10-03-SUMMARY.md). Phase 10 complete.

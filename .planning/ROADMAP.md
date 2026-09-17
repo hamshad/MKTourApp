@@ -252,7 +252,7 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
-- [ ] `12-01-PLAN.md` — API foundation: select-method + confirm-driver-cash, tolerant parser, socket passthroughs, contract tests
+- [x] `12-01-PLAN.md` — API foundation: select-method + confirm-driver-cash, tolerant parser, socket passthroughs, contract tests
 - [ ] `12-02-PLAN.md` — Rider settlement sheet on receipt: Cash/Online + waiting state + WebView + succeeded close-out
 - [ ] `12-03-PLAN.md` — Driver cash modal: Collect-Cash request + confirm wiring + cancelled auto-close
 
