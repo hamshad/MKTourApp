@@ -236,6 +236,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     final fromPayload = rideData?['paymentMethod']?.toString() ??
         extraRideData?['paymentMethod']?.toString();
     if (fromPayload != null && fromPayload.isNotEmpty) return fromPayload;
+    // Upfront-payments (11-02): booking-time method passed via widget args.
+    final fromWidget = widget.paymentMethod?.trim();
+    if (fromWidget != null && fromWidget.isNotEmpty) return fromWidget;
     if (_completedPaymentMethod != null &&
         _completedPaymentMethod!.isNotEmpty) {
       return _completedPaymentMethod;
