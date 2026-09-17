@@ -1,8 +1,8 @@
 # MK Tours - Project State
 
 ## Current Position
-- **Phase:** 12-excess-balance-stage-2-settlement-rider-cash-online-plus-driver-cash-confirm — In Progress (2/3 plans, 2026-09-17)
-- **Next:** 12-03 driver cash modal
+- **Phase:** 12-excess-balance-stage-2-settlement-rider-cash-online-plus-driver-cash-confirm — Complete (3/3 plans, 2026-09-17)
+- **Next:** Phase 13 account suspension safeguard (run /gsd-plan-phase 13)
 
 ## Completed Plans
 - 02-01: Ride-flow API layer — no-OTP startRide, stopArrive/stopResume, stops-aware fare/create, reason cancel, fixed end-early (`c0c7d26`, `0e95c3b`)
@@ -31,6 +31,7 @@
 - 11.1-01: Booking bottom-sheet compaction — fare row + expandable Online/Cash row + Confirm-with-price CTA on both screens, contract intact (`712705d`, `65ed6e5`)
 - 12-01: Stage 2 settlement transport — select-method + confirm-driver-cash endpoints, tolerant select-method parser, excess-cash socket passthroughs, 9 contract tests (`54f9154`, `c29981b`)
 - 12-02: Rider live-settlement sheet — ExcessSettlementSheet cash/online/waiting/WebView on receipt modal, succeeded pop-only-when-cleared, select-method mapper copy (`874bae9`, `729a7fa`)
+- 12-03: Driver cash-confirm modal — Collect-Cash request modal + confirm wiring, silent auto-close on cancelled/succeeded, confirm-driver-cash mapper copy (`06f4f8c`, `55ff1e3`)
 
 ## Decisions
 - [02-01] OTP dialog UI left in place; only API call path made OTP-free (UI strip-out in 03-01)
@@ -99,6 +100,9 @@
 - [12-02] Settlement as modal bottom sheet so receipt + rating stay mounted underneath (dismiss reveals intact)
 - [12-02] payment:balanceDue listener on receipt with dedupe + rideId guards for post-completion excess
 - [12-02] select-method mapper strings are tolerant substring matches since live backend copy unverified
+- [12-03] Raw excess-cash event strings stay in SocketService passthroughs only; driver screen uses on/offExcessCashRequested passthroughs
+- [12-03] confirm-driver-cash mapper copy uses tolerant substring matches, mirroring 12-02 select-method approach
+- [12-03] payment:succeeded closes open cash modal silently before existing reset-to-online runs
 
 ## Blockers
 - None
@@ -111,7 +115,8 @@
 - Phase 13 added: account suspension safeguard — startup lock of Book/Schedule + pay-online-only modal on accountSuspended:true per updated backend guide (live settlement stays in Phase 12)
 
 ## Session
-- Last session: Completed 12-02-PLAN.md (2026-09-17, 2 commits, SUMMARY at phases/12-excess-balance-stage-2-settlement-rider-cash-online-plus-driver-cash-confirm/12-02-SUMMARY.md). Next: 12-03.
+- Last session: Completed 12-03-PLAN.md (2026-09-17, 2 commits, SUMMARY at phases/12-excess-balance-stage-2-settlement-rider-cash-online-plus-driver-cash-confirm/12-03-SUMMARY.md). Phase 12 complete. Next: Phase 13.
+- Previous: Completed 12-02-PLAN.md (2026-09-17, 2 commits, SUMMARY at phases/12-excess-balance-stage-2-settlement-rider-cash-online-plus-driver-cash-confirm/12-02-SUMMARY.md). Next: 12-03.
 - Previous: Completed 12-01-PLAN.md (2026-09-17, 2 commits, SUMMARY at phases/12-excess-balance-stage-2-settlement-rider-cash-online-plus-driver-cash-confirm/12-01-SUMMARY.md). Next: 12-02.
 - Previous: Completed 11.1-01-PLAN.md (2026-09-17, 2 commits, SUMMARY at phases/11.1-booking-screen-bottom-sheet-ui-compaction/11.1-01-SUMMARY.md). Phase 11.1 complete.
 - Previous: Completed 11-03-PLAN.md (2026-09-17, 3 commits, SUMMARY at phases/11-upfront-payments/11-03-SUMMARY.md). Phase 11 complete (11-01, 11-02, 11-03).
