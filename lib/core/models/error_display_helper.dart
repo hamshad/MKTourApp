@@ -131,6 +131,39 @@ class RideErrorMapper {
       );
     }
 
+    // Stage 2 settlement selectBalanceMethod errors (POST
+    // /payments/balance/:rideId/select-method): rider picks cash vs
+    // payment_link for the excess balance. 12-03 appends
+    // confirm-driver-cash cases after this plan.
+    if (lower.contains('paymentmethod must be')) {
+      return const RideErrorInfo(
+        title: 'Invalid payment method',
+        copy: 'Choose Cash or Online to settle the excess balance.',
+        actionLabel: 'Choose again',
+      );
+    }
+
+    if (lower.contains('balance already paid') ||
+        lower.contains('no outstanding balance') ||
+        lower.contains('nothing to pay')) {
+      return const RideErrorInfo(
+        title: 'Already settled',
+        copy: 'This balance is already paid — nothing left to settle.',
+        severity: RideErrorSeverity.info,
+      );
+    }
+
+    if (lower.contains('already requested') ||
+        lower.contains('payment already in progress') ||
+        lower.contains('settlement in progress')) {
+      return const RideErrorInfo(
+        title: 'Request already active',
+        copy: 'A settlement request is already active for this ride. '
+            'Wait for confirmation or try again.',
+        actionLabel: 'Try again',
+      );
+    }
+
     if (lower.contains('cannot cancel ride after it has started')) {
       return const RideErrorInfo(
         title: 'Too late to cancel',

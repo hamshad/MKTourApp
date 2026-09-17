@@ -6,7 +6,8 @@ import '../../core/widgets/custom_snackbar.dart';
 import '../../core/models/vehicle.dart';
 import '../../core/models/outstanding_balance.dart';
 import '../../core/models/error_display_helper.dart';
-import 'outstanding_balance_screen.dart';
+import '../../core/services/ride_event_dedupe.dart';
+import 'excess_settlement_sheet.dart';
 
 class RideCompleteScreen extends StatefulWidget {
   final Map<String, dynamic> rideData;
@@ -152,20 +153,73 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
     _listenForPaymentUpdates();
     _hydrateBillData();
     // A balance-due that arrived mid-trip is handed over in `pendingBalance`
-    // — open the balance screen on top of the summary so the excess gets
-    // paid instead of stranding the rider.
+    // — open the Stage 2 settlement sheet on top of the receipt so the
+    // excess gets paid while the summary + rating stay intact underneath.
     final pending = widget.rideData['pendingBalance'];
     if (pending is OutstandingBalance && pending.isOwed) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => OutstandingBalanceScreen(balance: pending),
-          ),
-        );
+        _openSettlementSheet(pending);
       });
     }
+    _listenForBalanceDue();
+  }
+
+  /// Stage 2 settlement sheet presented ON TOP of the receipt (modal bottom
+  /// sheet — dismissing it reveals the receipt + rating intact).
+  Future<void> _openSettlementSheet(OutstandingBalance balance) async {
+    if (!mounted) return;
+    final rideId =
+        balance.rideId.isNotEmpty ? balance.rideId : _rideId;
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => ExcessSettlementSheet(
+        rideId: rideId,
+        balance: balance.rideId.isNotEmpty
+            ? balance
+            : OutstandingBalance(
+                rideId: rideId,
+                amount: balance.amount,
+                status: balance.status,
+                message: balance.message,
+                paymentUrl: balance.paymentUrl,
+                clientSecret: balance.clientSecret,
+                isReminder: balance.isReminder,
+              ),
+      ),
+    );
+  }
+
+  /// Excess owed after trip end (payment-flow.md §1 Outcome B): a
+  /// `payment:balanceDue` arriving post-completion opens the settlement
+  /// sheet on top of the receipt. FCM balance_due_reminder duplicates this —
+  /// one sheet (dedupe guard).
+  void _listenForBalanceDue() {
+    _socketService.onPaymentBalanceDue((data) {
+      if (!mounted) return;
+      final map = data is Map<String, dynamic>
+          ? data
+          : data is Map
+              ? Map<String, dynamic>.from(data)
+              : <String, dynamic>{};
+      final eventRideId =
+          map['rideId']?.toString() ?? map['bookingId']?.toString();
+      if (eventRideId != null && eventRideId != _rideId) return;
+      if (!RideEventDedupe.shouldHandleEvent(
+        source: 'socket',
+        type: 'payment_balance_due',
+        data: map,
+      )) {
+        return;
+      }
+      final balance = OutstandingBalance.fromBalanceDueEvent({
+        ...map,
+        'rideId': eventRideId ?? _rideId,
+      });
+      if (!balance.isOwed) return;
+      _openSettlementSheet(balance);
+    });
   }
 
   /// Self-hydrate missing bill fields. The receipt can be built from a
@@ -255,6 +309,7 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
   @override
   void dispose() {
     _socketService.off('payment:cashCollected');
+    _socketService.offPaymentBalanceDue();
     _feedbackController.dispose();
     super.dispose();
   }
