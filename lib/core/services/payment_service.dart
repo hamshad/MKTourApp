@@ -45,8 +45,8 @@ class PaymentResult {
     );
   }
 
-  factory PaymentResult.failure({required String error}) {
-    return PaymentResult(success: false, error: error);
+  factory PaymentResult.failure({required String error, Map<String, dynamic>? data}) {
+    return PaymentResult(success: false, error: error, data: data);
   }
 
   /// Structured failure for the 403 outstanding-balance block
@@ -169,12 +169,13 @@ class PaymentService {
     }
   }
 
-  /// Book a ride with Stripe payment
+  /// Book a ride with upfront payment
   ///
   /// This method:
-  /// 1. Creates a ride on the backend and gets a payment intent
-  /// 2. If paymentTiming is payNow: presents the Stripe payment sheet
-  /// 3. Returns the result of the booking
+  /// 1. Creates a ride on the backend with mandatory paymentMethod (cash or payment_link)
+  /// 2. For payment_link: returns paymentUrl for WebView (caller opens)
+  /// 3. For cash: returns paymentStatus pending_collection
+  /// 4. Handles 400 (missing paymentMethod) and 403 (outstanding balance) responses
   static Future<PaymentResult> bookRideWithPayment({
     required BuildContext context,
     required Map<String, dynamic> pickupLocation,
@@ -182,22 +183,28 @@ class PaymentService {
     required String vehicleCategorySlug,
     required double distance,
     required double fare,
+    // Kept for backward compatibility with callers; ignored for request body
     PaymentTiming paymentTiming = PaymentTiming.payLater,
     DateTime? scheduledAt,
     String? notes,
     List<Map<String, dynamic>>? stops,
-    String? paymentMethod,
+    required String paymentMethod,
   }) async {
+    // Normalize and validate paymentMethod
+    final normalizedMethod = paymentMethod.trim().toLowerCase();
+    if (normalizedMethod != 'cash' && normalizedMethod != 'payment_link') {
+      throw ArgumentError(
+        'paymentMethod must be "cash" or "payment_link", got: $paymentMethod',
+      );
+    }
+
     String? rideId;
-    final bool shouldPresentPaymentSheet =
-        paymentTiming == PaymentTiming.payNow;
     try {
-      final primaryColor = Theme.of(context).primaryColor;
-      debugPrint('💳 PaymentService: Starting payment flow');
+      debugPrint('💳 PaymentService: Starting upfront payment flow');
       debugPrint(
         '💳 PaymentService: Category: $vehicleCategorySlug, Distance: $distance, Fare: $fare',
       );
-      debugPrint('💳 PaymentService: Payment timing: ${paymentTiming.name}');
+      debugPrint('💳 PaymentService: paymentMethod: $normalizedMethod');
 
       // Step 1: Create ride and get payment intent from backend
       final headers = await ApiConfig.getAuthHeaders();
@@ -213,14 +220,9 @@ class PaymentService {
         'dropoffLocation': dropoffLocation,
         'vehicleCategorySlug': vehicleCategorySlug,
         'distance': distance,
-        if (!isScheduled)
-          'paymentTiming': paymentTiming == PaymentTiming.payNow
-              ? 'pay_now'
-              : 'pay_later',
+        'paymentMethod': normalizedMethod,
         if (isScheduled)
           'scheduledPickupTime': scheduledAt.toUtc().toIso8601String(),
-        if (isScheduled && paymentMethod != null)
-          'paymentMethod': paymentMethod,
         if (notes != null && notes.isNotEmpty)
           isScheduled ? 'preBookingNote' : 'notes': notes,
         if (stops != null && stops.isNotEmpty)
@@ -257,6 +259,19 @@ class PaymentService {
       if (response.statusCode != 201 && response.statusCode != 200) {
         final errorData = _safeDecode(response.body);
         final message = errorData['message']?.toString() ?? 'Failed to create ride';
+
+        // Explicit 400: missing paymentMethod
+        if (response.statusCode == 400 &&
+            message.toLowerCase().contains('paymentmethod is required')) {
+          debugPrint(
+            '⛔ PaymentService: 400 missing paymentMethod',
+          );
+          return PaymentResult.failure(
+            error: message,
+            data: {'missingPaymentMethod': true, 'message': message},
+          );
+        }
+
         // Outstanding-balance block (payment-flow.md §7): detected by shape,
         // not just status code — backends vary (403 documented, but the
         // message test catches any status). Fields may sit under `data` or
@@ -301,107 +316,59 @@ class PaymentService {
       }
 
       final responseData = jsonDecode(response.body);
-      final rawData = responseData['data'];
+      final rawData = responseData['data'] as Map<String, dynamic>? ?? <String, dynamic>{};
 
-      // Scheduled ride response nests under data.ride / data.payment
-      final Map<String, dynamic> rideData;
-      final String? clientSecret;
+      // Parse response for both instant and scheduled rides
+      // paymentUrl may live under data.payment, data.ride, or data itself
+      final rideObj = rawData['ride'] is Map
+          ? Map<String, dynamic>.from(rawData['ride'] as Map)
+          : rawData;
+      final paymentObj = rawData['payment'] is Map
+          ? Map<String, dynamic>.from(rawData['payment'] as Map)
+          : null;
+      rideId = rideObj['_id']?.toString() ?? rideObj['id']?.toString() ?? rawData['_id']?.toString() ?? rawData['id']?.toString();
+      final clientSecret = paymentObj?['clientSecret']?.toString() ??
+          rideObj['clientSecret']?.toString() ??
+          rawData['clientSecret']?.toString();
+      final String? paymentUrl = paymentObj?['paymentUrl']?.toString() ??
+          rideObj['paymentUrl']?.toString() ??
+          rawData['paymentUrl']?.toString();
+      final String? sessionId = paymentObj?['sessionId']?.toString() ??
+          rideObj['sessionId']?.toString() ??
+          rawData['sessionId']?.toString();
+      final String? paymentStatus = paymentObj?['paymentStatus']?.toString() ??
+          rideObj['paymentStatus']?.toString() ??
+          rawData['paymentStatus']?.toString();
 
-      if (isScheduled) {
-        final rideObj = rawData is Map
-            ? (rawData['ride'] as Map<String, dynamic>? ??
-                Map<String, dynamic>.from(rawData))
-            : <String, dynamic>{};
-        final paymentObj = rawData is Map && rawData['payment'] is Map
-            ? Map<String, dynamic>.from(rawData['payment'] as Map)
-            : null;
-        rideId = rideObj['_id'] ?? rideObj['id'];
-        clientSecret = paymentObj?['clientSecret']?.toString() ??
-            rideObj['clientSecret']?.toString();
-        // paymentUrl may live under data.payment, data.ride, or data itself
-        final String? paymentUrl = paymentObj?['paymentUrl']?.toString() ??
-            rideObj['paymentUrl']?.toString() ??
-            (rawData is Map ? rawData['paymentUrl']?.toString() : null);
-        debugPrint(
-          '💳 PaymentService: scheduled paymentMethod sent=$paymentMethod, '
-          'payObj=${paymentObj?.keys.toList()}, '
-          'rideHasUrl=${rideObj['paymentUrl'] != null}, '
-          'resolvedUrl=${paymentUrl != null ? 'present' : 'missing'}',
-        );
-        rideData = {
-          ...rideObj,
-          if (clientSecret != null) 'clientSecret': clientSecret,
-          if (paymentUrl != null) 'paymentUrl': paymentUrl,
-          if (paymentObj != null) 'payment': paymentObj,
-        };
-      } else {
-        rideData = rawData;
-        clientSecret = rawData['clientSecret'];
-        rideId = rawData['_id'] ?? rawData['id'];
-      }
+      debugPrint(
+        '💳 PaymentService: ${isScheduled ? 'scheduled' : 'instant'} paymentMethod sent=$normalizedMethod, '
+        'payObj=${paymentObj?.keys.toList()}, '
+        'rideHasUrl=${rideObj['paymentUrl'] != null}, '
+        'resolvedUrl=${paymentUrl != null ? 'present' : 'missing'}',
+      );
+
+      final rideData = {
+        ...rideObj,
+        ...rawData,
+        if (clientSecret != null) 'clientSecret': clientSecret,
+        if (paymentUrl != null) 'paymentUrl': paymentUrl,
+        if (sessionId != null) 'sessionId': sessionId,
+        if (paymentStatus != null) 'paymentStatus': paymentStatus,
+        'paymentMethod': normalizedMethod,
+        if (paymentObj != null) 'payment': paymentObj,
+      };
 
       debugPrint('💳 PaymentService: Ride created: $rideId');
 
-      // For scheduled rides, return immediately — caller opens Payment Link WebView
-      if (isScheduled) {
-        final paymentUrl = rideData['paymentUrl'];
-        debugPrint(
-          '💳 PaymentService: Scheduled ride created. paymentUrl=${paymentUrl != null ? 'present' : 'missing'}',
-        );
-        return PaymentResult.success(
-          rideId: rideId!,
-          message:
-              'Scheduled ride created. Complete payment to confirm.',
-          data: rideData,
-        );
-      }
-
-      if (shouldPresentPaymentSheet && clientSecret != null) {
-        debugPrint(
-          '💳 PaymentService: Got client secret, presenting payment sheet...',
-        );
-        await _presentPaymentSheet(
-          primaryColor: primaryColor,
-          clientSecret: clientSecret,
-        );
-        debugPrint('✅ PaymentService: Payment sheet completed (pay_now)');
-      } else if (shouldPresentPaymentSheet) {
-        throw Exception('Payment intent missing from server response');
-      } else {
-        debugPrint(
-          '💳 PaymentService: pay_later selected; skipping payment sheet at booking time',
-        );
-      }
-
-      // Step 4: Return success result
-      final message = paymentTiming == PaymentTiming.payNow
-          ? 'Payment authorized! You\'ll be charged after the ride completes.'
-          : 'Ride booked! You\'ll pay when the ride completes.';
-
+      // For both instant and scheduled rides with payment_link, caller opens WebView
+      // For cash, paymentStatus will be pending_collection
       return PaymentResult.success(
         rideId: rideId!,
-        message: message,
+        message: isScheduled
+            ? 'Scheduled ride created. Complete payment to confirm.'
+            : 'Ride booked!',
         data: rideData,
       );
-    } on StripeException catch (e) {
-      debugPrint('⚠️ PaymentService: Stripe error - ${e.error.message}');
-
-      // Cleanup: Cancel ride on backend if payment was cancelled or failed
-      if (shouldPresentPaymentSheet && rideId != null) {
-        debugPrint('🧹 PaymentService: Cleaning up cancelled ride: $rideId');
-        try {
-          final headers = await ApiConfig.getAuthHeaders();
-          await http.post(
-            Uri.parse(ApiConstants.cancelRideByUser(rideId)),
-            headers: headers,
-            body: jsonEncode({'reason': 'payment_failed'}),
-          );
-        } catch (cleanupError) {
-          debugPrint('⚠️ PaymentService: Cleanup failed - $cleanupError');
-        }
-      }
-
-      return PaymentResult.failure(error: StripeService.getErrorMessage(e));
     } catch (e) {
       debugPrint('❌ PaymentService: Error - $e');
       return PaymentResult.failure(
