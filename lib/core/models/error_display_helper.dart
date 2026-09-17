@@ -28,7 +28,8 @@ class RideErrorInfo {
 /// Maps every backend message in the ride flow doc to friendly copy + action.
 ///
 /// Covers: 100m proximity (pickup + stops, with actual/required distances),
-/// wrong-state start/resume, invalid payment method, cancel-after-start,
+/// wrong-state start/resume, invalid payment method, upfront 400 missing
+/// paymentMethod + 403 outstanding balance, cancel-after-start,
 /// missing reason, rating range, missing lat/lng, unavailable ride,
 /// cash-before-complete, and the reassigned (info, not error) path.
 class RideErrorMapper {
@@ -104,6 +105,29 @@ class RideErrorMapper {
         copy: 'That payment method is not supported. '
             'Choose cash, card, or payment link.',
         actionLabel: 'Choose another method',
+      );
+    }
+
+    // Upfront-payments 400: "paymentMethod is required (cash | payment_link)"
+    // when booking without a method.
+    if (lower.contains('paymentmethod is required')) {
+      return const RideErrorInfo(
+        title: 'Choose a payment method',
+        copy: 'Please choose Online (Card via Link) or Cash '
+            'before requesting a ride.',
+        actionLabel: 'Retry',
+      );
+    }
+
+    // Upfront-payments 403: outstanding balance blocks booking. Backend
+    // amount message passes through; action opens the balance screen.
+    if (lower.contains('outstanding balance')) {
+      return RideErrorInfo(
+        title: 'Clear balance to continue',
+        copy: message.isNotEmpty
+            ? message
+            : 'Please clear your outstanding balance to continue.',
+        actionLabel: 'Pay now',
       );
     }
 

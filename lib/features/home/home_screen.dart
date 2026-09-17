@@ -1103,6 +1103,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// Startup balance check: global `GET /payments/balance` first (account
   /// suspended → banner immediately), falling back to the persisted rideId
   /// check when the global call fails. Clears the banner when paid.
+  /// New guide shape: `{rideId, excessAmount, paymentUrl,
+  /// status: balance_due}` — parsed with paymentUrl intact so the banner tap
+  /// routes to [OutstandingBalanceScreen] with its pay link (no persistence
+  /// key changes; only the rideId is stored).
   Future<void> _checkPendingBalance() async {
     try {
       final res = await _apiService.getGlobalPaymentBalance();
