@@ -91,6 +91,11 @@
 ## Blockers
 - None
 
+## Accumulated Context
+
+### Roadmap Evolution
+- Phase 11.1 inserted after Phase 11: booking screen bottom-sheet UI compaction — ride booking bottom section (price + Online/Cash + Confirm + Prebook) takes too much screen, needs compact redesign (URGENT)
+
 ## Session
 - Last session: Completed 11-03-PLAN.md (2026-09-17, 3 commits, SUMMARY at phases/11-upfront-payments/11-03-SUMMARY.md). Phase 11 complete (11-01, 11-02, 11-03).
 - Previous: Completed 11-01-PLAN.md (2026-09-17, 4 commits, SUMMARY at phases/11-upfront-payments/11-01-SUMMARY.md). Next: 11-02.
