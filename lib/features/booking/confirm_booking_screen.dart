@@ -418,41 +418,108 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
     );
   }
 
+  // Compact ride-hail payment row (11.1 parity): single tappable row,
+  // expands inline to Online / Cash. Writes [_selectedPaymentMethod].
+  bool _isPaymentExpanded = false;
+
+  String get _selectedPaymentLabel =>
+      _selectedPaymentMethod == 'payment_link' ? 'Online' : 'Cash';
+
+  IconData get _selectedPaymentIcon =>
+      _selectedPaymentMethod == 'payment_link'
+          ? Icons.credit_card
+          : Icons.money;
+
   /// Mandatory upfront payment selector (11-02): Online (Card via Link)
   /// vs Cash. File-local compact segmented widget (no shared extract).
   Widget _buildPaymentMethodSelector() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Payment Method',
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: Colors.grey[700],
-          ),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: _buildPaymentMethodOption(
-                icon: Icons.credit_card,
-                label: 'Online (Card via Link)',
-                value: 'payment_link',
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            onTap: () =>
+                setState(() => _isPaymentExpanded = !_isPaymentExpanded),
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    _selectedPaymentIcon,
+                    size: 18,
+                    color: AppTheme.primaryColor,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _selectedPaymentLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    _selectedPaymentMethod == 'payment_link'
+                        ? 'Card via Link'
+                        : 'Pay driver',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                  const SizedBox(width: 4),
+                  AnimatedRotation(
+                    turns: _isPaymentExpanded ? 0.25 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: Icon(
+                      Icons.chevron_right,
+                      color: Colors.grey[500],
+                      size: 20,
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _buildPaymentMethodOption(
-                icon: Icons.money,
-                label: 'Cash',
-                value: 'cash',
+          ),
+          if (_isPaymentExpanded) ...[
+            Divider(height: 1, color: Colors.grey[200]),
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _buildPaymentMethodOption(
+                      icon: Icons.credit_card,
+                      label: 'Online',
+                      value: 'payment_link',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildPaymentMethodOption(
+                      icon: Icons.money,
+                      label: 'Cash',
+                      value: 'cash',
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -465,16 +532,17 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
     return GestureDetector(
       onTap: () => setState(() {
         _selectedPaymentMethod = value;
+        _isPaymentExpanded = false;
         _paymentTiming =
             value == 'payment_link' ? PaymentTiming.payNow : PaymentTiming.payLater;
       }),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
         decoration: BoxDecoration(
           color: isSelected
               ? AppTheme.primaryColor.withOpacity(0.08)
-              : Colors.grey[50],
-          borderRadius: BorderRadius.circular(12),
+              : Colors.white,
+          borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: isSelected ? AppTheme.primaryColor : Colors.grey[200]!,
             width: isSelected ? 1.5 : 1,
@@ -485,7 +553,7 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
           children: [
             Icon(
               icon,
-              size: 18,
+              size: 16,
               color: isSelected ? AppTheme.primaryColor : Colors.grey[600],
             ),
             const SizedBox(width: 6),
@@ -493,6 +561,8 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
               child: Text(
                 label,
                 textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight:
@@ -716,7 +786,7 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
 
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24.0),
+              padding: const EdgeInsets.all(16.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -882,62 +952,43 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
             ),
           ),
 
-          // Action Buttons
-          Padding(
-            padding: EdgeInsets.only(
-              left: 24,
-              right: 24,
-              top: 24,
-              bottom: 24,
+          // Compact bottom-sheet action card (11.1 parity): one full-width
+          // Confirm CTA with price + Schedule as a small text-button.
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(20),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 12,
+                  offset: const Offset(0, -2),
+                ),
+              ],
             ),
             child: SafeArea(
-              child: Row(
-                children: [
-                  // Schedule for Later button
-                  Expanded(
-                    flex: 2,
-                    child: SizedBox(
-                      height: 56,
-                      child: OutlinedButton(
-                        onPressed: _isLoading
-                            ? null
-                            : () => _showScheduleSheet(
-                                vehicle, destination, args?['pickup']),
-                        style: OutlinedButton.styleFrom(
-                          side: BorderSide(color: AppTheme.primaryColor),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[300],
+                          borderRadius: BorderRadius.circular(2),
                         ),
-                        child: _isLoading
-                            ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  'Schedule',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  // Confirm Booking button
-                  Expanded(
-                    flex: 3,
-                    child: SizedBox(
-                      height: 56,
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
                       child: ElevatedButton(
                         onPressed: _isLoading
                             ? null
@@ -951,6 +1002,7 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
+                          elevation: 0,
                         ),
                         child: _isLoading
                             ? const SizedBox(
@@ -961,13 +1013,13 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
                                   strokeWidth: 2,
                                 ),
                               )
-                            : const FittedBox(
+                            : FittedBox(
                                 fit: BoxFit.scaleDown,
                                 child: Text(
-                                  'Confirm Booking',
+                                  'Confirm Booking • £${((vehicle['basePrice'] as num?)?.toDouble() ?? 15.0).toStringAsFixed(2)}',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
+                                  style: const TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
                                     color: Colors.white,
@@ -976,8 +1028,36 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
                               ),
                       ),
                     ),
-                  ),
-                ],
+                    SizedBox(
+                      height: 32,
+                      child: TextButton.icon(
+                        onPressed: _isLoading
+                            ? null
+                            : () => _showScheduleSheet(
+                                vehicle, destination, args?['pickup']),
+                        icon: const Icon(
+                          Icons.calendar_month,
+                          size: 14,
+                        ),
+                        label: const Text(
+                          'Schedule for Later',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppTheme.primaryColor,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          minimumSize: const Size(0, 32),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
