@@ -269,3 +269,12 @@ Plans:
 - Zero select-payment calls on driver arrival; arrival shows Continue only
 - 400/403 produce friendly actionable UI; startup debt banner opens pay link
 - `flutter analyze` clean; contract tests green
+
+### Phase 11.1: booking screen bottom-sheet UI compaction (INSERTED)
+
+**Goal:** Ride booking screen bottom section (fare price + Online/Cash method buttons + Confirm ride + Prebook/Schedule buttons) currently fills too much of the screen after Phase 11 added the mandatory payment toggle — redesign into a compact bottom sheet so the map stays visible and the layout looks clean.
+**Depends on:** Phase 11
+**Plans:** 1 plan
+
+Plans:
+- [ ] `11.1-01-PLAN.md` — Compact bottom-sheet card on both booking screens + contract verification
