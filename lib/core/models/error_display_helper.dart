@@ -164,6 +164,40 @@ class RideErrorMapper {
       );
     }
 
+    // Confirm-driver-cash errors: confirmDriverCash (POST
+    // /payments/balance/:rideId/confirm-driver-cash) — driver confirms
+    // excess cash receipt. Appended alongside the select-method entries
+    // above; existing entries preserved. Copy uses tolerant substring
+    // matches since live backend copy is unverified.
+    if (lower.contains('no cash request') ||
+        lower.contains('cash not requested') ||
+        lower.contains('no pending cash')) {
+      return const RideErrorInfo(
+        title: 'No cash request',
+        copy: 'There is no pending cash request for this ride. '
+            'The rider may have switched to online payment.',
+        actionLabel: 'OK',
+      );
+    }
+
+    if (lower.contains('not authorized to confirm') ||
+        lower.contains('only driver can confirm') ||
+        lower.contains('not assigned to this ride')) {
+      return const RideErrorInfo(
+        title: 'Not authorized',
+        copy: 'Only the assigned driver can confirm cash for this ride.',
+      );
+    }
+
+    if (lower.contains('cash already confirmed') ||
+        lower.contains('already confirmed')) {
+      return const RideErrorInfo(
+        title: 'Already confirmed',
+        copy: 'This cash payment was already confirmed — nothing left to do.',
+        severity: RideErrorSeverity.info,
+      );
+    }
+
     if (lower.contains('cannot cancel ride after it has started')) {
       return const RideErrorInfo(
         title: 'Too late to cancel',

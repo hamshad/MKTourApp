@@ -1265,6 +1265,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       final rideId =
           data['bookingId']?.toString() ?? data['rideId']?.toString();
       if (rideId == _currentRideId) {
+        // Settled elsewhere (e.g. rider paid online): drop an open
+        // cash modal silently, then run the existing reset below.
+        _closeExcessCashDialogIfOpen();
         CustomSnackbar.show(
           context,
           message: 'Payment completed! Ride finalized.',
@@ -1370,6 +1373,32 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           : double.tryParse(rawAmount?.toString() ?? '');
       if (amount == null) return;
       _showExcessCashDialog(rideId!, amount);
+    });
+
+    // Stage 2 excess-cash cancelled: rider switched back to online while
+    // in the car. Silently close an open cash modal — no toast, no error.
+    _socketService.onExcessCashCancelled((data) {
+      debugPrint('💰 [DriverHomeScreen] Excess cash cancelled: $data');
+      if (!mounted) return;
+      final map = data is Map<String, dynamic>
+          ? data
+          : data is Map
+              ? Map<String, dynamic>.from(data as Map)
+              : <String, dynamic>{};
+      if (!RideEventDedupe.shouldHandleEvent(
+        source: 'socket',
+        type: 'payment_excess_cash_cancelled',
+        data: map,
+      )) {
+        return;
+      }
+      final rideId = _socketRideId(map);
+      if (rideId != null &&
+          _currentRideId != null &&
+          rideId != _currentRideId) {
+        return;
+      }
+      _closeExcessCashDialogIfOpen();
     });
 
     // Listen for location update confirmation
