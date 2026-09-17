@@ -1,6 +1,6 @@
 class ApiConstants {
   // Local development socket URL (commented when using live API)
-  static const String socketUrl = 'http://192.168.1.11:5001';
+  static const String socketUrl = 'http://192.168.1.17:5001';
   // Live API socket URL
   // static const String socketUrl = 'https://api.mktours.co.uk';
   static const String baseUrl = '$socketUrl/api/v1';
@@ -97,6 +97,8 @@ class ApiConstants {
   static const String createRideWithPayment = '$baseUrl/rides/create';
   static const String paymentHistory = '$baseUrl/payments/history';
   static String paymentDetails(String id) => '$baseUrl/payments/$id';
+  // DEPRECATED: upfront-payments — do not call on driver arrival
+  // Removal happens in plan 11-03 for ride_assigned call sites only.
   static String selectPaymentMethod(String id) =>
       '$baseUrl/rides/$id/select-payment';
   static String confirmCash(String id) => '$baseUrl/rides/$id/confirm-cash';

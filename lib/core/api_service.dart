@@ -1097,8 +1097,9 @@ class ApiService {
 
   /// Global outstanding-balance check (no rideId).
   ///
-  /// 200 + data object → account suspended (balance_due); 200 + data null
-  /// → clear. Never throws; returns the decoded envelope.
+  /// 200 + data object → account suspended (balance_due) with shape
+  /// {rideId, excessAmount, paymentUrl, status: balance_due}; 200 + data
+  /// null → clear. Never throws; returns the decoded envelope.
   Future<Map<String, dynamic>> getGlobalPaymentBalance() async {
     try {
       final prefs = await SharedPreferences.getInstance();

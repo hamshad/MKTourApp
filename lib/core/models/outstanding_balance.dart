@@ -29,6 +29,7 @@ class OutstandingBalance {
       v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
 
   /// Parse `GET /payments/balance/:rideId` 200 envelope.
+  /// Also accepts nested `data.payment.paymentUrl` shape from new backend.
   static OutstandingBalance? fromBalanceEnvelope(
     Map<String, dynamic> envelope,
     String fallbackRideId,
@@ -47,17 +48,24 @@ class OutstandingBalance {
         message: m['message']?.toString() ?? 'Balance already paid.',
       );
     }
+    // paymentUrl may be nested under data.payment.paymentUrl (new backend shape)
+    final nestedPayment = m['payment'];
+    final String? paymentUrl = (nestedPayment is Map
+        ? nestedPayment['paymentUrl']?.toString()
+        : null) ??
+        m['paymentUrl']?.toString();
     return OutstandingBalance(
       rideId: m['rideId']?.toString() ?? fallbackRideId,
       amount: _num(m['excessAmount'] ?? m['outstandingBalance'] ?? m['amount']),
       status: status.isEmpty ? 'balance_due' : status,
       message: m['message']?.toString() ?? 'Outstanding balance. Please complete payment.',
-      paymentUrl: m['paymentUrl']?.toString(),
+      paymentUrl: paymentUrl,
       clientSecret: m['clientSecret']?.toString(),
     );
   }
 
   /// Parse the 403 block from `POST /rides/create` (payment-flow.md §7).
+  /// Accepts excessAmount fallback and copies paymentUrl when present.
   static OutstandingBalance? fromForbiddenEnvelope(Map<String, dynamic> envelope) {
     final data = envelope['data'];
     if (data is! Map) return null;
@@ -66,9 +74,10 @@ class OutstandingBalance {
     if (rideId == null || rideId.isEmpty) return null;
     return OutstandingBalance(
       rideId: rideId,
-      amount: _num(m['outstandingBalance']),
+      amount: _num(m['outstandingBalance'] ?? m['excessAmount']),
       status: 'balance_due',
       message: envelope['message']?.toString() ?? 'Please clear your balance before booking a new ride.',
+      paymentUrl: m['paymentUrl']?.toString(),
     );
   }
 
