@@ -266,6 +266,17 @@ Plans:
 - [ ] `13-01-PLAN.md` — Suspension-flag parsing foundation (model + contract tests) + 403 backstop verification
 - [ ] `13-02-PLAN.md` — Home startup gate (entry lock + pay-online modal + succeeded/clear unlock)
 
+### Phase 14: Handle excessCashConfirmed close-out on rider and driver
+
+**Goal:** Close out the driver-cash round-trip — on `payment:excessCashConfirmed`, rider exits the waiting state with settled confirmation and driver closes the Collect-Cash modal with toast. Exact backend payloads in phase dir INTEGRATION-GUIDE.md; event verified unhandled (zero hits in lib/).
+**Depends on:** Phase 13
+**Plans:** 3 plans
+
+Plans:
+- [ ] `14-01-PLAN.md` — Socket transport: on/offExcessCashConfirmed passthroughs + dedupe regression tests
+- [ ] `14-02-PLAN.md` — Rider close-out: waitingCash exit via authoritative refresh + thank-you copy
+- [ ] `14-03-PLAN.md` — Driver close-out: Collect-Cash modal close + single toast + reconnect wiring
+
 ---
 
 ## Phase 11: Upfront Ride Payments
