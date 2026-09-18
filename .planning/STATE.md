@@ -1,8 +1,8 @@
 # MK Tours - Project State
 
 ## Current Position
-- **Phase:** 14-handle-excesscashconfirmed-close-out-on-rider-and-driver — In Progress (1/3 plans, 2026-09-18)
-- **Next:** 14-02 rider close-out (waitingCash exit via authoritative refresh)
+- **Phase:** 14-handle-excesscashconfirmed-close-out-on-rider-and-driver — In Progress (2/3 plans, 2026-09-18)
+- **Next:** 14-03 driver close-out (Collect-Cash modal close + single toast)
 
 ## Completed Plans
 - 02-01: Ride-flow API layer — no-OTP startRide, stopArrive/stopResume, stops-aware fare/create, reason cancel, fixed end-early (`c0c7d26`, `0e95c3b`)
@@ -35,6 +35,7 @@
 - 13-01: Suspension-flag parsing foundation — accountSuspended/allowCash fields + isSuspended conjunction getter + tolerant _flag parser, 6 contract tests on brief §1 JSON, 403 backstop verified intact (`ce0dd86`, `2a9d7ba`)
 - 13-02: Home startup suspension gate — _isSuspended flag + 3 entry locks, single-shot non-dismissible pay-online modal, authoritative succeeded re-fetch unlock with silent modal dismiss (`bb94e4f`, `647efa0`, `024b51d`)
 - 14-01: Confirmed socket transport — on/offExcessCashConfirmed passthroughs, 5 dedupe regression tests pinning exactly-once + key isolation (`90a3cb7`, `fdbb0bd`)
+- 14-02: Rider confirmed close-out — waitingCash exit via authoritative refresh + event thank-you copy, co-fired succeeded no-ops on settled guard (`34336a9`)
 
 ## Decisions
 - [02-01] OTP dialog UI left in place; only API call path made OTP-free (UI strip-out in 03-01)
@@ -112,6 +113,7 @@
 - [13-02] payment:succeeded never unlocks directly — re-fetch getGlobalPaymentBalance first, unlock only on data null / status succeeded (unrelated mid-trip captures fire the same event)
 - [13-02] FCM paymentSucceeded/cashCollected keeps direct-clear (backend-pushed success is authoritative)
 - [Phase 14-handle-excesscashconfirmed-close-out-on-rider-and-driver]: Confirmed-vs-succeeded ordering owned by screen settled/dialog guards, not dedupe
+- [14-02] Confirmed success copy passed as optional _refresh param, not a second pop path (single authoritative exit preserved); no AudioService ring on confirmed
 
 ## Blockers
 - None
@@ -125,7 +127,8 @@
 - Phase 14 added: excessCashConfirmed close-out — rider + driver handling of the driver-confirm socket event (verified zero hits in lib/, genuine gap; payloads in phase dir INTEGRATION-GUIDE.md)
 
 ## Session
-- Last session: Completed 14-01-PLAN.md (2026-09-18, 2 commits, SUMMARY at phases/14-handle-excesscashconfirmed-close-out-on-rider-and-driver/14-01-SUMMARY.md). Next: 14-02.
+- Last session: Completed 14-02-PLAN.md (2026-09-18, 1 commit, SUMMARY at phases/14-handle-excesscashconfirmed-close-out-on-rider-and-driver/14-02-SUMMARY.md). Next: 14-03.
+- Previous: Completed 14-01-PLAN.md (2026-09-18, 2 commits, SUMMARY at phases/14-handle-excesscashconfirmed-close-out-on-rider-and-driver/14-01-SUMMARY.md). Next: 14-02.
 - Previous: Completed 13-02-PLAN.md (2026-09-18, 3 commits, SUMMARY at phases/13-account-suspension-safeguard-on-startup-outstanding-balance/13-02-SUMMARY.md). Phase 13 complete. Next: phase transition.
 - Previous: Completed 13-01-PLAN.md (2026-09-18, 2 commits, SUMMARY at phases/13-account-suspension-safeguard-on-startup-outstanding-balance/13-01-SUMMARY.md). Next: 13-02.
 - Previous: Completed 12-03-PLAN.md (2026-09-17, 2 commits, SUMMARY at phases/12-excess-balance-stage-2-settlement-rider-cash-online-plus-driver-cash-confirm/12-03-SUMMARY.md). Phase 12 complete. Next: Phase 13.
