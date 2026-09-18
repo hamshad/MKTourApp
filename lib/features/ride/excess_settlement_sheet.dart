@@ -45,11 +45,13 @@ class _ExcessSettlementSheetState extends State<ExcessSettlementSheet> {
     super.initState();
     _balance = widget.balance;
     _socketService.on('payment:succeeded', _onPaymentSucceeded);
+    _socketService.onExcessCashConfirmed(_onExcessCashConfirmed);
   }
 
   @override
   void dispose() {
     _socketService.off('payment:succeeded');
+    _socketService.offExcessCashConfirmed();
     super.dispose();
   }
 
@@ -71,13 +73,42 @@ class _ExcessSettlementSheetState extends State<ExcessSettlementSheet> {
     _refresh(fromEvent: true);
   }
 
+  /// Driver confirmed cash receipt (confirmed event).
+  ///
+  /// Mirrors [_onPaymentSucceeded]: rideId-match → dedupe (distinct
+  /// `payment_excess_cash_confirmed` key) → settled guard → authoritative
+  /// [_refresh(fromEvent: true)]. Never pops on the event alone; a co-fired
+  /// `payment:succeeded` hits the same [_settled] guard and no-ops.
+  /// The event's non-empty `message` ("Driver confirmed cash receipt ...
+  /// Thank you!") is passed through as the success snackbar copy.
+  void _onExcessCashConfirmed(dynamic data) {
+    final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
+    final id = (map['rideId'] ?? map['bookingId'] ?? map['_id'])?.toString();
+    if (id != null && id != widget.rideId) return;
+    if (!RideEventDedupe.shouldHandleEvent(
+      source: 'socket',
+      type: 'payment_excess_cash_confirmed',
+      data: map,
+    )) {
+      return;
+    }
+    if (!mounted || _settled) return;
+    final rawMessage = map['message']?.toString().trim();
+    final successMessage =
+        (rawMessage != null && rawMessage.isNotEmpty) ? rawMessage : null;
+    _refresh(fromEvent: true, successMessage: successMessage);
+  }
+
   /// Re-fetch the balance (mirrors OutstandingBalanceScreen._refresh).
   ///
   /// When [fromEvent] is true (a socket just told us something settled), a
   /// 404 (nothing owed) also pops — combined with the event, cleared is the
-  /// likely reading.
-  Future<void> _refresh({bool fromEvent = false}) async {
+  /// likely reading. [successMessage] overrides the default settled copy
+  /// (used for the confirmed event's thank-you message); displayed verbatim.
+  Future<void> _refresh({bool fromEvent = false, String? successMessage}) async {
     if (_settled) return;
+    final settledCopy =
+        successMessage ?? 'Excess paid successfully! Your ride is fully settled.';
     setState(() => _isRefreshing = true);
     try {
       final res = await _apiService.getPaymentBalance(widget.rideId);
@@ -88,7 +119,7 @@ class _ExcessSettlementSheetState extends State<ExcessSettlementSheet> {
       if (res['success'] == true && status == 'succeeded') {
         CustomSnackbar.show(
           context,
-          message: 'Excess paid successfully! Your ride is fully settled.',
+          message: settledCopy,
           type: SnackbarType.success,
         );
         _settled = true;
@@ -106,7 +137,7 @@ class _ExcessSettlementSheetState extends State<ExcessSettlementSheet> {
         // Event said settled + API has nothing owed → genuinely cleared.
         CustomSnackbar.show(
           context,
-          message: 'Excess paid successfully! Your ride is fully settled.',
+          message: settledCopy,
           type: SnackbarType.success,
         );
         _settled = true;
