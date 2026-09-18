@@ -169,18 +169,21 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   }
 
   /// Listen for FCM notifications directly in the home screen
+  ///
+  /// No RideEventDedupe re-check here: FcmService already applied the shared
+  /// FCM/socket guard (sound + tray banner exactly once), and re-checking the
+  /// same key would always lose — the service consumed it synchronously before
+  /// emitting to this stream, which made the whole FCM path dead (sound with
+  /// no card whenever the socket event was missed). Single-card safety comes
+  /// from the per-ride queue dedupe inside [_handleNewRideRequest]. `quiet`
+  /// avoids a second ring — FCM already played the sound on this path.
   void _setupFcmListener() {
     // Handle notification tap (user taps tray → app opens)
     _fcmSubscription = FcmService.instance.onNotificationTap.listen((data) {
       if (data.type == NotificationType.rideRequest) {
         debugPrint('🔔 [DriverHomeScreen] Received rideRequest via FCM tap');
-        if (mounted &&
-            RideEventDedupe.shouldHandleEvent(
-              source: 'fcm-tap',
-              type: data.type,
-              data: data.rawData,
-            )) {
-          _handleNewRideRequest(data.rawData);
+        if (mounted) {
+          _handleNewRideRequest(data.rawData, quiet: true);
         }
       }
     });
@@ -191,13 +194,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         FcmService.instance.onForegroundNotification.listen((data) {
       if (data.type == NotificationType.rideRequest) {
         debugPrint('🔔 [DriverHomeScreen] Received rideRequest via FCM foreground');
-        if (mounted &&
-            RideEventDedupe.shouldHandleEvent(
-              source: 'fcm',
-              type: data.type,
-              data: data.rawData,
-            )) {
-          _handleNewRideRequest(data.rawData);
+        if (mounted) {
+          _handleNewRideRequest(data.rawData, quiet: true);
         }
       }
     });
@@ -339,6 +337,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             _currentRideId = null;
             _rideData = null;
           });
+          _promoteParkedRequests();
           debugPrint(
             '⚠️ [DriverHomeScreen] Ride ended while disconnected ($status), returning to online',
           );
@@ -348,6 +347,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             _currentRideId = null;
             _rideData = null;
           });
+          _promoteParkedRequests();
           debugPrint(
             '✅ [DriverHomeScreen] Ride completed while disconnected, returning to online',
           );
@@ -1282,6 +1282,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           _clearNavigationUi();
           _clearActiveRideStorage();
         });
+        _promoteParkedRequests();
         _fetchRideHistory();
       }
       // Stop notification playback if payment succeeded
@@ -1436,6 +1437,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             _currentRideId = null;
             _rideData = null;
           });
+          _promoteParkedRequests();
         }
         CustomSnackbar.show(
           context,
@@ -1505,6 +1507,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           _clearNavigationUi();
           _clearActiveRideStorage();
         });
+        _promoteParkedRequests();
 
         showDialog(
           context: context,
@@ -1550,6 +1553,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           _clearNavigationUi();
           _clearActiveRideStorage();
         });
+        _promoteParkedRequests();
 
         final message = cancellationFee > 0
             ? 'User cancelled the ride.\nYou received £${cancellationFee.toStringAsFixed(2)} compensation.'
@@ -1581,6 +1585,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           _clearNavigationUi();
           _clearActiveRideStorage();
         });
+        _promoteParkedRequests();
         CustomSnackbar.show(
           context,
           message: 'Ride request expired.',
@@ -1759,7 +1764,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     return null;
   }
 
-  void _handleNewRideRequest(dynamic data) {
+  void _handleNewRideRequest(dynamic data, {bool quiet = false}) {
     debugPrint(
       '🔔 [DriverHomeScreen] Handling request. Current status: $_status',
     );
@@ -1768,7 +1773,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
 
     // Per-ride dedupe: an already-queued ride must never double-queue.
     // (Deliberately NOT the global RideEventDedupe 5s window — a genuinely
-    // new request for another ride must still queue.)
+    // new request for another ride must still queue.) This is also what makes
+    // dual FCM+socket delivery safe: whichever transport is second no-ops
+    // here without a second ringtone.
     if (rideId != null &&
         _requestQueue.any((r) => _canonicalRideId(r) == rideId)) {
       debugPrint(
@@ -1781,7 +1788,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     if (_status == 'online') {
       // Ringtone for instant requests only — scheduled pool entries notify
       // via snackbar so prebook browsing stays quiet (reminders still ring).
-      if (normalised['isScheduled'] != true) {
+      // `quiet` (FCM path) skips the ring — FCM already played the sound.
+      if (!quiet && normalised['isScheduled'] != true) {
         debugPrint('🔔 [DriverHomeScreen] Starting ringtone sound...');
         // Use playRingtone for better visibility as it's meant for alerts
         // Play app custom notification sound
@@ -1835,10 +1843,77 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         type: SnackbarType.info,
       );
     } else {
+      // Busy (on a ride, collecting cash, ...): park the request instead of
+      // dropping it. Dropping meant "notification sound plays but no card" —
+      // FCM rings unconditionally while this branch discarded the payload.
+      // The parked request surfaces via _promoteParkedRequests() as soon as
+      // the driver returns to online. Active-ride state (_currentRideId /
+      // _rideData / _status) is deliberately untouched so cash collection and
+      // navigation keep working. Offline drivers stay a hard drop (backend
+      // should not dispatch to them at all).
+      if (_status == 'offline') {
+        debugPrint(
+          '⚠️ [DriverHomeScreen] Received request but status is $_status',
+        );
+        return;
+      }
+      if (_requestQueue.length >= _maxQueuedRequests) {
+        debugPrint(
+          '⚠️ [DriverHomeScreen] Parked queue full ($_maxQueuedRequests) — dropping $rideId',
+        );
+        return;
+      }
       debugPrint(
-        '⚠️ [DriverHomeScreen] Received request but status is $_status',
+        '🔔 [DriverHomeScreen] Parking request $rideId while $_status — promotes on online',
+      );
+      setState(() {
+        // Newest parks first so promotion surfaces the freshest offer.
+        _requestQueue.insert(0, normalised);
+        _requestIndex = 0;
+      });
+      CustomSnackbar.show(
+        context,
+        message: 'New request received — shows after your current step',
+        type: SnackbarType.info,
       );
     }
+  }
+
+  /// Surface a request parked during a busy state now that the driver is
+  /// free. No-op unless genuinely back to online with no active ride and a
+  /// non-empty park queue. Call after every reset-to-online.
+  void _promoteParkedRequests() {
+    if (!mounted ||
+        _status != 'online' ||
+        _currentRideId != null ||
+        _requestQueue.isEmpty) {
+      return;
+    }
+    var head = _requestIndex;
+    if (head < 0) head = 0;
+    if (head >= _requestQueue.length) head = _requestQueue.length - 1;
+    final current = _requestQueue[head];
+    final id = _canonicalRideId(current);
+    debugPrint('🔔 [DriverHomeScreen] Promoting parked request $id to card');
+    setState(() {
+      _requestIndex = head;
+      _status = 'request';
+      _currentRideId = id;
+      _rideData = current;
+      _acceptError = null;
+    });
+    // The parked arrival stayed quiet (or rang via FCM) — ring now so the
+    // surfaced card is noticed.
+    if (current['isScheduled'] != true) {
+      AudioService.instance.playNotification();
+    }
+    CustomSnackbar.show(
+      context,
+      message: current['isScheduled'] == true
+          ? 'Scheduled Ride Request!'
+          : 'New Ride Request!',
+      type: SnackbarType.success,
+    );
   }
 
   /// Extract a canonical ride id from a socket payload of unknown shape.
@@ -2315,6 +2390,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
                 _rideData = null;
                 _clearNavigationUi();
               });
+              _promoteParkedRequests();
               _fetchRideHistory();
               if (!mounted) return;
               _showFareSummary(
@@ -2348,6 +2424,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
               _rideData = null;
               _clearNavigationUi();
             });
+            _promoteParkedRequests();
             _fetchRideHistory();
             if (!mounted) return;
             _showFareSummary(
@@ -2384,6 +2461,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             _clearNavigationUi();
             _clearActiveRideStorage();
           });
+          _promoteParkedRequests();
           _fetchRideHistory();
         } else {
           if (!mounted) return;
@@ -3192,6 +3270,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         _clearNavigationUi();
         _clearActiveRideStorage();
       });
+      _promoteParkedRequests();
       _fetchRideHistory();
       // payment:succeeded socket will finalize
       _showEndEarlySummary(

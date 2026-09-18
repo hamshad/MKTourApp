@@ -381,11 +381,19 @@ class FcmService {
     // sound, and stream emission — and vice versa via the same guard.
     // Reminders use a canonical key shared with the socket `ride:reminder`
     // handler so exactly one transport rings.
+    // EXCEPTION: ride_request is always forwarded to the in-app stream even
+    // when deduped (socket won the race). The driver home screen's per-ride
+    // queue dedupe makes double delivery safe, and the stream is the only
+    // fallback when the socket event was missed (reconnect/iOS drop) — a
+    // deduped stream here meant sound with no request card.
     if (!RideEventDedupe.shouldHandleEvent(
       source: 'fcm',
       type: canonicalReminderDedupeType(data.type),
       data: message.data,
     )) {
+      if (data.type == NotificationType.rideRequest) {
+        _foregroundNotificationController.add(data);
+      }
       return;
     }
 
