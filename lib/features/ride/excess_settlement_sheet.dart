@@ -27,6 +27,20 @@ class ExcessSettlementSheet extends StatefulWidget {
     required this.balance,
   });
 
+  /// Driver-cash-confirm signal inside a `payment:succeeded` message.
+  ///
+  /// Matches the backend cash round-trip copy ("Cash payment confirmed by
+  /// driver! Your ride is fully settled."). A generic capture ("Payment
+  /// succeeded") carries no cash keyword, so the base-fare guard in the
+  /// succeeded handler is unaffected.
+  @visibleForTesting
+  static bool isCashConfirmMessage(String? message) {
+    if (message == null || message.trim().isEmpty) return false;
+    final lower = message.toLowerCase();
+    return lower.contains('cash') &&
+        (lower.contains('confirm') || lower.contains('settled'));
+  }
+
   @override
   State<ExcessSettlementSheet> createState() => _ExcessSettlementSheetState();
 }
@@ -70,7 +84,25 @@ class _ExcessSettlementSheetState extends State<ExcessSettlementSheet> {
     // Never pop on the event alone — a succeeded event can also fire for a
     // mid-trip base-fare capture (different amount). Re-fetch authoritatively;
     // pop only when the balance is really gone.
-    _refresh(fromEvent: true);
+    //
+    // Exception: a succeeded carrying a driver-cash-confirm message ("Cash
+    // payment confirmed by driver! Your ride is fully settled.") IS our
+    // settlement — the backend emits `payment:succeeded` (not
+    // `payment:excessCashConfirmed`) for the driver cash round-trip, and the
+    // cash handoff is out-of-band so the re-fetch can still show the old
+    // balance_due (race/stale). Pass the driver copy through and let
+    // [_refresh] close on the backend's word even if the re-fetch lags.
+    // The [_settled] guard keeps this exactly-once across a co-fired
+    // `payment:excessCashConfirmed`.
+    final rawMessage = map['message']?.toString().trim();
+    final successMessage =
+        (rawMessage != null && rawMessage.isNotEmpty) ? rawMessage : null;
+    _refresh(
+      fromEvent: true,
+      successMessage: successMessage,
+      cashSettledFallback:
+          ExcessSettlementSheet.isCashConfirmMessage(rawMessage),
+    );
   }
 
   /// Driver confirmed cash receipt (confirmed event).
@@ -105,7 +137,16 @@ class _ExcessSettlementSheetState extends State<ExcessSettlementSheet> {
   /// 404 (nothing owed) also pops — combined with the event, cleared is the
   /// likely reading. [successMessage] overrides the default settled copy
   /// (used for the confirmed event's thank-you message); displayed verbatim.
-  Future<void> _refresh({bool fromEvent = false, String? successMessage}) async {
+  ///
+  /// [cashSettledFallback] covers the driver-cash round-trip arriving as
+  /// `payment:succeeded`: the cash handoff leaves no payment record, so the
+  /// re-fetch can still return the stale balance_due. The backend's
+  /// "fully settled" word is authoritative — close anyway. Exactly-once via
+  /// [_settled] (a co-fired `payment:excessCashConfirmed` no-ops).
+  Future<void> _refresh(
+      {bool fromEvent = false,
+      String? successMessage,
+      bool cashSettledFallback = false}) async {
     if (_settled) return;
     final settledCopy =
         successMessage ?? 'Excess paid successfully! Your ride is fully settled.';
@@ -130,6 +171,18 @@ class _ExcessSettlementSheetState extends State<ExcessSettlementSheet> {
           ? OutstandingBalance.fromBalanceEnvelope(res, widget.rideId)
           : null;
       if (parsed != null) {
+        if (cashSettledFallback) {
+          // Backend said "fully settled" for the cash handoff but the
+          // re-fetch still shows the stale balance — trust the event.
+          CustomSnackbar.show(
+            context,
+            message: settledCopy,
+            type: SnackbarType.success,
+          );
+          _settled = true;
+          Navigator.pop(context, {'success': true});
+          return;
+        }
         // Event-driven check found the balance still owed — stay open with
         // the fresh amount (e.g. a mid-trip base capture, not our payment).
         setState(() => _balance = parsed);
