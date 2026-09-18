@@ -10,6 +10,8 @@ class OutstandingBalance {
   final String? paymentUrl;
   final String? clientSecret;
   final bool isReminder;
+  final bool accountSuspended;
+  final bool allowCash;
 
   const OutstandingBalance({
     required this.rideId,
@@ -19,14 +21,28 @@ class OutstandingBalance {
     this.paymentUrl,
     this.clientSecret,
     this.isReminder = false,
+    this.accountSuspended = false,
+    this.allowCash = true,
   });
 
   bool get isOwed => status == 'balance_due';
   bool get isPaid => status == 'succeeded';
   bool get hasPaymentUrl => paymentUrl != null && paymentUrl!.isNotEmpty;
+  bool get isSuspended => accountSuspended && !allowCash;
 
   static double _num(dynamic v) =>
       v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
+
+  static bool _flag(dynamic v, {required bool fallback}) {
+    if (v is bool) return v;
+    if (v is num) return v != 0;
+    if (v is String) {
+      final s = v.trim().toLowerCase();
+      if (s == 'true' || s == '1') return true;
+      if (s == 'false' || s == '0') return false;
+    }
+    return fallback;
+  }
 
   /// Parse `GET /payments/balance/:rideId` 200 envelope.
   /// Also accepts nested `data.payment.paymentUrl` shape from new backend.
@@ -46,6 +62,8 @@ class OutstandingBalance {
         amount: 0,
         status: status,
         message: m['message']?.toString() ?? 'Balance already paid.',
+        accountSuspended: false,
+        allowCash: true,
       );
     }
     // paymentUrl may be nested under data.payment.paymentUrl (new backend shape)
@@ -61,6 +79,8 @@ class OutstandingBalance {
       message: m['message']?.toString() ?? 'Outstanding balance. Please complete payment.',
       paymentUrl: paymentUrl,
       clientSecret: m['clientSecret']?.toString(),
+      accountSuspended: _flag(m['accountSuspended'], fallback: false),
+      allowCash: _flag(m['allowCash'], fallback: true),
     );
   }
 
@@ -166,6 +186,8 @@ class OutstandingBalance {
       paymentUrl: event['paymentUrl']?.toString(),
       clientSecret: event['clientSecret']?.toString(),
       isReminder: event['isReminder'] == true,
+      accountSuspended: _flag(event['accountSuspended'], fallback: false),
+      allowCash: _flag(event['allowCash'], fallback: true),
     );
   }
 }
