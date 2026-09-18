@@ -76,6 +76,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // home booking entries; cleared only via _clearPendingBalance.
   bool _isSuspended = false;
   bool _suspensionModalOpen = false;
+  BuildContext? _suspensionDialogContext;
   StreamSubscription<FcmNotificationData>? _balanceForegroundSub;
   StreamSubscription<FcmNotificationData>? _balanceTapSub;
 
@@ -1128,6 +1129,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             parsed.rideId.isNotEmpty &&
             mounted) {
           await _persistPendingBalance(parsed);
+          _maybeShowSuspensionModal();
           return;
         }
         if (parsed != null && parsed.isPaid) {
@@ -1212,6 +1214,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           : null;
       if (parsed != null && parsed.isOwed) {
         await _persistPendingBalance(parsed);
+        _maybeShowSuspensionModal();
         return;
       }
     } catch (_) {}
@@ -1226,6 +1229,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         isReminder: true,
       ),
     );
+    _maybeShowSuspensionModal();
   }
 
   Future<void> _persistPendingBalance(OutstandingBalance balance) async {
@@ -1280,6 +1284,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final balance = OutstandingBalance.fromBalanceDueEvent(map);
       if (balance.rideId.isEmpty) return;
       _persistPendingBalance(balance);
+      _maybeShowSuspensionModal();
       if (mounted) {
         CustomSnackbar.show(
           context,
@@ -1312,6 +1317,130 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     } else {
       // Re-verify: user may have paid outside the screen (cash handoff).
       await _checkPendingBalance();
+    }
+  }
+
+  /// Account suspension safeguard (Phase 13, INTEGRATION-GUIDE.md §1):
+  /// non-dismissible pay-online-only modal. Single show site — all callers
+  /// funnel through [_maybeShowSuspensionModal]; the open flag + route guard
+  /// prevent stacking and covering the payment screen.
+  void _maybeShowSuspensionModal() {
+    if (!mounted || !_isSuspended || _pendingBalance == null) return;
+    if (_suspensionModalOpen) return;
+    runAfterFrame((_) => _showSuspensionModal());
+  }
+
+  void _showSuspensionModal() {
+    if (_suspensionModalOpen || !mounted) return;
+    if (!_isSuspended || _pendingBalance == null) return;
+    // Show only when the home route is current — never over the balance /
+    // payment screen or any pushed route.
+    if (ModalRoute.of(context)?.isCurrent != true) return;
+    _suspensionModalOpen = true;
+    final balance = _pendingBalance!;
+    final amountLabel = '£${balance.amount.toStringAsFixed(2)}';
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        _suspensionDialogContext = dialogContext;
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          title: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.block_outlined,
+                  color: Colors.red,
+                  size: 32,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Account Temporarily Suspended',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.outfit(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            'You have an unpaid balance of $amountLabel from a previous ride. '
+            '${balance.message} '
+            'Cash is not available after leaving the vehicle.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.outfit(
+              fontSize: 16,
+              color: AppTheme.textSecondary,
+            ),
+          ),
+          actions: [
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () async {
+                  final result = await Navigator.push(
+                    dialogContext,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          OutstandingBalanceScreen(balance: balance),
+                    ),
+                  );
+                  if (!mounted) return;
+                  if (result is Map && result['success'] == true) {
+                    await _clearPendingBalance();
+                  } else {
+                    // Re-verify: user may have paid outside the screen.
+                    await _checkPendingBalance();
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColor,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: Text(
+                  'Pay $amountLabel Online Now',
+                  style: GoogleFonts.outfit(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    ).then((_) {
+      _suspensionModalOpen = false;
+      _suspensionDialogContext = null;
+    });
+  }
+
+  /// Pop the suspension modal if open. Used by the unlock path — silent,
+  /// no extra toast (the balance screen already toasts).
+  void _closeSuspensionModalIfOpen() {
+    if (!_suspensionModalOpen) return;
+    _suspensionModalOpen = false;
+    final dialogCtx = _suspensionDialogContext;
+    _suspensionDialogContext = null;
+    if (dialogCtx != null && mounted) {
+      Navigator.pop(dialogCtx);
     }
   }
 
