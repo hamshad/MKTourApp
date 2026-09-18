@@ -1,8 +1,8 @@
 # MK Tours - Project State
 
 ## Current Position
-- **Phase:** 13-account-suspension-safeguard-on-startup-outstanding-balance — In Progress (1/2 plans, 2026-09-18)
-- **Next:** Phase 13 plan 02 home startup gate (entry lock + pay-online modal + unlock)
+- **Phase:** 13-account-suspension-safeguard-on-startup-outstanding-balance — Complete (2/2 plans, 2026-09-18)
+- **Next:** Phase transition (Phase 13 complete — suspension-flag foundation + home startup gate)
 
 ## Completed Plans
 - 02-01: Ride-flow API layer — no-OTP startRide, stopArrive/stopResume, stops-aware fare/create, reason cancel, fixed end-early (`c0c7d26`, `0e95c3b`)
@@ -33,6 +33,7 @@
 - 12-02: Rider live-settlement sheet — ExcessSettlementSheet cash/online/waiting/WebView on receipt modal, succeeded pop-only-when-cleared, select-method mapper copy (`874bae9`, `729a7fa`)
 - 12-03: Driver cash-confirm modal — Collect-Cash request modal + confirm wiring, silent auto-close on cancelled/succeeded, confirm-driver-cash mapper copy (`06f4f8c`, `55ff1e3`)
 - 13-01: Suspension-flag parsing foundation — accountSuspended/allowCash fields + isSuspended conjunction getter + tolerant _flag parser, 6 contract tests on brief §1 JSON, 403 backstop verified intact (`ce0dd86`, `2a9d7ba`)
+- 13-02: Home startup suspension gate — _isSuspended flag + 3 entry locks, single-shot non-dismissible pay-online modal, authoritative succeeded re-fetch unlock with silent modal dismiss (`bb94e4f`, `647efa0`, `024b51d`)
 
 ## Decisions
 - [02-01] OTP dialog UI left in place; only API call path made OTP-free (UI strip-out in 03-01)
@@ -106,6 +107,9 @@
 - [12-03] payment:succeeded closes open cash modal silently before existing reset-to-online runs
 - [13-01] isSuspended = accountSuspended && !allowCash conjunction (suspended+allowCash is in-car, not suspended)
 - [13-01] Absent suspension flags default to not-suspended (backward compat); fromSelectMethodEnvelope/fromForbiddenEnvelope untouched
+- [13-02] Suspended entry guards re-show the modal (not toast/nav) so every booking path funnels to pay-online
+- [13-02] payment:succeeded never unlocks directly — re-fetch getGlobalPaymentBalance first, unlock only on data null / status succeeded (unrelated mid-trip captures fire the same event)
+- [13-02] FCM paymentSucceeded/cashCollected keeps direct-clear (backend-pushed success is authoritative)
 
 ## Blockers
 - None
@@ -118,7 +122,8 @@
 - Phase 13 added: account suspension safeguard — startup lock of Book/Schedule + pay-online-only modal on accountSuspended:true per updated backend guide (live settlement stays in Phase 12)
 
 ## Session
-- Last session: Completed 13-01-PLAN.md (2026-09-18, 2 commits, SUMMARY at phases/13-account-suspension-safeguard-on-startup-outstanding-balance/13-01-SUMMARY.md). Next: 13-02.
+- Last session: Completed 13-02-PLAN.md (2026-09-18, 3 commits, SUMMARY at phases/13-account-suspension-safeguard-on-startup-outstanding-balance/13-02-SUMMARY.md). Phase 13 complete. Next: phase transition.
+- Previous: Completed 13-01-PLAN.md (2026-09-18, 2 commits, SUMMARY at phases/13-account-suspension-safeguard-on-startup-outstanding-balance/13-01-SUMMARY.md). Next: 13-02.
 - Previous: Completed 12-03-PLAN.md (2026-09-17, 2 commits, SUMMARY at phases/12-excess-balance-stage-2-settlement-rider-cash-online-plus-driver-cash-confirm/12-03-SUMMARY.md). Phase 12 complete. Next: Phase 13.
 - Previous: Completed 12-02-PLAN.md (2026-09-17, 2 commits, SUMMARY at phases/12-excess-balance-stage-2-settlement-rider-cash-online-plus-driver-cash-confirm/12-02-SUMMARY.md). Next: 12-03.
 - Previous: Completed 12-01-PLAN.md (2026-09-17, 2 commits, SUMMARY at phases/12-excess-balance-stage-2-settlement-rider-cash-online-plus-driver-cash-confirm/12-01-SUMMARY.md). Next: 12-02.
