@@ -270,7 +270,7 @@ Plans:
 
 **Goal:** Close out the driver-cash round-trip — on `payment:excessCashConfirmed`, rider exits the waiting state with settled confirmation and driver closes the Collect-Cash modal with toast. Exact backend payloads in phase dir INTEGRATION-GUIDE.md; event verified unhandled (zero hits in lib/).
 **Depends on:** Phase 13
-**Plans:** 3/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 - [x] `14-01-PLAN.md` — Socket transport: on/offExcessCashConfirmed passthroughs + dedupe regression tests
