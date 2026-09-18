@@ -260,7 +260,7 @@ Plans:
 
 **Goal:** Startup suspension gate — on GET /payments/balance with accountSuspended:true + allowCash:false, lock Book/Schedule buttons and show pay-online-only modal; unlock on payment:succeeded. Live in-car settlement stays in Phase 12. Full backend contract in phase dir INTEGRATION-GUIDE.md.
 **Depends on:** Phase 12
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 - [ ] `13-01-PLAN.md` — Suspension-flag parsing foundation (model + contract tests) + 403 backstop verification
