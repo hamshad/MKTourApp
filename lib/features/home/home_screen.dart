@@ -1248,6 +1248,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _clearPendingBalance() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_pendingBalanceKey);
+    // Dismiss the suspension modal silently (no extra toast — the balance
+    // screen already toasts). Pop only if open.
+    _closeSuspensionModalIfOpen();
     if (mounted) {
       setState(() {
         _pendingBalance = null;
@@ -1295,11 +1298,46 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     });
 
-    // Balance cleared → drop the banner.
-    _socketService.onPaymentSucceeded((data) {
+    // Balance cleared → drop the banner, but only after an authoritative
+    // re-fetch shows the balance cleared (data null or status succeeded).
+    // `payment:succeeded` also fires for unrelated mid-trip captures, which
+    // must never unlock a suspended account.
+    _socketService.onPaymentSucceeded((data) async {
       debugPrint('✅ [HomeScreen] Payment succeeded: $data');
       if (!mounted) return;
-      _clearPendingBalance();
+      try {
+        final res = await _apiService.getGlobalPaymentBalance();
+        if (!mounted) return;
+        if (res['success'] == true) {
+          if (res['data'] == null) {
+            await _clearPendingBalance();
+            return;
+          }
+          final raw = res['data'];
+          final status = raw is Map ? raw['status']?.toString() : null;
+          if (status == 'succeeded') {
+            await _clearPendingBalance();
+            return;
+          }
+          // Still owed (e.g. unrelated capture) → refresh amount, stay locked.
+          final parsed = OutstandingBalance.fromBalanceEnvelope(res, '');
+          if (parsed != null && parsed.isOwed && mounted) {
+            if (parsed.rideId.isNotEmpty) {
+              await _persistPendingBalance(parsed);
+            } else {
+              setState(() {
+                _pendingBalance = parsed;
+                _isSuspended = parsed.isSuspended;
+              });
+            }
+            return;
+          }
+        }
+        // Inconclusive → full re-verify (clears only on authoritative clear).
+        await _checkPendingBalance();
+      } catch (_) {
+        await _checkPendingBalance();
+      }
     });
   }
 
