@@ -71,6 +71,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// Cash + payment_link only — tap opens [OutstandingBalanceScreen].
   static const String _pendingBalanceKey = 'pending_balance_ride_id';
   OutstandingBalance? _pendingBalance;
+  // Account suspension safeguard (Phase 13): true when the startup/global
+  // balance carries accountSuspended:true + allowCash:false. Locks the three
+  // home booking entries; cleared only via _clearPendingBalance.
+  bool _isSuspended = false;
+  bool _suspensionModalOpen = false;
   StreamSubscription<FcmNotificationData>? _balanceForegroundSub;
   StreamSubscription<FcmNotificationData>? _balanceTapSub;
 
@@ -1158,7 +1163,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ? OutstandingBalance.fromBalanceEnvelope(res, rideId)
           : null;
       if (parsed != null && parsed.isOwed && mounted) {
-        setState(() => _pendingBalance = parsed);
+        setState(() {
+          _pendingBalance = parsed;
+          _isSuspended = parsed.isSuspended;
+        });
       } else if (res['success'] != true) {
         // 404 → no balance: drop stale persistence silently.
         await _clearPendingBalance();
@@ -1223,13 +1231,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _persistPendingBalance(OutstandingBalance balance) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_pendingBalanceKey, balance.rideId);
-    if (mounted) setState(() => _pendingBalance = balance);
+    if (mounted) {
+      setState(() {
+        _pendingBalance = balance;
+        _isSuspended = balance.isSuspended;
+      });
+    } else {
+      _isSuspended = balance.isSuspended;
+    }
   }
 
   Future<void> _clearPendingBalance() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_pendingBalanceKey);
-    if (mounted) setState(() => _pendingBalance = null);
+    if (mounted) {
+      setState(() {
+        _pendingBalance = null;
+        _isSuspended = false;
+      });
+    } else {
+      _isSuspended = false;
+    }
   }
 
   /// Registers balance socket listeners. Called from both initial setup
@@ -1752,6 +1774,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       // Search Bar
                       GestureDetector(
                         onTap: () async {
+                          if (_isSuspended) {
+                            _showSuspensionModal();
+                            return;
+                          }
                           final result = await Navigator.pushNamed(
                             context,
                             '/destination-search',
@@ -1809,6 +1835,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       // Airport Button
                       GestureDetector(
                         onTap: () async {
+                          if (_isSuspended) {
+                            _showSuspensionModal();
+                            return;
+                          }
                           final result = await Navigator.push(
                             context,
                             MaterialPageRoute(
@@ -2007,7 +2037,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
                       // Scheduled Rides Quick Action
                       InkWell(
-                        onTap: () => Navigator.pushNamed(context, '/scheduled-rides'),
+                        onTap: () {
+                          if (_isSuspended) {
+                            _showSuspensionModal();
+                            return;
+                          }
+                          Navigator.pushNamed(context, '/scheduled-rides');
+                        },
                         borderRadius: BorderRadius.circular(14),
                         child: Container(
                           padding: const EdgeInsets.all(14),
