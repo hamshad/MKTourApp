@@ -154,6 +154,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   bool _excessCashDialogOpen = false;
   BuildContext? _excessCashDialogContext;
 
+  // Phase 14 CONFIRM-04: per-ride toast-once guard for the confirmed
+  // close-out. The modal may already be
+  // closed (local confirm tap, co-fired succeeded) while the confirmed
+  // toast must still fire exactly once — so the guard is keyed by event
+  // rideId, NOT by _excessCashDialogOpen. Reset when a new excess request
+  // arrives for the same ride so a fresh round-trip can toast again.
+  final Set<String> _excessCashConfirmedToastRideIds = {};
+
   @override
   void initState() {
     super.initState();
@@ -248,6 +256,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         ? rawAmount.toDouble()
         : double.tryParse(rawAmount?.toString() ?? '');
     if (rideId == null || amount == null) return;
+    // New round-trip for this ride: allow the confirmed toast to fire again.
+    _excessCashConfirmedToastRideIds.remove(rideId);
     if (ring) AudioService.instance.playNotification();
     _showExcessCashDialog(rideId, amount);
   }
@@ -587,6 +597,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     _socketService.off('ride:paymentSelected'); // Listener for payment choice
     _socketService.offExcessCashRequested();
     _socketService.offExcessCashCancelled();
+    _socketService.offExcessCashConfirmed();
 
     // Stop and clean up notification playback if still playing
     AudioService.instance.stop();
@@ -1278,6 +1289,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       _socketService.off('ride:paymentSelected');
       _socketService.offExcessCashRequested();
       _socketService.offExcessCashCancelled();
+      _socketService.offExcessCashConfirmed();
     }
 
     _socketListenersSetup = true;
@@ -1439,6 +1451,47 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         return;
       }
       _closeExcessCashDialogIfOpen();
+    });
+
+    // Phase 14 CONFIRM-03/04: driver confirmed cash receipt — close the
+    // Collect-Cash modal (if open) then toast exactly once. No
+    // _currentRideId gate: the event rideId is authoritative (no-modal
+    // fix) — ignore only when both ids are non-null and differ, mirroring
+    // the cancelled handler above. No AudioService ring (request already
+    // rang); payment:succeeded flow untouched.
+    _socketService.onExcessCashConfirmed((data) {
+      debugPrint('💰 [DriverHomeScreen] Excess cash confirmed: $data');
+      if (!mounted) return;
+      final map = data is Map<String, dynamic>
+          ? data
+          : data is Map
+              ? Map<String, dynamic>.from(data as Map)
+              : <String, dynamic>{};
+      if (!RideEventDedupe.shouldHandleEvent(
+        source: 'socket',
+        type: 'payment_excess_cash_confirmed',
+        data: map,
+      )) {
+        return;
+      }
+      final rideId = _socketRideId(map);
+      if (rideId != null &&
+          _currentRideId != null &&
+          rideId != _currentRideId) {
+        return;
+      }
+      _closeExcessCashDialogIfOpen();
+      // Toast-once guard keyed by rideId (not modal-open): the modal may
+      // already be closed by a co-fired payment:succeeded, yet the toast
+      // must still fire exactly once.
+      final toastKey = rideId ?? '__unknown__';
+      if (_excessCashConfirmedToastRideIds.contains(toastKey)) return;
+      _excessCashConfirmedToastRideIds.add(toastKey);
+      CustomSnackbar.show(
+        context,
+        message: 'Cash excess payment confirmed!',
+        type: SnackbarType.success,
+      );
     });
 
     // Listen for location update confirmation
