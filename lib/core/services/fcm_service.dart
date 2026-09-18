@@ -60,6 +60,12 @@ class NotificationType {
   static const String rideReminder = 'ride_reminder';
   static const String scheduledRideCancelledByUser = 'scheduled_ride_cancelled_by_user';
 
+  // Stage 2 excess-cash (driver Collect-Cash modal). Backend sends FCM type
+  // `excess_cash_requested` alongside the `payment:excessCashRequested`
+  // socket event so the modal appears even with notifications off.
+  static const String excessCashRequested = 'excess_cash_requested';
+  static const String excessCashCancelled = 'excess_cash_cancelled';
+
   // Payment Notifications (payment-flow.md §4-§5, cash + payment_link only)
   static const String balanceDueReminder = 'balance_due_reminder';
   static const String paymentBalanceDue = 'payment_balance_due';
@@ -96,6 +102,20 @@ String canonicalSocketReminderKey(dynamic reminderType) {
   final v = reminderType?.toString().toLowerCase() ?? '';
   if (v.contains('final')) return 'reminder_final';
   return 'reminder_first';
+}
+
+/// Canonical dedupe key shared between the FCM `excess_cash_*` types and
+/// the socket `payment:excessCash*` handlers so exactly one transport
+/// raises the driver Collect-Cash modal (first transport wins, 5s window).
+String canonicalExcessCashDedupeType(String type) {
+  switch (type) {
+    case NotificationType.excessCashRequested:
+      return 'payment_excess_cash_requested';
+    case NotificationType.excessCashCancelled:
+      return 'payment_excess_cash_cancelled';
+    default:
+      return type;
+  }
 }
 
 /// FCM Notification payload data
@@ -380,7 +400,8 @@ class FcmService {
     // already handled this (type, rideId) within the window, skip the banner,
     // sound, and stream emission — and vice versa via the same guard.
     // Reminders use a canonical key shared with the socket `ride:reminder`
-    // handler so exactly one transport rings.
+    // handler so exactly one transport rings. Excess-cash FCM types map to
+    // the socket `payment:excessCash*` keys for the same reason.
     // EXCEPTION: ride_request is always forwarded to the in-app stream even
     // when deduped (socket won the race). The driver home screen's per-ride
     // queue dedupe makes double delivery safe, and the stream is the only
@@ -388,7 +409,9 @@ class FcmService {
     // deduped stream here meant sound with no request card.
     if (!RideEventDedupe.shouldHandleEvent(
       source: 'fcm',
-      type: canonicalReminderDedupeType(data.type),
+      type: canonicalExcessCashDedupeType(
+        canonicalReminderDedupeType(data.type),
+      ),
       data: message.data,
     )) {
       if (data.type == NotificationType.rideRequest) {
@@ -595,6 +618,8 @@ class FcmService {
       case NotificationType.paymentBalanceDue:
       case NotificationType.paymentSucceeded:
       case NotificationType.paymentFailed:
+      // Excess-cash request needs driver action (Collect-Cash modal) — ring.
+      case NotificationType.excessCashRequested:
         AudioService.instance.playNotification();
         break;
       default:
@@ -730,6 +755,12 @@ mixin FcmNotificationHandler<T extends StatefulWidget> on State<T> {
       case NotificationType.paymentFailed:
         onPaymentFailed(data);
         break;
+      case NotificationType.excessCashRequested:
+        onExcessCashRequested(data);
+        break;
+      case NotificationType.excessCashCancelled:
+        onExcessCashCancelled(data);
+        break;
       case NotificationType.rideExpired:
         onRideExpired(data);
         break;
@@ -799,6 +830,8 @@ mixin FcmNotificationHandler<T extends StatefulWidget> on State<T> {
   void onBalanceDue(FcmNotificationData data) {}
   void onPaymentSucceeded(FcmNotificationData data) {}
   void onPaymentFailed(FcmNotificationData data) {}
+  void onExcessCashRequested(FcmNotificationData data) {}
+  void onExcessCashCancelled(FcmNotificationData data) {}
 
   // Driver App notification handlers
   void onRideRequest(FcmNotificationData data) {}

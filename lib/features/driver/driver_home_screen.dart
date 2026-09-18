@@ -185,6 +185,16 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         if (mounted) {
           _handleNewRideRequest(data.rawData, quiet: true);
         }
+      } else if (data.type == NotificationType.excessCashRequested) {
+        // Tapped the excess-cash banner (e.g. app was backgrounded) — raise
+        // the Collect-Cash modal. No dedupe re-check: the tap path never
+        // consumes the shared key, and the dialog-open flag guards doubles.
+        debugPrint('💰 [DriverHomeScreen] Excess cash via FCM tap');
+        if (mounted) {
+          _handleExcessCashRequest(data.rawData, checkDedupe: false);
+        }
+      } else if (data.type == NotificationType.excessCashCancelled) {
+        if (mounted) _closeExcessCashDialogIfOpen();
       }
     });
 
@@ -197,8 +207,49 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         if (mounted) {
           _handleNewRideRequest(data.rawData, quiet: true);
         }
+      } else if (data.type == NotificationType.excessCashRequested) {
+        // FCM backup for the socket `payment:excessCashRequested` event —
+        // raises the same modal so it appears with notifications off too.
+        // No dedupe re-check here: FcmService already consumed the shared
+        // canonical key before emitting; re-checking would always lose and
+        // make this path dead. Sound already played by the service.
+        debugPrint('💰 [DriverHomeScreen] Excess cash via FCM foreground');
+        if (mounted) {
+          _handleExcessCashRequest(data.rawData, checkDedupe: false);
+        }
+      } else if (data.type == NotificationType.excessCashCancelled) {
+        if (mounted) _closeExcessCashDialogIfOpen();
       }
     });
+  }
+
+  /// Shared Stage 2 excess-cash entry point for socket + FCM transports.
+  /// Deliberately NOT gated on `_currentRideId`: online-pay rides reset the
+  /// driver to idle (`_currentRideId = null`) on completion, and the rider
+  /// selects the cash excess method afterwards — requiring a match drops
+  /// every real event. The confirm call uses the event's own rideId.
+  /// Exactly-once across transports via the shared canonical dedupe key
+  /// plus the dialog-open flag; exactly-one-sound via `ring` (FCM path
+  /// already rang in the service, so only the socket path rings here).
+  void _handleExcessCashRequest(Map<String, dynamic> raw, {required bool checkDedupe, bool ring = false}) {
+    if (!mounted) return;
+    final map = Map<String, dynamic>.from(raw);
+    if (checkDedupe &&
+        !RideEventDedupe.shouldHandleEvent(
+          source: 'socket',
+          type: 'payment_excess_cash_requested',
+          data: map,
+        )) {
+      return;
+    }
+    final rideId = _socketRideId(map);
+    final rawAmount = map['excessAmount'] ?? map['amount'];
+    final amount = rawAmount is num
+        ? rawAmount.toDouble()
+        : double.tryParse(rawAmount?.toString() ?? '');
+    if (rideId == null || amount == null) return;
+    if (ring) AudioService.instance.playNotification();
+    _showExcessCashDialog(rideId, amount);
   }
 
   @override
@@ -1350,7 +1401,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     });
 
     // Stage 2 excess-cash request: rider chose cash for the excess balance.
-    // Raises the Collect-Cash modal once per event (dedupe-guarded).
+    // Raises the Collect-Cash modal once per event (dedupe-guarded). Not
+    // gated on _currentRideId — see _handleExcessCashRequest.
     _socketService.onExcessCashRequested((data) {
       debugPrint('💰 [DriverHomeScreen] Excess cash requested: $data');
       if (!mounted) return;
@@ -1359,21 +1411,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           : data is Map
               ? Map<String, dynamic>.from(data as Map)
               : <String, dynamic>{};
-      if (!RideEventDedupe.shouldHandleEvent(
-        source: 'socket',
-        type: 'payment_excess_cash_requested',
-        data: map,
-      )) {
-        return;
-      }
-      final rideId = _socketRideId(map);
-      if (_currentRideId == null || rideId != _currentRideId) return;
-      final rawAmount = map['excessAmount'] ?? map['amount'];
-      final amount = rawAmount is num
-          ? rawAmount.toDouble()
-          : double.tryParse(rawAmount?.toString() ?? '');
-      if (amount == null) return;
-      _showExcessCashDialog(rideId!, amount);
+      // Socket path rings: the FCM service only rings when IT wins the race.
+      _handleExcessCashRequest(map, checkDedupe: true, ring: true);
     });
 
     // Stage 2 excess-cash cancelled: rider switched back to online while
