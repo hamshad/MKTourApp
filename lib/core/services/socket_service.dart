@@ -707,6 +707,16 @@ class SocketService with WidgetsBindingObserver {
     off('payment:excessCashCancelled');
   }
 
+  /// Driver confirmed cash receipt (Phase 14 INTEGRATION-GUIDE.md §2).
+  /// Payload: {rideId, excessAmount, message}.
+  void onExcessCashConfirmed(void Function(dynamic) handler) {
+    on('payment:excessCashConfirmed', handler);
+  }
+
+  void offExcessCashConfirmed() {
+    off('payment:excessCashConfirmed');
+  }
+
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   void disconnect() {
