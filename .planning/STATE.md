@@ -1,8 +1,8 @@
 # MK Tours - Project State
 
 ## Current Position
-- **Phase:** 13-account-suspension-safeguard-on-startup-outstanding-balance — Complete (2/2 plans, 2026-09-18)
-- **Next:** Phase transition (Phase 13 complete — suspension-flag foundation + home startup gate)
+- **Phase:** 14-handle-excesscashconfirmed-close-out-on-rider-and-driver — In Progress (1/3 plans, 2026-09-18)
+- **Next:** 14-02 rider close-out (waitingCash exit via authoritative refresh)
 
 ## Completed Plans
 - 02-01: Ride-flow API layer — no-OTP startRide, stopArrive/stopResume, stops-aware fare/create, reason cancel, fixed end-early (`c0c7d26`, `0e95c3b`)
@@ -34,6 +34,7 @@
 - 12-03: Driver cash-confirm modal — Collect-Cash request modal + confirm wiring, silent auto-close on cancelled/succeeded, confirm-driver-cash mapper copy (`06f4f8c`, `55ff1e3`)
 - 13-01: Suspension-flag parsing foundation — accountSuspended/allowCash fields + isSuspended conjunction getter + tolerant _flag parser, 6 contract tests on brief §1 JSON, 403 backstop verified intact (`ce0dd86`, `2a9d7ba`)
 - 13-02: Home startup suspension gate — _isSuspended flag + 3 entry locks, single-shot non-dismissible pay-online modal, authoritative succeeded re-fetch unlock with silent modal dismiss (`bb94e4f`, `647efa0`, `024b51d`)
+- 14-01: Confirmed socket transport — on/offExcessCashConfirmed passthroughs, 5 dedupe regression tests pinning exactly-once + key isolation (`90a3cb7`, `fdbb0bd`)
 
 ## Decisions
 - [02-01] OTP dialog UI left in place; only API call path made OTP-free (UI strip-out in 03-01)
@@ -110,6 +111,7 @@
 - [13-02] Suspended entry guards re-show the modal (not toast/nav) so every booking path funnels to pay-online
 - [13-02] payment:succeeded never unlocks directly — re-fetch getGlobalPaymentBalance first, unlock only on data null / status succeeded (unrelated mid-trip captures fire the same event)
 - [13-02] FCM paymentSucceeded/cashCollected keeps direct-clear (backend-pushed success is authoritative)
+- [Phase 14-handle-excesscashconfirmed-close-out-on-rider-and-driver]: Confirmed-vs-succeeded ordering owned by screen settled/dialog guards, not dedupe
 
 ## Blockers
 - None
@@ -120,9 +122,11 @@
 - Phase 11.1 inserted after Phase 11: booking screen bottom-sheet UI compaction — ride booking bottom section (price + Online/Cash + Confirm + Prebook) takes too much screen, needs compact redesign (URGENT)
 - Phase 12 added: excess balance Stage 2 settlement — rider in-car cash/online selection + driver cash-confirm flow per backend integration guide (see phase dir INTEGRATION-GUIDE.md)
 - Phase 13 added: account suspension safeguard — startup lock of Book/Schedule + pay-online-only modal on accountSuspended:true per updated backend guide (live settlement stays in Phase 12)
+- Phase 14 added: excessCashConfirmed close-out — rider + driver handling of the driver-confirm socket event (verified zero hits in lib/, genuine gap; payloads in phase dir INTEGRATION-GUIDE.md)
 
 ## Session
-- Last session: Completed 13-02-PLAN.md (2026-09-18, 3 commits, SUMMARY at phases/13-account-suspension-safeguard-on-startup-outstanding-balance/13-02-SUMMARY.md). Phase 13 complete. Next: phase transition.
+- Last session: Completed 14-01-PLAN.md (2026-09-18, 2 commits, SUMMARY at phases/14-handle-excesscashconfirmed-close-out-on-rider-and-driver/14-01-SUMMARY.md). Next: 14-02.
+- Previous: Completed 13-02-PLAN.md (2026-09-18, 3 commits, SUMMARY at phases/13-account-suspension-safeguard-on-startup-outstanding-balance/13-02-SUMMARY.md). Phase 13 complete. Next: phase transition.
 - Previous: Completed 13-01-PLAN.md (2026-09-18, 2 commits, SUMMARY at phases/13-account-suspension-safeguard-on-startup-outstanding-balance/13-01-SUMMARY.md). Next: 13-02.
 - Previous: Completed 12-03-PLAN.md (2026-09-17, 2 commits, SUMMARY at phases/12-excess-balance-stage-2-settlement-rider-cash-online-plus-driver-cash-confirm/12-03-SUMMARY.md). Phase 12 complete. Next: Phase 13.
 - Previous: Completed 12-02-PLAN.md (2026-09-17, 2 commits, SUMMARY at phases/12-excess-balance-stage-2-settlement-rider-cash-online-plus-driver-cash-confirm/12-02-SUMMARY.md). Next: 12-03.
