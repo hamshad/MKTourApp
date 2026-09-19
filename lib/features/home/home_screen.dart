@@ -1686,68 +1686,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ],
                   ),
 
-                  const SizedBox(height: 12),
-
-                  // Outstanding-balance banner (payment-flow.md §3): persists
-                  // until payment:succeeded clears it. Tap opens the balance
-                  // screen (cash info + payment-link WebView).
-                  if (_pendingBalance != null)
-                    GestureDetector(
-                      onTap: _openPendingBalance,
-                      child: Container(
-                        width: double.infinity,
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 12,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.shade50,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: Colors.orange.shade300,
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.account_balance_wallet_outlined,
-                              color: Colors.orange.shade700,
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Outstanding balance: £${_pendingBalance!.amount.toStringAsFixed(2)}',
-                                    style: TextStyle(
-                                      color: Colors.orange.shade800,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                  Text(
-                                    'Tap to pay and unlock booking',
-                                    style: TextStyle(
-                                      color: Colors.orange.shade700,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Icon(
-                              Icons.chevron_right,
-                              color: Colors.orange.shade700,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                  const SizedBox(height: 12),
                 ],
               ),
             ),
