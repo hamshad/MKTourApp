@@ -134,8 +134,10 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
         // Show success message
         _showSuccessDialog(result.message ?? 'Booking confirmed!', result.data);
       } else if (!result.success && mounted) {
-        // 403 outstanding-balance block (payment-flow.md §7): redirect to
-        // the balance screen instead of a dead-end error dialog.
+        // Dormant 403 backstop (payment-flow.md §7): kept for non-balance
+        // 403s (e.g. suspension). Per Phase 15 brief, create/schedule no
+        // longer 403 on unpaid balance — the Stripe amount auto-covers
+        // fare + debt — so the success path above needs no change.
         if (result.isBalanceBlocked) {
           _openBalanceBlocked(
             rideId: result.data?['rideId']?.toString(),
@@ -369,8 +371,10 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
     }
   }
 
-  /// 403 outstanding-balance block (payment-flow.md §7): fetch the live
-  /// balance and open the balance screen. Falls back to the known amount
+  /// Dormant 403 backstop (payment-flow.md §7): fetch the live balance
+  /// and open the balance screen. Per Phase 15 brief this no longer fires
+  /// for unpaid balance (backend auto-covers via the combined total) —
+  /// retained for other 403s. Falls back to the known amount
   /// when the re-fetch has no link yet. When the block carries no rideId,
   /// resolves it via the global balance endpoint before giving up.
   Future<void> _openBalanceBlocked({
