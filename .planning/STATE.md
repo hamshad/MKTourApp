@@ -1,8 +1,8 @@
 # MK Tours - Project State
 
 ## Current Position
-- **Phase:** 14-handle-excesscashconfirmed-close-out-on-rider-and-driver — Complete (3/3 plans, 2026-09-18)
-- **Next:** Phase transition (phase 14 complete — verify + plan next phase)
+- **Phase:** 15-outstanding-balance-silent-booking-fare-transparency — In Progress (1/2 plans, 2026-09-19)
+- **Next:** 15-02 (fare transparency UI)
 
 ## Completed Plans
 - 02-01: Ride-flow API layer — no-OTP startRide, stopArrive/stopResume, stops-aware fare/create, reason cancel, fixed end-early (`c0c7d26`, `0e95c3b`)
@@ -38,6 +38,7 @@
 - 14-02: Rider confirmed close-out — waitingCash exit via authoritative refresh + thank-you copy (see 14-02-SUMMARY.md)
 - 14-03: Driver confirmed close-out — Collect-Cash modal close + single toast + reconnect wiring, per-ride toast-once set (`209ec2e`)
 - 14-02: Rider confirmed close-out — waitingCash exit via authoritative refresh + event thank-you copy, co-fired succeeded no-ops on settled guard (`34336a9`)
+- 15-01: Fare-estimate balance parsing — outstanding_balance in fare map, backend total untouched, 6 contract tests (`06cadaf`, `6f9ce5b`)
 
 ## Decisions
 - [02-01] OTP dialog UI left in place; only API call path made OTP-free (UI strip-out in 03-01)
@@ -117,6 +118,8 @@
 - [Phase 14-handle-excesscashconfirmed-close-out-on-rider-and-driver]: Confirmed-vs-succeeded ordering owned by screen settled/dialog guards, not dedupe
 - [14-03] Driver confirmed toast-once guard keyed by event-rideId set, not modal-open flag (modal may be closed by co-fired succeeded while toast must still fire exactly once)
 - [14-02] Confirmed success copy passed as optional _refresh param, not a second pop path (single authoritative exit preserved); no AudioService ring on confirmed
+- [15-01] Negative outstandingBalance clamps to 0, mirroring discount clamp in same normalizer
+- [15-01] excessAmount accepted as middle fallback key, consistent with OutstandingBalance model tolerance
 
 ## Blockers
 - None
@@ -130,6 +133,7 @@
 - Phase 14 added: excessCashConfirmed close-out — rider + driver handling of the driver-confirm socket event (verified zero hits in lib/, genuine gap; payloads in phase dir INTEGRATION-GUIDE.md)
 
 ## Session
+- Last session: Completed 15-01-PLAN.md (2026-09-19, 2 commits `06cadaf`, `6f9ce5b`, SUMMARY at phases/15-outstanding-balance-silent-booking-fare-transparency/15-01-SUMMARY.md). Next: 15-02.
 - Last session: Completed 14-03-PLAN.md (2026-09-18, 1 commit `209ec2e`, SUMMARY at phases/14-handle-excesscashconfirmed-close-out-on-rider-and-driver/14-03-SUMMARY.md). Phase 14 complete. Next: phase transition.
 - Previous: Completed 14-02-PLAN.md (2026-09-18, 1 commit, SUMMARY at phases/14-handle-excesscashconfirmed-close-out-on-rider-and-driver/14-02-SUMMARY.md). Next: 14-03.
 - Previous: Completed 14-01-PLAN.md (2026-09-18, 2 commits, SUMMARY at phases/14-handle-excesscashconfirmed-close-out-on-rider-and-driver/14-01-SUMMARY.md). Next: 14-02.
