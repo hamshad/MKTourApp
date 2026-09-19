@@ -310,3 +310,25 @@ Plans:
 
 Plans:
 - [x] `11.1-01-PLAN.md` — Compact bottom-sheet card on both booking screens + contract verification
+
+### Phase 15: Outstanding balance silent booking + fare transparency
+
+**Goal:** Silent outstanding-balance booking — fare-estimate `outstandingBalance` surfaced as "Includes £X unpaid balance" transparency on booking screens, create/schedule succeed without 403, Stripe auto-covers the combined total with zero client-side fare math.
+**Depends on:** Phase 14
+
+**Requirements:**
+- **BAL-01**: Parse `outstandingBalance` per fare-estimate category without altering totals
+- **BAL-02**: Contract tests pin brief section 1 JSON (total 15, balance 5, no double-count)
+- **BAL-03**: Booking screens show "Includes £X.XX unpaid balance" line/banner when balance > 0
+- **BAL-04**: Create/schedule succeed with balance owing (403 backstop retained dormant); no socket/FCM/cancel-refund changes
+
+**Plans:** 2 plans
+
+Plans:
+- [ ] `15-01-PLAN.md` — Fare parser: outstandingBalance through _normalizeCategory + contract tests
+- [ ] `15-02-PLAN.md` — Transparency UI on booking surfaces + silent-booking backstop verify
+
+**Success Criteria:**
+- Balance > 0 shows transparency copy pre-confirm; balance 0 renders pixel-identical
+- Booking with debt succeeds via normal flow; Stripe covers combined total, no client math
+- `flutter analyze` clean; fare-balance + outstanding + upfront tests green
