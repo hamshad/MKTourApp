@@ -317,16 +317,16 @@ Plans:
 **Depends on:** Phase 14
 
 **Requirements:**
-- **BAL-01**: Parse `outstandingBalance` per fare-estimate category without altering totals
-- **BAL-02**: Contract tests pin brief section 1 JSON (total 15, balance 5, no double-count)
-- **BAL-03**: Booking screens show "Includes £X.XX unpaid balance" line/banner when balance > 0
-- **BAL-04**: Create/schedule succeed with balance owing (403 backstop retained dormant); no socket/FCM/cancel-refund changes
+- **BAL-01**: Parse `outstandingBalance` per fare-estimate category without altering totals ✅ (15-01)
+- **BAL-02**: Contract tests pin brief section 1 JSON (total 15, balance 5, no double-count) ✅ (15-01)
+- **BAL-03**: Booking screens show "Includes £X.XX unpaid balance" line/banner when balance > 0 ✅ (15-02)
+- **BAL-04**: Create/schedule succeed with balance owing (403 backstop retained dormant); no socket/FCM/cancel-refund changes ✅ (15-02)
 
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 
 Plans:
-- [ ] `15-01-PLAN.md` — Fare parser: outstandingBalance through _normalizeCategory + contract tests
-- [ ] `15-02-PLAN.md` — Transparency UI on booking surfaces + silent-booking backstop verify
+- [x] `15-01-PLAN.md` — Fare parser: outstandingBalance through _normalizeCategory + contract tests
+- [x] `15-02-PLAN.md` — Transparency UI on booking surfaces + silent-booking backstop verify
 
 **Success Criteria:**
 - Balance > 0 shows transparency copy pre-confirm; balance 0 renders pixel-identical

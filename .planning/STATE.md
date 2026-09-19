@@ -1,8 +1,8 @@
 # MK Tours - Project State
 
 ## Current Position
-- **Phase:** 15-outstanding-balance-silent-booking-fare-transparency — In Progress (1/2 plans, 2026-09-19)
-- **Next:** 15-02 (fare transparency UI)
+- **Phase:** 15-outstanding-balance-silent-booking-fare-transparency — Complete (2/2 plans, 2026-09-19)
+- **Next:** Phase transition (Phase 15 done: fare parsing + transparency UI + silent-booking backstop)
 
 ## Completed Plans
 - 02-01: Ride-flow API layer — no-OTP startRide, stopArrive/stopResume, stops-aware fare/create, reason cancel, fixed end-early (`c0c7d26`, `0e95c3b`)
@@ -39,6 +39,7 @@
 - 14-03: Driver confirmed close-out — Collect-Cash modal close + single toast + reconnect wiring, per-ride toast-once set (`209ec2e`)
 - 14-02: Rider confirmed close-out — waitingCash exit via authoritative refresh + event thank-you copy, co-fired succeeded no-ops on settled guard (`34336a9`)
 - 15-01: Fare-estimate balance parsing — outstanding_balance in fare map, backend total untouched, 6 contract tests (`06cadaf`, `6f9ce5b`)
+- 15-02: Fare transparency UI + silent-booking backstop — banners on both booking screens, selected-card caption, 403 kept as dormant backstop (`c1fece5`, `06acdd2`)
 
 ## Decisions
 - [02-01] OTP dialog UI left in place; only API call path made OTP-free (UI strip-out in 03-01)
@@ -120,6 +121,8 @@
 - [14-02] Confirmed success copy passed as optional _refresh param, not a second pop path (single authoritative exit preserved); no AudioService ring on confirmed
 - [15-01] Negative outstandingBalance clamps to 0, mirroring discount clamp in same normalizer
 - [15-01] excessAmount accepted as middle fallback key, consistent with OutstandingBalance model tolerance
+- [15-02] Balance caption scoped to selected card only; zero/absent balance renders pixel-identical
+- [15-02] isBalanceBlocked branches kept as dormant backstop for non-balance 403s (e.g. suspension); comment updates scoped to booking screens, PaymentService/model untouched
 
 ## Blockers
 - None
@@ -133,7 +136,8 @@
 - Phase 14 added: excessCashConfirmed close-out — rider + driver handling of the driver-confirm socket event (verified zero hits in lib/, genuine gap; payloads in phase dir INTEGRATION-GUIDE.md)
 
 ## Session
-- Last session: Completed 15-01-PLAN.md (2026-09-19, 2 commits `06cadaf`, `6f9ce5b`, SUMMARY at phases/15-outstanding-balance-silent-booking-fare-transparency/15-01-SUMMARY.md). Next: 15-02.
+- Last session: Completed 15-02-PLAN.md (2026-09-19, 2 commits `c1fece5`, `06acdd2`, SUMMARY at phases/15-outstanding-balance-silent-booking-fare-transparency/15-02-SUMMARY.md). Phase 15 complete. Next: phase transition.
+- Previous: Completed 15-01-PLAN.md (2026-09-19, 2 commits `06cadaf`, `6f9ce5b`, SUMMARY at phases/15-outstanding-balance-silent-booking-fare-transparency/15-01-SUMMARY.md). Next: 15-02.
 - Last session: Completed 14-03-PLAN.md (2026-09-18, 1 commit `209ec2e`, SUMMARY at phases/14-handle-excesscashconfirmed-close-out-on-rider-and-driver/14-03-SUMMARY.md). Phase 14 complete. Next: phase transition.
 - Previous: Completed 14-02-PLAN.md (2026-09-18, 1 commit, SUMMARY at phases/14-handle-excesscashconfirmed-close-out-on-rider-and-driver/14-02-SUMMARY.md). Next: 14-03.
 - Previous: Completed 14-01-PLAN.md (2026-09-18, 2 commits, SUMMARY at phases/14-handle-excesscashconfirmed-close-out-on-rider-and-driver/14-01-SUMMARY.md). Next: 14-02.
@@ -145,10 +149,3 @@
 - Previous: Completed 11.1-01-PLAN.md (2026-09-17, 2 commits, SUMMARY at phases/11.1-booking-screen-bottom-sheet-ui-compaction/11.1-01-SUMMARY.md). Phase 11.1 complete.
 - Previous: Completed 11-03-PLAN.md (2026-09-17, 3 commits, SUMMARY at phases/11-upfront-payments/11-03-SUMMARY.md). Phase 11 complete (11-01, 11-02, 11-03).
 - Previous: Completed 11-01-PLAN.md (2026-09-17, 4 commits, SUMMARY at phases/11-upfront-payments/11-01-SUMMARY.md). Next: 11-02.
-- Last session: Completed 10-03-PLAN.md (2026-09-12, 2 feat commits, SUMMARY at phases/10-driver-request-stack/10-03-SUMMARY.md). Phase 10 complete.
-- Previous: Completed 10-02-PLAN.md (2026-09-12, 2 feat commits, SUMMARY at phases/10-driver-request-stack/10-02-SUMMARY.md). Phase 10 complete.
-- Previous: Completed 10-01-PLAN.md (2026-09-12, 2 feat commits, SUMMARY at phases/10-driver-request-stack/10-01-SUMMARY.md). Next: 10-02.
-- Previous: Completed 09-02-PLAN.md (2026-09-12, 2 feat commits, SUMMARY at phases/09-promo-pending-state/09-02-SUMMARY.md). Phase 09 complete.
-- Previous: Completed 09-01-PLAN.md (2026-09-12, test + feat commits, SUMMARY at phases/09-promo-pending-state/09-01-SUMMARY.md). Next: 09-02.
-- Previous: Completed 08-03-PLAN.md (2026-09-11, 2 commits, SUMMARY at phases/08-scheduled-screen-flow/08-03-SUMMARY.md). Next: 08-02.
-- Previous: Completed 08-01-PLAN.md (2026-09-11, 3 feat commits, SUMMARY at phases/08-scheduled-screen-flow/08-01-SUMMARY.md). Next: 08-02.
