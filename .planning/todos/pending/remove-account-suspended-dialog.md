@@ -1,9 +1,11 @@
 ---
 title: Remove Account Temporarily Suspended dialog
 area: ui
-status: pending
+status: completed
 created: 2026-09-19
 updated: 2026-09-19
+completed_at: 2026-09-19
+commit: e626d04
 ---
 
 ## Description
@@ -18,10 +20,10 @@ Remove the "Account Temporarily Suspended" dialog. We are removing the temporary
 
 ## Acceptance Criteria
 
-- [ ] Remove `OutstandingBalanceScreen` suspend-banner/dialog path (if any)
-- [ ] Remove any `accountSuspended` / `allowCash` UI branching in `HomeScreen` startup gate
-- [ ] Ensure booking with debt shows only the transparency banner (Phase 15), never a suspension modal
-- [ ] `flutter analyze` clean; `flutter test` green
+- [x] Remove `OutstandingBalanceScreen` suspend-banner/dialog path (if any)
+- [x] Remove any `accountSuspended` / `allowCash` UI branching in `HomeScreen` startup gate
+- [x] Ensure booking with debt shows only the transparency banner (Phase 15), never a suspension modal
+- [x] `flutter analyze` clean; `flutter test` green
 
 ## Related Files
 
@@ -32,3 +34,5 @@ Remove the "Account Temporarily Suspended" dialog. We are removing the temporary
 ## Notes
 
 Backend contract changed: no more `accountSuspended` hard-block on booking. The suspension gate was for *startup* (pre-booking); booking itself now succeeds silently with balance included. Remove the dialog/UX entirely.
+
+**Completed**: Commit e626d04 removed all suspension UX from HomeScreen and set `OutstandingBalance.isSuspended` to always return `false` (backend flags retained for compat). All 65 tests pass.
