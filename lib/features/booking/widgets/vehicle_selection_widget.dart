@@ -277,6 +277,15 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
     final discount = numOf(cat['discount'] ?? (originalFare - estimatedFare));
     final isCongestion = cat['isCongestionCharge'] == true;
     final congestionAmount = numOf(cat['congestionChargeAmount'] ?? 0);
+    // Backend already folds unpaid balance into estimatedFare — surface the
+    // split only, never add it to the total (no double-count).
+    final outstandingRaw = numOf(
+      cat['outstandingBalance'] ??
+          cat['excessAmount'] ??
+          cat['outstanding_balance'] ??
+          0,
+    );
+    final outstandingBalance = (outstandingRaw < 0 ? 0 : outstandingRaw);
     final seatingCapacity = (cat['seatingCapacity'] as num?)?.toInt();
 
     return {
@@ -289,6 +298,7 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
         'promo_applied': promoApplied,
         'is_congestion': isCongestion,
         'congestion_amount': congestionAmount.toDouble(),
+        'outstanding_balance': outstandingBalance.toDouble(),
         if (seatingCapacity != null) 'seating_capacity': seatingCapacity,
         'distance_text': distanceText,
         'distance_miles': distanceMiles ?? 0.0,
