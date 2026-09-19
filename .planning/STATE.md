@@ -134,6 +134,7 @@
 - Phase 12 added: excess balance Stage 2 settlement — rider in-car cash/online selection + driver cash-confirm flow per backend integration guide (see phase dir INTEGRATION-GUIDE.md)
 - Phase 13 added: account suspension safeguard — startup lock of Book/Schedule + pay-online-only modal on accountSuspended:true per updated backend guide (live settlement stays in Phase 12)
 - Phase 14 added: excessCashConfirmed close-out — rider + driver handling of the driver-confirm socket event (verified zero hits in lib/, genuine gap; payloads in phase dir INTEGRATION-GUIDE.md)
+- **Pending todo:** Remove Account Temporarily Suspended dialog — suspension concept obsolete per Phase 15 contract; booking now silently includes balance (see `.planning/todos/pending/remove-account-suspended-dialog.md`)
 
 ## Session
 - Last session: Completed 15-02-PLAN.md (2026-09-19, 2 commits `c1fece5`, `06acdd2`, SUMMARY at phases/15-outstanding-balance-silent-booking-fare-transparency/15-02-SUMMARY.md). Phase 15 complete. Next: phase transition.
