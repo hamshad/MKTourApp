@@ -945,6 +945,60 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
 
                   const SizedBox(height: 16),
 
+                  // Outstanding-balance transparency (Phase 15): backend
+                  // total is authoritative — display the split only, never
+                  // recompute. Tolerant num-or-string read, default 0 so
+                  // legacy callers passing basePrice-only maps render
+                  // pixel-identical to today.
+                  Builder(
+                    builder: (context) {
+                      final raw = vehicle['outstanding_balance'] ??
+                          vehicle['outstandingBalance'] ??
+                          vehicle['excessAmount'] ??
+                          0;
+                      final balance = raw is num
+                          ? raw.toDouble()
+                          : double.tryParse('$raw') ?? 0.0;
+                      if (balance <= 0) return const SizedBox.shrink();
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.amber.shade200,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.info_outline,
+                                size: 18,
+                                color: Colors.amber.shade800,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Includes £${balance.toStringAsFixed(2)} unpaid balance from a previous ride',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.amber.shade800,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+
                   // Mandatory payment selector (11-02) — above Confirm.
                   _buildPaymentMethodSelector(),
                 ],

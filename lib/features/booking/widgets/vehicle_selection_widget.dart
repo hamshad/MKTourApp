@@ -131,6 +131,7 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
           'duration_text': 'Airport transfer',
           'duration_seconds': 0,
           'is_fixed_fare': true,
+          'outstanding_balance': 0.0,
         };
       }
       if (mounted) {
@@ -842,6 +843,25 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                                 ),
                               ),
                             ),
+                          // Outstanding-balance split (Phase 15): caption under
+                          // the selected-category price when the fare map
+                          // carries balance > 0. Backend total shown as-is.
+                          if (isSelected &&
+                              ((fareData?['outstanding_balance'] as num?)
+                                      ?.toDouble() ??
+                                  0.0) >
+                                  0)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(
+                                'incl. £${((fareData!['outstanding_balance'] as num).toDouble()).toStringAsFixed(2)} balance',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.amber.shade800,
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     ),
@@ -887,6 +907,7 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                                   'distance_text': 'Calculation pending',
                                   'duration_text': 'Calculating...',
                                   'duration_seconds': 600,
+                                  'outstanding_balance': 0.0,
                                 };
 
                             widget.onPrebookVehicle?.call(
@@ -927,6 +948,7 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                                 'distance_text': 'Calculation pending',
                                 'duration_text': 'Calculating...',
                                 'duration_seconds': 600,
+                                'outstanding_balance': 0.0,
                               };
 
                           widget.onSelectVehicle(

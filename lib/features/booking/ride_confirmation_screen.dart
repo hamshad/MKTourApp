@@ -326,6 +326,11 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
       ? (_currentFareData['total_fare'] as num).toDouble()
       : 0.0;
 
+  // Outstanding-balance transparency (Phase 15): backend `total_fare`
+  // already includes the debt — surface the split only, never recompute.
+  double get _outstandingBalance =>
+      (_currentFareData['outstanding_balance'] as num?)?.toDouble() ?? 0.0;
+
   String get _distanceText => _currentFareData['distance_text'] ?? '';
   String get _durationText => _currentFareData['duration_text'] ?? '';
   int get _durationSeconds => _currentFareData['duration_seconds'] ?? 0;
@@ -1832,6 +1837,14 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                 const SizedBox(height: 8),
               ],
 
+              // Outstanding-balance transparency (Phase 15): shown only
+              // when the fare map carries balance > 0. Backend total is
+              // authoritative — display as-is, no client-side fare math.
+              if (!hasError && _outstandingBalance > 0) ...[
+                _buildBalanceBanner(),
+                const SizedBox(height: 10),
+              ],
+
               // Single payment-method row (11-02 toggle, compact idiom).
               if (!hasError) ...[
                 _buildPaymentMethodSelector(),
@@ -1977,6 +1990,40 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// Outstanding-balance transparency banner (Phase 15). Amber info
+  /// style matching the congestion badge family. Rendered only when
+  /// [_outstandingBalance] > 0; balance 0/absent renders nothing.
+  Widget _buildBalanceBanner() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.amber.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.amber.shade200),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.info_outline,
+            size: 18,
+            color: Colors.amber.shade800,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Includes £${_outstandingBalance.toStringAsFixed(2)} unpaid balance from a previous ride',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Colors.amber.shade800,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
