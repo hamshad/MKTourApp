@@ -2,6 +2,8 @@
 ///
 /// Cash + payment_link only: a Stripe `clientSecret` may be present in the
 /// payload but is surfaced, never presented (no Payment Sheet in this app).
+/// `accountSuspended` / `allowCash` retained for backend compat; suspension
+/// UX removed per Phase 15 — booking now silently includes balance.
 class OutstandingBalance {
   final String rideId;
   final double amount;
@@ -28,7 +30,9 @@ class OutstandingBalance {
   bool get isOwed => status == 'balance_due';
   bool get isPaid => status == 'succeeded';
   bool get hasPaymentUrl => paymentUrl != null && paymentUrl!.isNotEmpty;
-  bool get isSuspended => accountSuspended && !allowCash;
+  // Suspension UX removed (Phase 15): booking succeeds with balance included.
+  // Kept for backend compat; always returns false.
+  bool get isSuspended => false;
 
   static double _num(dynamic v) =>
       v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;

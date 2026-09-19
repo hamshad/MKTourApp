@@ -71,12 +71,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// Cash + payment_link only — tap opens [OutstandingBalanceScreen].
   static const String _pendingBalanceKey = 'pending_balance_ride_id';
   OutstandingBalance? _pendingBalance;
-  // Account suspension safeguard (Phase 13): true when the startup/global
-  // balance carries accountSuspended:true + allowCash:false. Locks the three
-  // home booking entries; cleared only via _clearPendingBalance.
-  bool _isSuspended = false;
-  bool _suspensionModalOpen = false;
-  BuildContext? _suspensionDialogContext;
   StreamSubscription<FcmNotificationData>? _balanceForegroundSub;
   StreamSubscription<FcmNotificationData>? _balanceTapSub;
 
@@ -1106,9 +1100,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// Status drives the exact screen: searching → overlay, accepted/arrived →
   /// assigned, in_progress/at_stop → trip progress. Stale (>24h) or final
   /// statuses clear to home.
-  /// Startup balance check: global `GET /payments/balance` first (account
-  /// suspended → banner immediately), falling back to the persisted rideId
-  /// check when the global call fails. Clears the banner when paid.
+  /// Startup balance check: global `GET /payments/balance` first, clears the
+  /// banner when paid. Booking now succeeds silently with balance included
+  /// (Phase 15) — no suspension gate.
   /// New guide shape: `{rideId, excessAmount, paymentUrl,
   /// status: balance_due}` — parsed with paymentUrl intact so the banner tap
   /// routes to [OutstandingBalanceScreen] with its pay link (no persistence
@@ -1118,7 +1112,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final res = await _apiService.getGlobalPaymentBalance();
       if (!mounted) return;
       if (res['success'] == true) {
-        // data null → clear; data object → suspended, raise the banner.
+        // data null → clear; data object → balance owed, raise the banner.
         if (res['data'] == null) {
           await _clearPendingBalance();
           return;
@@ -1129,7 +1123,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             parsed.rideId.isNotEmpty &&
             mounted) {
           await _persistPendingBalance(parsed);
-          _maybeShowSuspensionModal();
           return;
         }
         if (parsed != null && parsed.isPaid) {
@@ -1167,7 +1160,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (parsed != null && parsed.isOwed && mounted) {
         setState(() {
           _pendingBalance = parsed;
-          _isSuspended = parsed.isSuspended;
         });
       } else if (res['success'] != true) {
         // 404 → no balance: drop stale persistence silently.
@@ -1214,7 +1206,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           : null;
       if (parsed != null && parsed.isOwed) {
         await _persistPendingBalance(parsed);
-        _maybeShowSuspensionModal();
         return;
       }
     } catch (_) {}
@@ -1229,7 +1220,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         isReminder: true,
       ),
     );
-    _maybeShowSuspensionModal();
   }
 
   Future<void> _persistPendingBalance(OutstandingBalance balance) async {
@@ -1238,26 +1228,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (mounted) {
       setState(() {
         _pendingBalance = balance;
-        _isSuspended = balance.isSuspended;
       });
-    } else {
-      _isSuspended = balance.isSuspended;
     }
   }
 
   Future<void> _clearPendingBalance() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_pendingBalanceKey);
-    // Dismiss the suspension modal silently (no extra toast — the balance
-    // screen already toasts). Pop only if open.
-    _closeSuspensionModalIfOpen();
     if (mounted) {
       setState(() {
         _pendingBalance = null;
-        _isSuspended = false;
       });
-    } else {
-      _isSuspended = false;
     }
   }
 
@@ -1268,7 +1249,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _socketService.offPaymentBalanceDue();
     _socketService.offPaymentSucceeded();
     // Outstanding balance (payment-flow.md §1 Outcome B, §3): persist the
-    // rideId and raise the banner. FCM reminder duplicates this — one banner.
+    /// rideId and raise the banner. FCM reminder duplicates this — one banner.
     _socketService.onPaymentBalanceDue((data) {
       debugPrint('💰 [HomeScreen] Balance due: $data');
       if (!mounted) return;
@@ -1287,7 +1268,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final balance = OutstandingBalance.fromBalanceDueEvent(map);
       if (balance.rideId.isEmpty) return;
       _persistPendingBalance(balance);
-      _maybeShowSuspensionModal();
       if (mounted) {
         CustomSnackbar.show(
           context,
@@ -1301,7 +1281,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // Balance cleared → drop the banner, but only after an authoritative
     // re-fetch shows the balance cleared (data null or status succeeded).
     // `payment:succeeded` also fires for unrelated mid-trip captures, which
-    // must never unlock a suspended account.
+    // must not clear a different balance.
     _socketService.onPaymentSucceeded((data) async {
       debugPrint('✅ [HomeScreen] Payment succeeded: $data');
       if (!mounted) return;
@@ -1319,7 +1299,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             await _clearPendingBalance();
             return;
           }
-          // Still owed (e.g. unrelated capture) → refresh amount, stay locked.
+          // Still owed (e.g. unrelated capture) → refresh amount, stay visible.
           final parsed = OutstandingBalance.fromBalanceEnvelope(res, '');
           if (parsed != null && parsed.isOwed && mounted) {
             if (parsed.rideId.isNotEmpty) {
@@ -1327,7 +1307,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             } else {
               setState(() {
                 _pendingBalance = parsed;
-                _isSuspended = parsed.isSuspended;
               });
             }
             return;
@@ -1341,7 +1320,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
   }
 
-  Future<void> _openPendingBalance() async {    final balance = _pendingBalance;
+  Future<void> _openPendingBalance() async {
+    final balance = _pendingBalance;
     if (balance == null || !mounted) return;
     final result = await Navigator.push(
       context,
@@ -1355,130 +1335,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     } else {
       // Re-verify: user may have paid outside the screen (cash handoff).
       await _checkPendingBalance();
-    }
-  }
-
-  /// Account suspension safeguard (Phase 13, INTEGRATION-GUIDE.md §1):
-  /// non-dismissible pay-online-only modal. Single show site — all callers
-  /// funnel through [_maybeShowSuspensionModal]; the open flag + route guard
-  /// prevent stacking and covering the payment screen.
-  void _maybeShowSuspensionModal() {
-    if (!mounted || !_isSuspended || _pendingBalance == null) return;
-    if (_suspensionModalOpen) return;
-    runAfterFrame((_) => _showSuspensionModal());
-  }
-
-  void _showSuspensionModal() {
-    if (_suspensionModalOpen || !mounted) return;
-    if (!_isSuspended || _pendingBalance == null) return;
-    // Show only when the home route is current — never over the balance /
-    // payment screen or any pushed route.
-    if (ModalRoute.of(context)?.isCurrent != true) return;
-    _suspensionModalOpen = true;
-    final balance = _pendingBalance!;
-    final amountLabel = '£${balance.amount.toStringAsFixed(2)}';
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        _suspensionDialogContext = dialogContext;
-        return AlertDialog(
-          backgroundColor: Colors.white,
-          surfaceTintColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
-          ),
-          title: Column(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.block_outlined,
-                  color: Colors.red,
-                  size: 32,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Account Temporarily Suspended',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.outfit(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textPrimary,
-                ),
-              ),
-            ],
-          ),
-          content: Text(
-            'You have an unpaid balance of $amountLabel from a previous ride. '
-            '${balance.message} '
-            'Cash is not available after leaving the vehicle.',
-            textAlign: TextAlign.center,
-            style: GoogleFonts.outfit(
-              fontSize: 16,
-              color: AppTheme.textSecondary,
-            ),
-          ),
-          actions: [
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () async {
-                  final result = await Navigator.push(
-                    dialogContext,
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          OutstandingBalanceScreen(balance: balance),
-                    ),
-                  );
-                  if (!mounted) return;
-                  if (result is Map && result['success'] == true) {
-                    await _clearPendingBalance();
-                  } else {
-                    // Re-verify: user may have paid outside the screen.
-                    await _checkPendingBalance();
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryColor,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: Text(
-                  'Pay $amountLabel Online Now',
-                  style: GoogleFonts.outfit(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    ).then((_) {
-      _suspensionModalOpen = false;
-      _suspensionDialogContext = null;
-    });
-  }
-
-  /// Pop the suspension modal if open. Used by the unlock path — silent,
-  /// no extra toast (the balance screen already toasts).
-  void _closeSuspensionModalIfOpen() {
-    if (!_suspensionModalOpen) return;
-    _suspensionModalOpen = false;
-    final dialogCtx = _suspensionDialogContext;
-    _suspensionDialogContext = null;
-    if (dialogCtx != null && mounted) {
-      Navigator.pop(dialogCtx);
     }
   }
 
@@ -1941,10 +1797,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       // Search Bar
                       GestureDetector(
                         onTap: () async {
-                          if (_isSuspended) {
-                            _showSuspensionModal();
-                            return;
-                          }
                           final result = await Navigator.pushNamed(
                             context,
                             '/destination-search',
@@ -2002,10 +1854,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       // Airport Button
                       GestureDetector(
                         onTap: () async {
-                          if (_isSuspended) {
-                            _showSuspensionModal();
-                            return;
-                          }
                           final result = await Navigator.push(
                             context,
                             MaterialPageRoute(
@@ -2205,10 +2053,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       // Scheduled Rides Quick Action
                       InkWell(
                         onTap: () {
-                          if (_isSuspended) {
-                            _showSuspensionModal();
-                            return;
-                          }
                           Navigator.pushNamed(context, '/scheduled-rides');
                         },
                         borderRadius: BorderRadius.circular(14),

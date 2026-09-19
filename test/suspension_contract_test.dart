@@ -3,12 +3,13 @@ import 'package:mktours/core/models/outstanding_balance.dart';
 
 /// Suspension-flag contract (Phase 13 INTEGRATION-GUIDE.md §1).
 ///
-/// Pins the backend's exact startup-balance JSON:
-/// `accountSuspended:true + allowCash:false` => [isSuspended] true.
-/// Absent flags preserve today's behavior (not suspended).
+/// Backend still sends `accountSuspended` + `allowCash` flags (Phase 13),
+/// but Phase 15 removes the suspension UX entirely — booking now silently
+/// includes the balance. `isSuspended` getter always returns false.
+/// Fields retained for backend compat; tests pin parsing, not UX.
 void main() {
-  group('Suspension flags', () {
-    test('brief exact §1 JSON parses to suspended', () {
+  group('Suspension flags (backend compat — Phase 15 removes UX)', () {
+    test('brief exact §1 JSON parses fields but isSuspended=false (UX removed)', () {
       final b = OutstandingBalance.fromBalanceEnvelope({
         'success': true,
         'data': {
@@ -25,12 +26,12 @@ void main() {
         },
       }, '6aabc3476a4199e81748403e');
       expect(b, isNotNull);
-      expect(b!.isSuspended, isTrue);
+      expect(b!.isSuspended, isFalse); // UX removed per Phase 15
       expect(b.isOwed, isTrue);
       expect(b.amount, 2.50);
       expect(b.hasPaymentUrl, isTrue);
-      expect(b.accountSuspended, isTrue);
-      expect(b.allowCash, isFalse);
+      expect(b.accountSuspended, isTrue); // parsed for compat
+      expect(b.allowCash, isFalse); // parsed for compat
     });
 
     test('same JSON minus flags stays not-suspended (backward compat)', () {
@@ -51,7 +52,7 @@ void main() {
       expect(b.allowCash, isTrue);
     });
 
-    test('suspended flag with cash allowed is not suspended (conjunction)', () {
+    test('suspended flag with cash allowed — isSuspended always false', () {
       final b = OutstandingBalance.fromBalanceEnvelope({
         'success': true,
         'data': {
@@ -65,10 +66,10 @@ void main() {
       expect(b, isNotNull);
       expect(b!.accountSuspended, isTrue);
       expect(b.allowCash, isTrue);
-      expect(b.isSuspended, isFalse);
+      expect(b.isSuspended, isFalse); // UX removed per Phase 15
     });
 
-    test('string and int flag variants parse tolerantly', () {
+    test('string and int flag variants parse tolerantly (compat)', () {
       final suspended = OutstandingBalance.fromBalanceEnvelope({
         'success': true,
         'data': {
@@ -80,7 +81,9 @@ void main() {
         },
       }, 'r1');
       expect(suspended, isNotNull);
-      expect(suspended!.isSuspended, isTrue);
+      expect(suspended!.isSuspended, isFalse); // UX removed per Phase 15
+      expect(suspended.accountSuspended, isTrue);
+      expect(suspended.allowCash, isFalse);
 
       final cleared = OutstandingBalance.fromBalanceEnvelope({
         'success': true,
@@ -94,9 +97,11 @@ void main() {
       }, 'r1');
       expect(cleared, isNotNull);
       expect(cleared!.isSuspended, isFalse);
+      expect(cleared.accountSuspended, isFalse);
+      expect(cleared.allowCash, isTrue);
     });
 
-    test('fromBalanceDueEvent with flags parses to suspended', () {
+    test('fromBalanceDueEvent with flags parses fields but isSuspended=false', () {
       final b = OutstandingBalance.fromBalanceDueEvent({
         'rideId': '6aabc3476a4199e81748403e',
         'excessAmount': 2.50,
@@ -105,9 +110,11 @@ void main() {
         'allowCash': false,
         'message': 'You have an outstanding balance.',
       });
-      expect(b.isSuspended, isTrue);
+      expect(b.isSuspended, isFalse); // UX removed per Phase 15
       expect(b.isOwed, isTrue);
       expect(b.amount, 2.50);
+      expect(b.accountSuspended, isTrue);
+      expect(b.allowCash, isFalse);
     });
 
     test('succeeded envelope is paid and never suspended', () {
