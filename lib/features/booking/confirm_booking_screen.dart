@@ -31,6 +31,8 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
   String? _pendingScheduledRideId;
   // Last time picked in the sheet — reused as sheet initial so cancel keeps it.
   DateTime? _lastScheduledTime;
+  // Whether this booking is a scheduled/prebook ride (args: isScheduled)
+  bool _isScheduled = false;
 
   Future<void> _confirmBooking(
     Map<String, dynamic> vehicle,
@@ -471,14 +473,16 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
                       value: 'payment_link',
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _buildPaymentMethodOption(
-                      icon: Icons.money,
-                      label: 'Cash',
-                      value: 'cash',
+                  if (!_isScheduled) ...[
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildPaymentMethodOption(
+                        icon: Icons.money,
+                        label: 'Cash',
+                        value: 'cash',
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
@@ -668,6 +672,14 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
         },
       ),
     );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final args =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    _isScheduled = args?['isScheduled'] ?? false;
   }
 
   @override
