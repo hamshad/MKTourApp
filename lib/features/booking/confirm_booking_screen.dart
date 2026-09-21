@@ -80,58 +80,12 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
       setState(() => _isLoading = false);
 
       if (result.success && mounted) {
-        // Upfront contract (11-02): link opens WebView immediately, cash
-        // goes straight to the success dialog (this screen uses dialogs,
-        // not a RideAssigned push — preserved).
-        final dataMethod =
-            result.data?['paymentMethod']?.toString() ?? _selectedPaymentMethod;
-        final isLink = dataMethod == 'payment_link' ||
-            _selectedPaymentMethod == 'payment_link';
-        if (isLink) {
-          final paymentUrl = result.data?['paymentUrl']?.toString();
-          if (paymentUrl == null || paymentUrl.isEmpty) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'Payment link missing. Please try again or choose Cash.',
-                ),
-                backgroundColor: Colors.orange,
-              ),
-            );
-            return;
-          }
-          final rideId =
-              result.data!['_id']?.toString() ??
-              result.data!['rideId']?.toString() ??
-              '';
-          final webViewResult = await Navigator.of(context)
-              .push<Map<String, dynamic>>(
-                MaterialPageRoute(
-                  builder: (_) => PaymentWebViewScreen(
-                    paymentUrl: paymentUrl,
-                    rideId: rideId,
-                  ),
-                ),
-              );
-          if (!mounted) return;
-          if (webViewResult?['success'] == true) {
-            _showSuccessDialog(
-              result.message ?? 'Booking confirmed!',
-              result.data,
-            );
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'Payment cancelled. Your booking is not confirmed yet.',
-                ),
-                backgroundColor: Colors.orange,
-              ),
-            );
-          }
-          return;
-        }
-        // Show success message
+        // Revert (16-01): instant rides — link AND cash — go straight to
+        // the success dialog (searching) with no WebView at booking per
+        // revert spec §7 checklist item 1. `result.data` already carries
+        // paymentMethod (+ any paymentUrl/clientSecret) as inert fields
+        // for the 16-02 accept-time Pay Now prompt; never opened here.
+        // Scheduled flow (_handleScheduleRide) keeps WebView untouched.
         _showSuccessDialog(result.message ?? 'Booking confirmed!', result.data);
       } else if (!result.success && mounted) {
         // Dormant 403 backstop (payment-flow.md §7): kept for non-balance
