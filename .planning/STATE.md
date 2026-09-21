@@ -136,6 +136,9 @@
 
 ## Accumulated Context
 
+### Pending Todos
+- Move payment method selection from booking confirm screen to post-accept sheet (ui, captured 2026-09-21) — normal rides ask nothing at booking; method sheet appears after accept. Blocked on Phase 16 verification.
+
 ### Roadmap Evolution
 - Phase 11.1 inserted after Phase 11: booking screen bottom-sheet UI compaction — ride booking bottom section (price + Online/Cash + Confirm + Prebook) takes too much screen, needs compact redesign (URGENT)
 - Phase 12 added: excess balance Stage 2 settlement — rider in-car cash/online selection + driver cash-confirm flow per backend integration guide (see phase dir INTEGRATION-GUIDE.md)
