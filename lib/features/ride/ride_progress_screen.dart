@@ -49,8 +49,7 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
   double _bearing = 0.0;
   double _tilt = 45.0; // Navigation tilt
 
-  // Location-health watchdog (so a dead feed doesn't look like a hard freeze)
-  bool _locationStale = false;
+  // Location-health watchdog (silent: dead feed auto-reconnects, no UI nag)
   DateTime? _lastLocationUpdateTime;
   Timer? _staleTimer;
 
@@ -105,13 +104,16 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
     _fetchDetailedAddress();
     _setupNavigation();
 
-    // If no driver:locationUpdate arrives for a while, show a retry state
-    // instead of leaving the passenger silently stuck on one screen.
+    // Silent watchdog: if no driver:locationUpdate arrives for a while,
+    // reconnect the socket in the background. Never shows anything to user.
     _staleTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (!mounted) return;
       final stale = _lastLocationUpdateTime == null ||
           DateTime.now().difference(_lastLocationUpdateTime!).inSeconds > 20;
-      if (stale != _locationStale) setState(() => _locationStale = stale);
+      if (stale) {
+        _socketService.initSocket(forceReconnect: true);
+        _lastLocationUpdateTime = DateTime.now();
+      }
     });
 
     // Polling fallback every 15s when the socket is stale — the UI never
@@ -138,8 +140,7 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
                double.parse(data['latitude'].toString()),
                double.parse(data['longitude'].toString())
              );
-             _lastLocationUpdateTime = DateTime.now();
-             _locationStale = false;
+              _lastLocationUpdateTime = DateTime.now();
           });
        }
     });
@@ -518,15 +519,6 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
     super.dispose();
   }
 
-  /// Reconnect socket + clear stale state if the driver feed went quiet.
-  Future<void> _retryTracking() async {
-    await _socketService.initSocket(forceReconnect: true);
-    setState(() {
-      _locationStale = false;
-      _lastLocationUpdateTime = DateTime.now();
-    });
-  }
-
   /// Cancel is blocked once the trip is underway — friendly copy instead of
   /// a dead button or a backend 400.
   void _handleCancelAttempt() {
@@ -602,58 +594,6 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
               ),
             ),
           ),
-
-          // Stale-location notice (driver feed went quiet — offer retry)
-          if (_locationStale)
-            Positioned(
-              top: 92,
-              left: 16,
-              right: 16,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                decoration: BoxDecoration(
-                  color: Colors.orange,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.gps_off, color: Colors.white, size: 18),
-                    const SizedBox(width: 10),
-                    const Expanded(
-                      child: Text(
-                        "Driver location unavailable",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: _retryTracking,
-                      style: TextButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      ),
-                      child: const Text(
-                        'Retry',
-                        style: TextStyle(
-                          color: Colors.orange,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
 
           // Status Panel
           Positioned(
