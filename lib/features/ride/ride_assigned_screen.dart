@@ -2402,10 +2402,19 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
             ),
           );
         } else {
-          // Full refund - show success message and navigate home
+          // Revert spec §4 Error 3: paid-in-grace cancel auto-refunds —
+          // confirm it; unpaid cancel gets the plain copy. Paid = WebView
+          // success/authorized event already flipped the flag, or the
+          // accept snapshot carries a paid terminal status.
+          final paidOnline = _paymentAuthorized ||
+              isPaidPaymentStatus(_acceptedPayment?.paymentStatus);
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Ride cancelled.'),
+            SnackBar(
+              content: Text(
+                paidOnline
+                    ? 'Ride cancelled. Your payment will be refunded automatically.'
+                    : 'Ride cancelled.',
+              ),
               backgroundColor: Colors.green,
             ),
           );

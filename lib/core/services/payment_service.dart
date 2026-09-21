@@ -411,8 +411,11 @@ class PaymentService {
       final paymentStatus = data['paymentStatus'] ?? '';
 
       String message;
+      // Revert spec §4 Error 3: paid-in-grace cancel → backend auto-refunds,
+      // so the copy must confirm the refund; unpaid cancel → plain copy.
       if (paymentStatus == 'refunded') {
-        message = 'Ride cancelled.';
+        message =
+            'Ride cancelled. Your payment will be refunded automatically.';
       } else if (paymentStatus == 'partially_refunded') {
         message =
             'Ride cancelled. Partial refund processed (£$cancellationFee cancellation fee).';

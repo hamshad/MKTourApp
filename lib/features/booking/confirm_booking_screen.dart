@@ -6,6 +6,7 @@ import '../../core/constants.dart';
 import '../../core/api_service.dart';
 import '../../core/services/payment_service.dart';
 import '../../core/models/outstanding_balance.dart';
+import '../../core/models/error_display_helper.dart';
 import '../ride/outstanding_balance_screen.dart';
 import '../ride/payment_webview_screen.dart';
 import 'widgets/stops_editor_widget.dart';
@@ -206,7 +207,13 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
             message: result.error,
           );
         } else {
-          _showErrorDialog(result.error ?? 'Failed to create scheduled ride');
+          // Revert §6 Error 1: map the raw backend window-400 through the
+          // central mapper so users get the friendly 2-hour/30-day copy.
+          final info = RideErrorMapper.map(result.error ?? '');
+          _showErrorDialog(
+            info.copy,
+            title: info.title,
+          );
         }
       }
     } catch (e) {
@@ -591,7 +598,7 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
     );
   }
 
-  void _showErrorDialog(String error) {
+  void _showErrorDialog(String error, {String title = 'Payment Failed'}) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -611,7 +618,7 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
               ),
             ),
             const SizedBox(width: 12),
-            const Text('Payment Failed'),
+            Expanded(child: Text(title)),
           ],
         ),
         content: Text(error),

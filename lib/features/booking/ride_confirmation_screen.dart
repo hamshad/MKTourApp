@@ -18,6 +18,7 @@ import 'package:latlong2/latlong.dart' as lat_lng;
 import 'package:flutter_map/flutter_map.dart' as fmap;
 import '../../core/models/vehicle.dart';
 import '../../core/models/outstanding_balance.dart';
+import '../../core/models/error_display_helper.dart';
 import '../ride/outstanding_balance_screen.dart';
 import 'widgets/schedule_ride_sheet.dart';
 
@@ -629,9 +630,19 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
               ),
             );
           } else {
+            // Revert §6 Error 1: scheduled window-400s go through the
+            // central mapper for the friendly 2-hour/30-day copy; instant
+            // failures keep the raw message.
+            final raw = result.error ?? 'Failed to book ride';
+            final text = scheduledAt != null
+                ? (() {
+                    final info = RideErrorMapper.map(raw);
+                    return '${info.title}: ${info.copy}';
+                  })()
+                : raw;
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(result.error ?? 'Failed to book ride'),
+                content: Text(text),
                 backgroundColor: Colors.red,
               ),
             );
