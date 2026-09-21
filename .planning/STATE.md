@@ -137,6 +137,7 @@
 ## Accumulated Context
 
 ### Pending Todos
+- Honor booking-time cash selection post-accept, no online pay prompt (ui, captured 2026-09-21) — cash at booking suppresses post-accept online branch entirely. Consistent with sibling post-accept-sheet todo; resolve booking-toggle question first.
 - Move payment method selection from booking confirm screen to post-accept sheet (ui, captured 2026-09-21) — normal rides ask nothing at booking; method sheet appears after accept. Blocked on Phase 16 verification.
 
 ### Roadmap Evolution
