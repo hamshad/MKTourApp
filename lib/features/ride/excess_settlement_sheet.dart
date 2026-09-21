@@ -94,14 +94,21 @@ class _ExcessSettlementSheetState extends State<ExcessSettlementSheet> {
     // [_refresh] close on the backend's word even if the re-fetch lags.
     // The [_settled] guard keeps this exactly-once across a co-fired
     // `payment:excessCashConfirmed`.
+    //
+    // Additional fix: if the user is in the waitingCash step (selected cash
+    // payment), any payment:succeeded for this ride is our cash confirmation
+    // — the backend may not send the cash-specific message, so we also
+    // trust the event when in waitingCash step.
     final rawMessage = map['message']?.toString().trim();
+    final isWaitingCash = _step == _SettlementStep.waitingCash;
+    final cashSettledFallback =
+        isWaitingCash || ExcessSettlementSheet.isCashConfirmMessage(rawMessage);
     final successMessage =
         (rawMessage != null && rawMessage.isNotEmpty) ? rawMessage : null;
     _refresh(
       fromEvent: true,
       successMessage: successMessage,
-      cashSettledFallback:
-          ExcessSettlementSheet.isCashConfirmMessage(rawMessage),
+      cashSettledFallback: cashSettledFallback,
     );
   }
 
