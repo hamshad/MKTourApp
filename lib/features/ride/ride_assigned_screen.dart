@@ -361,22 +361,33 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
               ],
             ),
             const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed:
-                    _isSwitchingPayment ? null : _openAcceptPaymentWebView,
-                icon: const Icon(Icons.lock_open, size: 16),
-                label: const Text('Pay Now'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange.shade700,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _isSwitchingPayment
+                        ? null
+                        : _openAcceptPaymentWebView,
+                    icon: const Icon(Icons.lock_open, size: 16),
+                    label: const Text('Pay Now'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange.shade700,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
                   ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: _isSwitchingPayment
+                      ? null
+                      : () => _switchAcceptPaymentMethod('cash'),
+                  child: const Text('Pay cash instead'),
+                ),
+              ],
             ),
           ],
         ),
@@ -404,6 +415,12 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                   color: Colors.black87,
                 ),
               ),
+            ),
+            TextButton(
+              onPressed: _isSwitchingPayment
+                  ? null
+                  : () => _switchAcceptPaymentMethod('payment_link'),
+              child: const Text('Pay online'),
             ),
           ],
         ),
@@ -443,6 +460,10 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       );
       if (!mounted || guardSeq != _paymentSelectionSeq) return;
       if (result is Map && result['success'] == true) {
+        // The `payment:authorized` event may have closed this out already
+        // (it pops this same WebView) — stay silent then, exactly one
+        // confirmation surfaces.
+        if (_paymentAuthorized) return;
         setState(() => _paymentAuthorized = true);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -462,6 +483,113 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       }
     } finally {
       _isPaymentWebViewOpen = false;
+    }
+  }
+
+  /// Switch link<->cash before pickup (§4 Error 1, §7 item 5).
+  ///
+  /// Calls the existing `ApiService.selectPaymentMethod` in
+  /// `requested/accepted/driver_arrived` states. link→cash dismisses the
+  /// prompt and shows cash copy; cash→link opens the returned `paymentUrl`
+  /// (null URL → orange snackbar, stay on screen). Errors surface through
+  /// `ErrorDisplayHelper` — never raw backend text. Stale-guard via
+  /// `_paymentSelectionSeq`; driver UI updates come from the backend's
+  /// `ride:paymentSelected` event (listener already live, needs no change).
+  Future<void> _switchAcceptPaymentMethod(String method) async {
+    if (_isSwitchingPayment) return;
+    if (_rideStatus != 'requested' &&
+        _rideStatus != 'searching' &&
+        _rideStatus != 'accepted' &&
+        _rideStatus != 'driver_arrived') {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Payment method can only be changed before pickup.'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+    final guardSeq = ++_paymentSelectionSeq;
+    setState(() => _isSwitchingPayment = true);
+    try {
+      final response = await _apiService.selectPaymentMethod(
+        widget.rideId,
+        method,
+      );
+      if (!mounted || guardSeq != _paymentSelectionSeq) return;
+      if (response['success'] == true) {
+        final data = response['data'];
+        final Map? rideMap = data is Map && data['ride'] is Map
+            ? data['ride'] as Map
+            : data is Map
+                ? data
+                : null;
+        final confirmed = rideMap?['paymentMethod']?.toString();
+        final url = rideMap?['paymentUrl']?.toString();
+        final fare = _currentFare ?? widget.fare;
+        if (method == 'cash') {
+          setState(() {
+            _paymentAuthorized = false;
+            _completedPaymentMethod = 'cash';
+            _acceptedPayment = AcceptedPayment.parse({
+              'requiresPayment': false,
+              'paymentMethod': 'cash',
+              'paymentStatus': confirmed ?? 'pending_collection',
+              'fare': fare,
+              'isScheduled': _isScheduled,
+            }, fallbackFare: widget.fare);
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Cash selected — pay your driver directly.'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        } else {
+          if (url != null && url.trim().isNotEmpty) {
+            setState(() {
+              _paymentAuthorized = false;
+              _acceptedPayment = AcceptedPayment.parse({
+                'requiresPayment': true,
+                'paymentUrl': url.trim(),
+                'paymentMethod': 'payment_link',
+                'paymentStatus': 'link_created',
+                'fare': fare,
+                'isScheduled': _isScheduled,
+              }, fallbackFare: widget.fare);
+            });
+            await _openAcceptPaymentWebView();
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Online payment link unavailable — please try again or stay on cash.',
+                ),
+                backgroundColor: Colors.orange,
+                duration: Duration(seconds: 4),
+              ),
+            );
+          }
+        }
+      } else {
+        if (!mounted) return;
+        final serverMessage = response['message']?.toString() ??
+            'Failed to change payment method. Please try again.';
+        ErrorDisplayHelper.showRideError(
+          context,
+          serverMessage,
+          errors: response['errors'],
+        );
+      }
+    } catch (e) {
+      debugPrint('🔴 [RideAssignedScreen] Switch payment error: $e');
+      if (!mounted) return;
+      ErrorDisplayHelper.showRideError(context, 'Error: $e');
+    } finally {
+      if (mounted) setState(() => _isSwitchingPayment = false);
     }
   }
 
@@ -519,6 +647,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     _setupConnectionListener();
     _fetchDetailedAddresses();
     _setupNavigationListener();
+    // Reopen gap (§4 Error 2): cold start / reopen on an accepted unpaid
+    // link ride re-shows the Pay Now prompt via GET ride details.
+    _rehydrateAcceptPayment();
   }
 
   @override
@@ -654,6 +785,67 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       }
     } catch (e) {
       debugPrint('⚠️ [RideAssignedScreen] Error syncing ride status: $e');
+    }
+  }
+
+  /// Rehydrate accept-time payment on cold start / reopen (§4 Error 2).
+  ///
+  /// When the screen is created without payment fields and no live
+  /// `ride:accepted` has populated them yet, fetch GET ride details once:
+  /// `status == accepted && paymentMethod == payment_link && paymentStatus`
+  /// unpaid → re-show the Pay Now prompt; already-authorized → set the paid
+  /// flag so no prompt flashes. Uses the existing `getRideDetails` endpoint
+  /// as-is (shape already carries paymentUrl/paymentStatus/status/driver) —
+  /// no new endpoint, no signature change. Never throws.
+  Future<void> _rehydrateAcceptPayment() async {
+    if (_paymentAuthorized) return;
+    final existing = _acceptedPayment;
+    if (existing != null &&
+        (existing.showPrompt || isPaidPaymentStatus(existing.paymentStatus))) {
+      return;
+    }
+    try {
+      final response = await _apiService.getRideDetails(widget.rideId);
+      if (!mounted || _paymentAuthorized) return;
+      if (response['success'] != true || response['data'] is! Map) return;
+      final raw = Map<String, dynamic>.from(response['data'] as Map);
+      // Tolerate both flat and nested (`data.ride`) envelopes.
+      final Map<String, dynamic> ride = raw['ride'] is Map
+          ? {...raw, ...(raw['ride'] as Map).cast<String, dynamic>()}
+          : raw;
+
+      if (ride['isScheduled'] == true) {
+        setState(() => _isScheduled = true);
+        return;
+      }
+      final status = ride['status']?.toString() ?? '';
+      final method = ride['paymentMethod']?.toString() ?? '';
+      final payStatus = ride['paymentStatus']?.toString();
+      if (isPaidPaymentStatus(payStatus)) {
+        setState(() => _paymentAuthorized = true);
+        return;
+      }
+      if (status == 'accepted' &&
+          method.trim().toLowerCase() == 'payment_link') {
+        // GET may omit `requiresPayment` — derive it: an accepted unpaid
+        // link ride with a URL is exactly the prompt case.
+        ride['requiresPayment'] = ride['requiresPayment'] ?? true;
+        ride['isScheduled'] = ride['isScheduled'] ?? false;
+        setState(() {
+          _acceptedPayment = AcceptedPayment.parse(
+            ride,
+            fallbackFare: widget.fare,
+          );
+          if (ride['fare'] is num) {
+            _currentFare ??= (ride['fare'] as num).toDouble();
+          }
+        });
+        debugPrint(
+          '🔄 [RideAssignedScreen] Rehydrated Pay Now prompt for ${widget.rideId}',
+        );
+      }
+    } catch (e) {
+      debugPrint('⚠️ [RideAssignedScreen] Rehydrate accept payment failed: $e');
     }
   }
 
@@ -1428,22 +1620,31 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       if (!mounted) return;
       debugPrint('✅ [RideAssignedScreen] Payment Authorized: $data');
 
-      final eventRideId = data['rideId']?.toString();
+      final eventRideId = data['rideId']?.toString() ??
+          (data is Map ? data['bookingId']?.toString() : null);
       if (eventRideId != null && eventRideId != widget.rideId) return;
+
+      // Close-out (16-02 §3 Step 3): flag dismisses the Pay Now banner and
+      // flips it to authorized copy. Never navigate, never touch receipts.
+      // A pending WebView success result sees the flag and stays silent, so
+      // exactly one confirmation shows.
+      setState(() => _paymentAuthorized = true);
+
+      // If the accept-time checkout is still open on top, pop it with
+      // success — the awaiter in `_openAcceptPaymentWebView` treats it as
+      // done via the flag above.
+      if (_isPaymentWebViewOpen) {
+        Navigator.of(context).pop({'success': true});
+      }
 
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Payment authorized! Ride can now begin.'),
+          content: Text('Payment Authorized ✓'),
           backgroundColor: Colors.green,
           duration: Duration(seconds: 4),
         ),
       );
-
-      setState(() {
-        _isPaymentMethodSelected = true;
-        // Optionally close WebView if it's open (handled by user navigation usually)
-      });
     });
 
     // New listener for Payment Failure (expired link or failed payment)
@@ -1822,6 +2023,22 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         _isPaymentMethodSelected = true;
         if (method.isNotEmpty) _selectedPaymentMethodDisplay = method;
       });
+      // Cash echo (our switch response or a co-device change): dismiss the
+      // Pay Now prompt and show cash copy. Link echoes carry no URL — the
+      // switch response owns that — so they leave the banner untouched.
+      if (method.trim().toLowerCase() == 'cash' && mounted) {
+        setState(() {
+          _paymentAuthorized = false;
+          _completedPaymentMethod = 'cash';
+          _acceptedPayment = AcceptedPayment.parse({
+            'requiresPayment': false,
+            'paymentMethod': 'cash',
+            'paymentStatus': 'pending_collection',
+            'fare': _currentFare ?? widget.fare,
+            'isScheduled': _isScheduled,
+          }, fallbackFare: widget.fare);
+        });
+      }
     });
   }
 
