@@ -120,6 +120,26 @@ bool shouldAutoOpenLinkWebView({
   if (url == null || url.isEmpty) return false;
   return true;
 }
+/// Pop-ownership policy for the accept-time checkout WebView close-out.
+///
+/// Two closers race for one WebView: the WebView's own success/cancel
+/// detection ([PaymentWebViewScreen]) and the assigned screen's
+/// `payment:authorized` socket handler. Exactly one of them may pop.
+///
+/// A closer pops ONLY when its close has not already been delivered AND its
+/// route is still the top route. A stale closer (own route already popped —
+/// e.g. the authorized event won the race) must stay silent: popping then
+/// would eject whatever is on top, which is RideAssignedScreen itself
+/// (rider dumped to the pick-ride screen — the 40187f3-class regression).
+bool acceptWebViewShouldPop({
+  required bool routeIsCurrent,
+  required bool closeAlreadyDelivered,
+}) {
+  if (closeAlreadyDelivered) return false;
+  if (!routeIsCurrent) return false;
+  return true;
+}
+
 class AcceptedPayment {
   final bool requiresPayment;
   final String? paymentUrl;

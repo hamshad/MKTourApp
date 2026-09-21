@@ -463,6 +463,11 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
           ),
         );
       } else {
+        // Stale cancel (e.g. rider X-cancelled after `payment:authorized`
+        // already confirmed): the authorized banner/snackbar own the
+        // confirmation. Surfacing "not completed" now would contradict a
+        // succeeded payment — stay silent so exactly one confirmation shows.
+        if (_paymentAuthorized) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Payment was not completed. Please try again.'),
