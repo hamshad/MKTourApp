@@ -15,6 +15,7 @@
 | 09 | 2/2 | Complete    | 2026-09-12 | PROMO-01..04 |
 | 10 | 2/2 | Complete    | 2026-09-12 | STACK-01..04 |
 | 11 | 3/3 | Complete   | 2026-09-17 | UPFRONT-01..05 |
+| 16 | Revert Ride Payments | Planned | 3 | RVT-01..06 |
 
 ---
 
@@ -301,6 +302,29 @@ Plans:
 - Zero select-payment calls on driver arrival; arrival shows Continue only
 - 400/403 produce friendly actionable UI; startup debt banner opens pay link
 - `flutter analyze` clean; contract tests green
+
+## Phase 16: Revert Ride Payments (pay-after-accept)
+
+**Goal:** Normal rides dispatch to drivers with zero payment at booking — rider pays via Pay Now WebView only after driver accepts (`ride:accepted` with `requiresPayment:true`); scheduled rides keep full upfront WebView. Method switching, reopen-rehydrate, and cancel/expired fallbacks all per `flutter_revert_flow.md`.
+
+**Requirements:**
+- **RVT-01**: Instant booking (link + cash) lands on searching with no WebView; scheduled booking still opens paymentUrl immediately
+- **RVT-02**: Accept-time Pay Now prompt on `requiresPayment:true` link rides; cash/scheduled show no prompt
+- **RVT-03**: `payment:authorized` closes the prompt with authorized copy, no navigation side-effects
+- **RVT-04**: link<->cash switching via select-payment in requested/accepted/driver_arrived; driver sees `ride:paymentSelected`
+- **RVT-05**: App reopen on accepted-unpaid link ride re-shows Pay Now via GET ride details
+- **RVT-06**: Scheduled upfront, window-400, expired-refund, driver-cancel-repool, user-cancel-refund paths intact with friendly copy
+
+**Plans:** 3 plans in 2 waves
+Plans:
+- [ ] `16-01-PLAN.md` — Booking deferral: instant link to searching, scheduled WebView intact (wave 1)
+- [ ] `16-02-PLAN.md` — Accept-time payment: Pay Now prompt, authorized close-out, rehydrate, switcher restore (wave 1)
+- [ ] `16-03-PLAN.md` — Scheduled + error audit, regression sweep, human end-to-end pass (wave 2)
+
+**Success Criteria:**
+- Instant link booking → searching, no WebView; accept → Pay Now → WebView → authorized ✓
+- Cash/scheduled accepts never prompt; reopen restores prompt; switch updates driver UI
+- `flutter analyze` clean; full test suite green; human approves 7-step device pass
 
 ### Phase 11.1: booking screen bottom-sheet UI compaction (INSERTED)
 
