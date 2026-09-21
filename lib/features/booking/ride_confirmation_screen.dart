@@ -573,72 +573,13 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
             return;
           }
 
-          // Upfront contract (11-02): link opens WebView immediately at
-          // booking time; cash goes straight to driver-matching. Only a
-          // successful WebView result continues to driver search.
+          // Revert (16-01): instant rides — link AND cash — go straight to
+          // driver-matching (searching). No WebView at booking for normal
+          // rides per revert spec §7 checklist item 1; payment happens at
+          // accept time via the 16-02 Pay Now prompt. Only the scheduled
+          // branch above keeps WebView routing.
           final dataMethod =
               result.data!['paymentMethod']?.toString() ?? paymentMethod;
-          final isLink =
-              dataMethod == 'payment_link' || paymentMethod == 'payment_link';
-          if (isLink) {
-            final paymentUrl = result.data!['paymentUrl']?.toString();
-            if (paymentUrl == null || paymentUrl.isEmpty) {
-              if (mounted) {
-                setState(() => _isLoading = false);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Payment link missing. Please try again or choose Cash.',
-                    ),
-                    backgroundColor: Colors.orange,
-                  ),
-                );
-              }
-              return;
-            }
-            final webViewResult = await Navigator.of(context)
-                .push<Map<String, dynamic>>(
-                  MaterialPageRoute(
-                    builder: (_) => PaymentWebViewScreen(
-                      paymentUrl: paymentUrl,
-                      rideId: rideId,
-                    ),
-                  ),
-                );
-            if (!mounted) return;
-            if (webViewResult?['success'] == true) {
-              debugPrint(
-                '🚀 [RideConfirmationScreen] Payment success, navigating to RideAssignedScreen',
-              );
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(
-                  builder: (context) => RideAssignedScreen(
-                    rideId: rideId,
-                    driver: null, // No driver yet - will come via socket
-                    pickup: widget.pickupLocation,
-                    dropoff: widget.dropoffLocation,
-                    fare: _fare,
-                    paymentTiming: 'pay_now',
-                    clientSecret: result.data!['clientSecret']?.toString(),
-                    paymentMethod: dataMethod,
-                    paymentUrl: paymentUrl,
-                    stops: widget.stops,
-                  ),
-                ),
-              );
-            } else {
-              setState(() => _isLoading = false);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'Payment cancelled. Your booking is not confirmed yet.',
-                  ),
-                  backgroundColor: Colors.orange,
-                ),
-              );
-            }
-            return;
-          }
 
           debugPrint(
             '🚀 [RideConfirmationScreen] Navigating directly to RideAssignedScreen',
@@ -659,6 +600,9 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                     : 'pay_later',
                 clientSecret: result.data!['clientSecret']?.toString(),
                 paymentMethod: dataMethod,
+                // Inert at booking time (16-02 accept-time prompt consumes
+                // them); never opened here for instant rides.
+                paymentUrl: result.data!['paymentUrl']?.toString(),
                 stops: widget.stops,
               ),
             ),
