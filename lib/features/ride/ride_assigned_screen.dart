@@ -22,6 +22,8 @@ import 'outstanding_balance_screen.dart';
 import '../../core/widgets/ride_searching_overlay.dart';
 import 'ride_complete_screen.dart';
 import 'widgets/driver_arrived_sheet.dart';
+import 'accept_payment_utils.dart';
+import 'payment_webview_screen.dart';
 
 class RideAssignedScreen extends StatefulWidget {
   final String rideId;
@@ -185,6 +187,29 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
   // Scheduled ride flag — set from widget param and confirmed from live ride data
   bool _isScheduled = false;
+
+  // Accept-time payment (16-02 revert spec §3 Step 2): parsed snapshot of the
+  // `ride:accepted` payment fields. Drives the persistent Pay Now prompt for
+  // unpaid link rides, the pay-in-cash copy for cash rides, and silence for
+  // scheduled rides. Null until the first accepted payload (or widget args /
+  // rehydrate) provides payment fields.
+  AcceptedPayment? _acceptedPayment;
+
+  // Set when the rider's link payment authorizes — via the WebView success
+  // result or the `payment:authorized` socket event. Dismisses the Pay Now
+  // prompt and flips the banner to authorized copy. Never navigates, never
+  // touches receipt logic.
+  bool _paymentAuthorized = false;
+
+  // True while a PaymentWebViewScreen pushed from the accept prompt is on
+  // top. Lets the `payment:authorized` event pop it with success instead of
+  // leaving a stale checkout open under the authorized banner.
+  bool _isPaymentWebViewOpen = false;
+
+  // True while a select-payment switch request is in flight. Stale socket
+  // callbacks captured against `_paymentSelectionSeq` bail out instead of
+  // touching the newer flow.
+  bool _isSwitchingPayment = false;
   
   // Deferred payment data for scheduled airport rides (waiting for ride:earlyCompleted)
   Map<String, dynamic>? _deferredPaymentSuccessData;
@@ -257,6 +282,187 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   String? _bookingPaymentMethod() {
     if (_promoFullyCovered) return 'free';
     return _resolveReceiptPaymentMethod(_completedRideData);
+  }
+
+  /// Accept-time payment banner (16-02 revert spec §3 Step 2).
+  ///
+  /// - Link ride with `requiresPayment:true` and unpaid status → persistent
+  ///   "Pay £X before driver arrives" card with a Pay Now button opening the
+  ///   `paymentUrl` in [PaymentWebViewScreen]. Stays visible in `accepted`
+  ///   and `driver_arrived` until authorized, switched to cash, or paid.
+  /// - Cash ride → "Driver on the way. Pay £X in cash to driver." copy, no
+  ///   button, no prompt.
+  /// - Scheduled ride (or paid status) → nothing; assignment UI only.
+  /// - Authorized → green "Payment Authorized ✓" card.
+  Widget _buildAcceptPaymentBanner() {
+    if (_promoFullyCovered) return const SizedBox.shrink();
+    if (_rideStatus != 'accepted' && _rideStatus != 'driver_arrived') {
+      return const SizedBox.shrink();
+    }
+    if (_paymentAuthorized) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.green.shade50,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.green.shade300),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.green, size: 22),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Payment Authorized ✓',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.green,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    final ap = _acceptedPayment;
+    if (ap == null) return const SizedBox.shrink();
+    if (ap.showPrompt) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.orange.shade50,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.orange.shade300),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.payment_outlined,
+                  color: Colors.orange.shade800,
+                  size: 22,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Pay ${ap.fareLabel} before driver arrives',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.orange.shade900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed:
+                    _isSwitchingPayment ? null : _openAcceptPaymentWebView,
+                icon: const Icon(Icons.lock_open, size: 16),
+                label: const Text('Pay Now'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange.shade700,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    if (ap.showCashCopy) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.money, color: Colors.grey, size: 22),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Driver on the way. Pay ${ap.fareLabel} in cash to driver.',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return const SizedBox.shrink();
+  }
+
+  /// Open the accept-time `paymentUrl` in an in-app WebView.
+  ///
+  /// Success result flips the banner to authorized (same flag the
+  /// `payment:authorized` event sets — no navigation, no receipt touch).
+  /// Cancel/close leaves the prompt up with an orange reminder.
+  Future<void> _openAcceptPaymentWebView() async {
+    final url = _acceptedPayment?.paymentUrl;
+    if (url == null || url.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Payment link not ready yet — please try again.'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+    if (_isPaymentWebViewOpen) return;
+    _isPaymentWebViewOpen = true;
+    final guardSeq = _paymentSelectionSeq;
+    try {
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) =>
+              PaymentWebViewScreen(paymentUrl: url, rideId: widget.rideId),
+        ),
+      );
+      if (!mounted || guardSeq != _paymentSelectionSeq) return;
+      if (result is Map && result['success'] == true) {
+        setState(() => _paymentAuthorized = true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Payment Authorized ✓'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Payment was not completed. Please try again.'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      _isPaymentWebViewOpen = false;
+    }
   }
 
   /// Non-tappable chip showing the booking-time method throughout the trip.
@@ -457,6 +663,22 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
     // Initialise scheduled flag from widget param
     _isScheduled = widget.isScheduled;
+
+    // Cold start with booking-time link args (11-02 fields): synthesize the
+    // accept snapshot so the prompt can show before any socket event. The
+    // rehydrate path refreshes this authoritatively; the accepted handler
+    // overwrites it on live events.
+    final widgetUrl = widget.paymentUrl?.trim() ?? '';
+    if (widgetUrl.isNotEmpty && !_isScheduled) {
+      _acceptedPayment = AcceptedPayment.parse({
+        'requiresPayment': true,
+        'paymentUrl': widgetUrl,
+        'paymentMethod': (widget.paymentMethod ?? 'payment_link'),
+        'paymentStatus': 'link_created',
+        'fare': widget.fare,
+        'isScheduled': false,
+      }, fallbackFare: widget.fare);
+    }
 
     final bool hasValidInitialDriver = _isValidDriver(widget.driver);
 
@@ -844,6 +1066,18 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
           if (data['isPromoRide'] == true) _isPromoRide = true;
           if (data['originalFare'] != null) {
             _promoOriginalFare = (data['originalFare'] as num).toDouble();
+          }
+
+          // Accept-time payment (16-02 §3 Step 2): snapshot requiresPayment /
+          // paymentUrl / amount / currency / status / method alongside the
+          // driver state so the status panel can prompt. Scheduled rides and
+          // cash rides parse to silent / cash-copy via AcceptedPayment.
+          if (data['isScheduled'] == true) _isScheduled = true;
+          if (data is Map) {
+            _acceptedPayment = AcceptedPayment.parse(
+              data,
+              fallbackFare: widget.fare,
+            );
           }
 
           debugPrint('👤 [RideAssignedScreen] Extracted driver: $_driver');
@@ -2647,6 +2881,11 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
             // Booking-time payment method (upfront-payments): display-only
             // chip. The method was fixed at booking — never re-asked here.
             _buildBookingMethodChip(),
+
+            // Accept-time payment (16-02 revert §3 Step 2): Pay Now prompt
+            // for unpaid link rides, cash copy for cash rides, silence for
+            // scheduled / paid rides.
+            _buildAcceptPaymentBanner(),
 
             // No-code boarding in the new flow. The rider just boards;
             // driver starts without a code. Upfront-payments: no payment
