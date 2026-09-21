@@ -1,8 +1,8 @@
 # MK Tours - Project State
 
 ## Current Position
-- **Phase:** 15-outstanding-balance-silent-booking-fare-transparency — Complete (2/2 plans, 2026-09-19)
-- **Next:** Phase transition (Phase 15 done: fare parsing + transparency UI + silent-booking backstop)
+- **Phase:** 16-revert-ride-payments — In Progress (1/3 plans, 16-01 complete 2026-09-21)
+- **Next:** 16-02 (accept-time Pay Now prompt, authorized close-out, rehydrate, switcher restore)
 
 ## Completed Plans
 - 02-01: Ride-flow API layer — no-OTP startRide, stopArrive/stopResume, stops-aware fare/create, reason cancel, fixed end-early (`c0c7d26`, `0e95c3b`)
@@ -40,6 +40,7 @@
 - 14-02: Rider confirmed close-out — waitingCash exit via authoritative refresh + event thank-you copy, co-fired succeeded no-ops on settled guard (`34336a9`)
 - 15-01: Fare-estimate balance parsing — outstanding_balance in fare map, backend total untouched, 6 contract tests (`06cadaf`, `6f9ce5b`)
 - 15-02: Fare transparency UI + silent-booking backstop — banners on both booking screens, selected-card caption, 403 kept as dormant backstop (`c1fece5`, `06acdd2`)
+- 16-01: Booking deferral — instant link to searching on both booking screens, scheduled WebView intact, 8 revert contract tests (`8ad56bb`, `b342097`, `4db2c89`)
 
 ## Decisions
 - [02-01] OTP dialog UI left in place; only API call path made OTP-free (UI strip-out in 03-01)
@@ -123,6 +124,8 @@
 - [15-01] excessAmount accepted as middle fallback key, consistent with OutstandingBalance model tolerance
 - [15-02] Balance caption scoped to selected card only; zero/absent balance renders pixel-identical
 - [15-02] isBalanceBlocked branches kept as dormant backstop for non-balance 403s (e.g. suspension); comment updates scoped to booking screens, PaymentService/model untouched
+- [16-01] Instant-link WebView branches deleted outright (not stubbed); absent paymentUrl on normal-ride 201 is expected per spec §3, not an error
+- [16-01] paymentUrl/clientSecret threaded as inert fields into searching navigation for 16-02 accept-time prompt consumption
 
 ## Blockers
 - None
@@ -137,7 +140,7 @@
 - **Completed todo:** Removed Account Temporarily Suspended dialog — suspension concept obsolete per Phase 15 contract; booking now silently includes balance (commit e626d04)
 
 ## Session
-- Last session: Removed Account Temporarily Suspended dialog (2026-09-19, commit `e626d04`). Suspension UX obsolete per Phase 15 — booking silently includes balance.
+- Last session: Completed 16-01-PLAN.md (2026-09-21, 3 commits `8ad56bb`, `b342097`, `4db2c89`, SUMMARY at phases/16-revert-ride-payments/16-01-SUMMARY.md). Next: 16-02.
 - Previous: Completed 15-02-PLAN.md (2026-09-19, 2 commits `c1fece5`, `06acdd2`, SUMMARY at phases/15-outstanding-balance-silent-booking-fare-transparency/15-02-SUMMARY.md). Phase 15 complete. Next: phase transition.
 - Previous: Completed 15-01-PLAN.md (2026-09-19, 2 commits `06cadaf`, `6f9ce5b`, SUMMARY at phases/15-outstanding-balance-silent-booking-fare-transparency/15-01-SUMMARY.md). Next: 15-02.
 - Last session: Completed 14-03-PLAN.md (2026-09-18, 1 commit `209ec2e`, SUMMARY at phases/14-handle-excesscashconfirmed-close-out-on-rider-and-driver/14-03-SUMMARY.md). Phase 14 complete. Next: phase transition.

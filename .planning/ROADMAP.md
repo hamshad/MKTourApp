@@ -15,7 +15,7 @@
 | 09 | 2/2 | Complete    | 2026-09-12 | PROMO-01..04 |
 | 10 | 2/2 | Complete    | 2026-09-12 | STACK-01..04 |
 | 11 | 3/3 | Complete   | 2026-09-17 | UPFRONT-01..05 |
-| 16 | Revert Ride Payments | Planned | 3 | RVT-01..06 |
+| 16 | Revert Ride Payments | In Progress | 1/3 | RVT-01..06 |
 
 ---
 
@@ -315,9 +315,9 @@ Plans:
 - **RVT-05**: App reopen on accepted-unpaid link ride re-shows Pay Now via GET ride details
 - **RVT-06**: Scheduled upfront, window-400, expired-refund, driver-cancel-repool, user-cancel-refund paths intact with friendly copy
 
-**Plans:** 3 plans in 2 waves
+**Plans:** 1/3 plans complete
 Plans:
-- [ ] `16-01-PLAN.md` — Booking deferral: instant link to searching, scheduled WebView intact (wave 1)
+- [x] `16-01-PLAN.md` — Booking deferral: instant link to searching, scheduled WebView intact (wave 1)
 - [ ] `16-02-PLAN.md` — Accept-time payment: Pay Now prompt, authorized close-out, rehydrate, switcher restore (wave 1)
 - [ ] `16-03-PLAN.md` — Scheduled + error audit, regression sweep, human end-to-end pass (wave 2)
 
