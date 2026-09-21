@@ -1505,159 +1505,94 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     );
   }
 
-  // Compact ride-hail payment row (11.1): single tappable row showing
-  // current choice; expands inline to reveal Online / Cash options.
-  // Writes the existing [_selectedPaymentMethod] state; no logic change.
-  bool _isPaymentExpanded = false;
-
-  String get _selectedPaymentLabel =>
-      _selectedPaymentMethod == 'payment_link' ? 'Online' : 'Cash';
-
-  IconData get _selectedPaymentIcon =>
-      _selectedPaymentMethod == 'payment_link'
-          ? Icons.credit_card
-          : Icons.money;
-
-  /// Mandatory upfront payment selector (11-02): Online (Card via Link)
-  /// vs Cash. Bound to [_selectedPaymentMethod]; no third option.
+  // Always-visible payment options (no expandable card — both choices stay
+  // on screen so the method can't be missed). Writes [_selectedPaymentMethod].
   Widget _buildPaymentMethodSelector() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.grey[50],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[200]!),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          InkWell(
-            onTap: () =>
-                setState(() => _isPaymentExpanded = !_isPaymentExpanded),
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 10,
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    _selectedPaymentIcon,
-                    size: 18,
-                    color: AppTheme.primaryColor,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _selectedPaymentLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.textPrimary,
-                      ),
-                    ),
-                  ),
-                  Text(
-                    _selectedPaymentMethod == 'payment_link'
-                        ? 'Card via Link'
-                        : 'Pay driver',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                  ),
-                  const SizedBox(width: 4),
-                  AnimatedRotation(
-                    turns: _isPaymentExpanded ? 0.25 : 0,
-                    duration: const Duration(milliseconds: 200),
-                    child: Icon(
-                      Icons.chevron_right,
-                      color: Colors.grey[500],
-                      size: 20,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+    return Row(
+      children: [
+        Expanded(
+          child: _buildPaymentMethodOption(
+            icon: Icons.credit_card,
+            iconColor: const Color(0xFF2563EB),
+            iconBackground: const Color(0xFF2563EB).withOpacity(0.12),
+            label: 'Online',
+            subtitle: 'Card via Link',
+            value: 'payment_link',
           ),
-          if (_isPaymentExpanded) ...[
-            Divider(height: 1, color: Colors.grey[200]),
-            Padding(
-              padding: const EdgeInsets.all(8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _buildPaymentMethodOption(
-                      icon: Icons.credit_card,
-                      label: 'Online',
-                      value: 'payment_link',
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _buildPaymentMethodOption(
-                      icon: Icons.money,
-                      label: 'Cash',
-                      value: 'cash',
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ],
-      ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _buildPaymentMethodOption(
+            icon: Icons.money,
+            iconColor: const Color(0xFF16A34A),
+            iconBackground: const Color(0xFF16A34A).withOpacity(0.12),
+            label: 'Cash',
+            subtitle: 'Pay driver',
+            value: 'cash',
+          ),
+        ),
+      ],
     );
   }
 
   Widget _buildPaymentMethodOption({
     required IconData icon,
+    required Color iconColor,
+    required Color iconBackground,
     required String label,
+    required String subtitle,
     required String value,
   }) {
     final isSelected = _selectedPaymentMethod == value;
     return GestureDetector(
-      onTap: () => setState(() {
-        _selectedPaymentMethod = value;
-        _isPaymentExpanded = false;
-      }),
+      onTap: () => setState(() => _selectedPaymentMethod = value),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
         decoration: BoxDecoration(
-          color: isSelected
-              ? AppTheme.primaryColor.withOpacity(0.08)
-              : Colors.white,
-          borderRadius: BorderRadius.circular(10),
+          color: isSelected ? iconBackground : Colors.grey[50],
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isSelected ? AppTheme.primaryColor : Colors.grey[200]!,
+            color: isSelected ? iconColor : Colors.grey[200]!,
             width: isSelected ? 1.5 : 1,
           ),
         ),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              icon,
-              size: 16,
-              color: isSelected ? AppTheme.primaryColor : Colors.grey[600],
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                color: iconBackground,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, size: 18, color: iconColor),
             ),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight:
-                      isSelected ? FontWeight.w600 : FontWeight.w500,
-                  color:
-                      isSelected ? AppTheme.primaryColor : Colors.grey[700],
-                ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: isSelected ? iconColor : AppTheme.textPrimary,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                  ),
+                ],
               ),
             ),
+            if (isSelected)
+              Icon(Icons.check_circle, size: 18, color: iconColor),
           ],
         ),
       ),
