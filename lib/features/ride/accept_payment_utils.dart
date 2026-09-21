@@ -86,7 +86,40 @@ String _currencySymbol(String? currency) {
   }
 }
 
-/// Parsed `ride:accepted` payment snapshot driving the assigned-screen banner.
+/// Booking-time choice is final (strip-post-accept directive, supersedes
+/// revert-spec §4 Error 1 for the normal-ride post-accept path): the assigned
+/// screen never offers Online<->Cash switching after accept. No method sheet,
+/// no switch affordance. `ApiService.selectPaymentMethod` + the
+/// booking-screen scheduled-switch call sites stay for scheduled deposit
+/// switching; this flag pins the normal post-accept policy only.
+const bool postAcceptPaymentSwitchAllowed = false;
+
+/// Whether the checkout WebView must auto-open for an unpaid link ride.
+///
+/// - `isLiveEvent: true` (live `ride:accepted` socket event) + prompt snapshot
+///   with a URL + not authorized + no WebView already open → true: the rider
+///   pays immediately with zero taps through sheets/banners.
+/// - Cold-start / rehydrate restores (`isLiveEvent: false`) → false:
+///   auto-popping a WebView over a restored screen is riskier, so those paths
+///   show the single one-tap Pay Now banner instead (which opens the WebView
+///   directly, never a sheet).
+/// - Cash / scheduled / paid / authorized / URL-less snapshots → false. The
+///   URL-less link case falls back to the Pay Now banner (snackbar if the link
+///   still isn't ready), and the sheet never appears.
+bool shouldAutoOpenLinkWebView({
+  required bool isLiveEvent,
+  required AcceptedPayment payment,
+  required bool paymentAuthorized,
+  required bool webViewOpen,
+}) {
+  if (!isLiveEvent) return false;
+  if (paymentAuthorized) return false;
+  if (webViewOpen) return false;
+  if (!payment.showPrompt) return false;
+  final url = payment.paymentUrl;
+  if (url == null || url.isEmpty) return false;
+  return true;
+}
 class AcceptedPayment {
   final bool requiresPayment;
   final String? paymentUrl;

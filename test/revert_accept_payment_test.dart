@@ -113,6 +113,116 @@ void main() {
     });
   });
 
+  group('booking-choice-final: no post-accept switching', () {
+    test('policy flag forbids Online<->Cash switching post-accept', () {
+      expect(postAcceptPaymentSwitchAllowed, isFalse);
+    });
+
+    test('cash-booking accept → no prompt, cash copy, never auto-opens', () {
+      final parsed = AcceptedPayment.parse({
+        ...linkAccepted(),
+        'paymentMethod': 'cash',
+        'paymentStatus': 'pending_collection',
+        'paymentUrl': null,
+        'requiresPayment': false,
+      });
+      expect(parsed.showPrompt, isFalse);
+      expect(parsed.showCashCopy, isTrue);
+      expect(
+        shouldAutoOpenLinkWebView(
+          isLiveEvent: true,
+          payment: parsed,
+          paymentAuthorized: false,
+          webViewOpen: false,
+        ),
+        isFalse,
+      );
+    });
+  });
+
+  group('link-booking accept → WebView auto-open signal', () {
+    test('live accept with URL auto-opens (zero taps, no sheet)', () {
+      final parsed = AcceptedPayment.parse(linkAccepted());
+      expect(
+        shouldAutoOpenLinkWebView(
+          isLiveEvent: true,
+          payment: parsed,
+          paymentAuthorized: false,
+          webViewOpen: false,
+        ),
+        isTrue,
+      );
+    });
+
+    test('live accept without URL → no auto-open (single Pay Now fallback)', () {
+      final parsed = AcceptedPayment.parse({
+        ...linkAccepted(),
+        'paymentUrl': null,
+      });
+      // Banner prompt still shows so the rider has the one-tap fallback…
+      expect(parsed.showPrompt, isTrue);
+      // …but nothing auto-opens and the sheet never appears.
+      expect(
+        shouldAutoOpenLinkWebView(
+          isLiveEvent: true,
+          payment: parsed,
+          paymentAuthorized: false,
+          webViewOpen: false,
+        ),
+        isFalse,
+      );
+    });
+
+    test('rehydrate/cold-start with URL → no auto-open (Pay Now banner only)', () {
+      final parsed = AcceptedPayment.parse(linkAccepted());
+      expect(
+        shouldAutoOpenLinkWebView(
+          isLiveEvent: false,
+          payment: parsed,
+          paymentAuthorized: false,
+          webViewOpen: false,
+        ),
+        isFalse,
+      );
+    });
+
+    test('authorized / WebView-open / scheduled never auto-open', () {
+      final parsed = AcceptedPayment.parse(linkAccepted());
+      expect(
+        shouldAutoOpenLinkWebView(
+          isLiveEvent: true,
+          payment: parsed,
+          paymentAuthorized: true,
+          webViewOpen: false,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldAutoOpenLinkWebView(
+          isLiveEvent: true,
+          payment: parsed,
+          paymentAuthorized: false,
+          webViewOpen: true,
+        ),
+        isFalse,
+      );
+      final scheduled = AcceptedPayment.parse({
+        ...linkAccepted(),
+        'isScheduled': true,
+        'requiresPayment': false,
+      });
+      expect(
+        shouldAutoOpenLinkWebView(
+          isLiveEvent: true,
+          payment: scheduled,
+          paymentAuthorized: false,
+          webViewOpen: false,
+        ),
+        isFalse,
+      );
+    });
+  });
+
   group('shouldShowPayPrompt guards', () {
     test('scheduled never prompts even with requiresPayment:true', () {
       expect(

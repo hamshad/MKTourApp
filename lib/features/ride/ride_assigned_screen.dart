@@ -215,18 +215,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   // dialog sat on top.
   Route? _acceptWebViewRoute;
 
-  // Post-accept payment-method sheet (Online / Cash). The Pay Now banner is
-  // the persistent re-entry; this sheet is the primary selection UX.
-  // Dismissible on purpose — the rider must keep tracking the driver.
-  bool _isAcceptPaySheetOpen = false;
-  // The sheet's own route: authorized close-out dismisses it (its actions
-  // go stale the moment payment authorizes), again only while isCurrent.
-  ModalRoute? _acceptPaySheetRoute;
-
-  // True while a select-payment switch request is in flight. Stale socket
-  // callbacks captured against `_paymentSelectionSeq` bail out instead of
-  // touching the newer flow.
-  bool _isSwitchingPayment = false;
+  // (No post-accept method sheet: booking-time choice is final. Link rides
+  // auto-open the checkout WebView on the live accept event; rehydrated
+  // screens show the single Pay Now banner. Cash rides show info copy only.)
   
   // Deferred payment data for scheduled airport rides (waiting for ride:earlyCompleted)
   Map<String, dynamic>? _deferredPaymentSuccessData;
@@ -301,16 +292,20 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     return _resolveReceiptPaymentMethod(_completedRideData);
   }
 
-  /// Accept-time payment banner (16-02 revert spec §3 Step 2).
+  /// Accept-time payment banner (booking-choice-final).
   ///
   /// - Link ride with `requiresPayment:true` and unpaid status → persistent
-  ///   "Pay £X before driver arrives" card with a Pay Now button opening the
-  ///   `paymentUrl` in [PaymentWebViewScreen]. Stays visible in `accepted`
-  ///   and `driver_arrived` until authorized, switched to cash, or paid.
+  ///   "Pay £X before driver arrives" card with a single Pay Now button
+  ///   opening the `paymentUrl` in [PaymentWebViewScreen] directly (no
+  ///   method sheet, no cash option). Stays visible in `accepted` and
+  ///   `driver_arrived` until authorized or paid.
   /// - Cash ride → "Driver on the way. Pay £X in cash to driver." copy, no
-  ///   button, no prompt.
+  ///   button, no prompt, no online option.
   /// - Scheduled ride (or paid status) → nothing; assignment UI only.
   /// - Authorized → green "Payment Authorized ✓" card.
+  ///
+  /// Booking-time selection is never re-asked and never switchable
+  /// post-accept (revert-spec §4 Error 1 intentionally superseded here).
   Widget _buildAcceptPaymentBanner() {
     if (_promoFullyCovered) return const SizedBox.shrink();
     if (_rideStatus != 'accepted' && _rideStatus != 'driver_arrived') {
@@ -378,33 +373,18 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
               ],
             ),
             const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _isSwitchingPayment
-                        ? null
-                        : _showAcceptPaySheet,
-                    icon: const Icon(Icons.lock_open, size: 16),
-                    label: const Text('Pay Now'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange.shade700,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                  ),
+            ElevatedButton.icon(
+              onPressed: _openAcceptPaymentWebView,
+              icon: const Icon(Icons.lock_open, size: 16),
+              label: const Text('Pay Now'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange.shade700,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                const SizedBox(width: 8),
-                TextButton(
-                  onPressed: _isSwitchingPayment
-                      ? null
-                      : () => _switchAcceptPaymentMethod('cash'),
-                  child: const Text('Pay cash instead'),
-                ),
-              ],
+              ),
             ),
           ],
         ),
@@ -432,12 +412,6 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                   color: Colors.black87,
                 ),
               ),
-            ),
-            TextButton(
-              onPressed: _isSwitchingPayment
-                  ? null
-                  : () => _switchAcceptPaymentMethod('payment_link'),
-              child: const Text('Pay online'),
             ),
           ],
         ),
@@ -503,247 +477,12 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     }
   }
 
-  /// Post-accept payment-method bottom sheet (bug-1 fix).
+  /// Post-accept payment-method switching is REMOVED for normal rides:
+  /// booking-time choice is final (revert-spec §4 Error 1 intentionally
+  /// superseded). `ApiService.selectPaymentMethod` stays for scheduled
+  /// deposit switching via the booking screens — do not delete it.
   ///
-  /// Restores the pre-11-03 selection UX (Online / Cash) on top of the 16-02
-  /// mechanics: Online opens the accept-time `paymentUrl` WebView (the
-  /// booking method is already `payment_link`, so no select-payment call is
-  /// needed); Cash delegates to [_switchAcceptPaymentMethod]. Dismissible —
-  /// the rider must keep tracking the driver — with the Pay Now banner as
-  /// persistent re-entry. Auto-shown once per prompt transition (accepted
-  /// event / rehydrate / cold start), reopenable anytime via the banner.
-  void _showAcceptPaySheet() {
-    if (!mounted || _isAcceptPaySheetOpen || _isPaymentWebViewOpen) return;
-    if (_paymentAuthorized || _promoFullyCovered || _isSwitchingPayment) {
-      return;
-    }
-    if (_rideStatus != 'accepted' && _rideStatus != 'driver_arrived') return;
-    final ap = _acceptedPayment;
-    if (ap == null || !ap.showPrompt) return;
-    _isAcceptPaySheetOpen = true;
-    final fareLabel = ap.fareLabel;
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (sheetContext) {
-        _acceptPaySheetRoute = ModalRoute.of(sheetContext);
-        return SafeArea(
-          child: SingleChildScrollView(
-            padding: EdgeInsets.only(
-              left: 24,
-              right: 24,
-              top: 12,
-              bottom: 24 + MediaQuery.of(sheetContext).padding.bottom,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  'Select Payment Method',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Pay $fareLabel before your driver arrives.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
-                ),
-                const SizedBox(height: 20),
-                _buildAcceptPayOption(
-                  icon: Icons.lock_open,
-                  title: 'Pay Online',
-                  subtitle: 'Pay $fareLabel now via secure link',
-                  onTap: () {
-                    Navigator.pop(sheetContext);
-                    if (!mounted || _paymentAuthorized) return;
-                    _openAcceptPaymentWebView();
-                  },
-                ),
-                const SizedBox(height: 12),
-                _buildAcceptPayOption(
-                  icon: Icons.payments_outlined,
-                  title: 'Cash',
-                  subtitle: 'Pay $fareLabel directly to your driver',
-                  onTap: () {
-                    Navigator.pop(sheetContext);
-                    if (!mounted || _paymentAuthorized) return;
-                    _switchAcceptPaymentMethod('cash');
-                  },
-                ),
-                const SizedBox(height: 8),
-              ],
-            ),
-          ),
-        );
-      },
-    ).whenComplete(() {
-      _isAcceptPaySheetOpen = false;
-      _acceptPaySheetRoute = null;
-    });
-  }
-
-  Widget _buildAcceptPayOption({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-        decoration: BoxDecoration(
-          color: Colors.grey.shade50,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.shade300),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: AppTheme.primaryColor, size: 24),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey.shade600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right, color: Colors.grey),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// Switch link<->cash before pickup (§4 Error 1, §7 item 5).
-  ///
-  /// Calls the existing `ApiService.selectPaymentMethod` in
-  /// `requested/accepted/driver_arrived` states. link→cash dismisses the
-  /// prompt and shows cash copy; cash→link opens the returned `paymentUrl`
-  /// (null URL → orange snackbar, stay on screen). Errors surface through
-  /// `ErrorDisplayHelper` — never raw backend text. Stale-guard via
-  /// `_paymentSelectionSeq`; driver UI updates come from the backend's
-  /// `ride:paymentSelected` event (listener already live, needs no change).
-  Future<void> _switchAcceptPaymentMethod(String method) async {
-    if (_isSwitchingPayment) return;
-    if (_rideStatus != 'requested' &&
-        _rideStatus != 'searching' &&
-        _rideStatus != 'accepted' &&
-        _rideStatus != 'driver_arrived') {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Payment method can only be changed before pickup.'),
-          backgroundColor: Colors.orange,
-          duration: Duration(seconds: 3),
-        ),
-      );
-      return;
-    }
-    final guardSeq = ++_paymentSelectionSeq;
-    setState(() => _isSwitchingPayment = true);
-    try {
-      final response = await _apiService.selectPaymentMethod(
-        widget.rideId,
-        method,
-      );
-      if (!mounted || guardSeq != _paymentSelectionSeq) return;
-      if (response['success'] == true) {
-        final data = response['data'];
-        final Map? rideMap = data is Map && data['ride'] is Map
-            ? data['ride'] as Map
-            : data is Map
-                ? data
-                : null;
-        final confirmed = rideMap?['paymentMethod']?.toString();
-        final url = rideMap?['paymentUrl']?.toString();
-        final fare = _currentFare ?? widget.fare;
-        if (method == 'cash') {
-          setState(() {
-            _paymentAuthorized = false;
-            _completedPaymentMethod = 'cash';
-            _acceptedPayment = AcceptedPayment.parse({
-              'requiresPayment': false,
-              'paymentMethod': 'cash',
-              'paymentStatus': confirmed ?? 'pending_collection',
-              'fare': fare,
-              'isScheduled': _isScheduled,
-            }, fallbackFare: widget.fare);
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Cash selected — pay your driver directly.'),
-              backgroundColor: Colors.green,
-              duration: Duration(seconds: 3),
-            ),
-          );
-        } else {
-          if (url != null && url.trim().isNotEmpty) {
-            setState(() {
-              _paymentAuthorized = false;
-              _acceptedPayment = AcceptedPayment.parse({
-                'requiresPayment': true,
-                'paymentUrl': url.trim(),
-                'paymentMethod': 'payment_link',
-                'paymentStatus': 'link_created',
-                'fare': fare,
-                'isScheduled': _isScheduled,
-              }, fallbackFare: widget.fare);
-            });
-            await _openAcceptPaymentWebView();
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'Online payment link unavailable — please try again or stay on cash.',
-                ),
-                backgroundColor: Colors.orange,
-                duration: Duration(seconds: 4),
-              ),
-            );
-          }
-        }
-      } else {
-        if (!mounted) return;
-        final serverMessage = response['message']?.toString() ??
-            'Failed to change payment method. Please try again.';
-        ErrorDisplayHelper.showRideError(
-          context,
-          serverMessage,
-          errors: response['errors'],
-        );
-      }
-    } catch (e) {
-      debugPrint('🔴 [RideAssignedScreen] Switch payment error: $e');
-      if (!mounted) return;
-      ErrorDisplayHelper.showRideError(context, 'Error: $e');
-    } finally {
-      if (mounted) setState(() => _isSwitchingPayment = false);
-    }
-  }
+  /// (Former `_showAcceptPaySheet` / `_switchAcceptPaymentMethod` deleted.)
 
   /// Non-tappable chip showing the booking-time method throughout the trip.
   /// Cash → "pay driver directly", payment_link → "paid via link".
@@ -802,11 +541,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     // Reopen gap (§4 Error 2): cold start / reopen on an accepted unpaid
     // link ride re-shows the Pay Now prompt via GET ride details.
     _rehydrateAcceptPayment();
-    // Cold start with an already-accepted snapshot (widget driver args):
-    // surface the post-accept method sheet once the first frame is ready.
-    runAfterFrame((_) {
-      if (mounted) _showAcceptPaySheet();
-    });
+    // Cold start with an already-accepted snapshot: no auto-open here — the
+    // single Pay Now banner is the one-tap prompt (booking-choice-final).
+    // Only the live `ride:accepted` event auto-opens the checkout WebView.
   }
 
   @override
@@ -1000,11 +737,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         debugPrint(
           '🔄 [RideAssignedScreen] Rehydrated Pay Now prompt for ${widget.rideId}',
         );
-        if ((_acceptedPayment?.showPrompt ?? false) && !_paymentAuthorized) {
-          runAfterFrame((_) {
-            if (mounted) _showAcceptPaySheet();
-          });
-        }
+        // No auto-open on rehydrate: the banner Pay Now button is the
+        // one-tap prompt (auto-popping a WebView over a restored screen is
+        // riskier). The sheet never appears.
       }
     } catch (e) {
       debugPrint('⚠️ [RideAssignedScreen] Rehydrate accept payment failed: $e');
@@ -1402,9 +1137,10 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       scheduleMicrotask(() {
         if (!mounted || !context.mounted) return;
 
-        // Post-accept sheet (bug-1 fix): auto-show only on the transition
-        // INTO an unpaid-link prompt, so duplicate accepted events (e.g.
-        // driver reassign) never reopen a dismissed sheet.
+        // Booking-choice-final: live transition INTO an unpaid-link prompt
+        // auto-opens the checkout WebView directly (no sheet, no switch).
+        // Duplicate accepted events never reopen: the WebView guard
+        // (`_isPaymentWebViewOpen`) + `hadPayPrompt` dedupe this.
         final hadPayPrompt = _acceptedPayment?.showPrompt ?? false;
         setState(() {
           _rideStatus = 'accepted';
@@ -1477,11 +1213,17 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
           _updateMarkers();
         });
 
-        if ((_acceptedPayment?.showPrompt ?? false) &&
+        final ap = _acceptedPayment;
+        if (ap != null &&
             !hadPayPrompt &&
-            !_paymentAuthorized) {
+            shouldAutoOpenLinkWebView(
+              isLiveEvent: true,
+              payment: ap,
+              paymentAuthorized: _paymentAuthorized,
+              webViewOpen: _isPaymentWebViewOpen,
+            )) {
           runAfterFrame((_) {
-            if (mounted) _showAcceptPaySheet();
+            if (mounted) _openAcceptPaymentWebView();
           });
         }
 
@@ -1814,13 +1556,6 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       final webViewRoute = _acceptWebViewRoute;
       if (webViewRoute?.isCurrent == true) {
         Navigator.of(context).pop({'success': true});
-      }
-
-      // The method sheet goes stale the moment payment authorizes (its
-      // Online/Cash actions no longer apply) — dismiss it, same guard.
-      final paySheetRoute = _acceptPaySheetRoute;
-      if (paySheetRoute?.isCurrent == true) {
-        Navigator.of(context).pop();
       }
 
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -2209,22 +1944,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         _isPaymentMethodSelected = true;
         if (method.isNotEmpty) _selectedPaymentMethodDisplay = method;
       });
-      // Cash echo (our switch response or a co-device change): dismiss the
-      // Pay Now prompt and show cash copy. Link echoes carry no URL — the
-      // switch response owns that — so they leave the banner untouched.
-      if (method.trim().toLowerCase() == 'cash' && mounted) {
-        setState(() {
-          _paymentAuthorized = false;
-          _completedPaymentMethod = 'cash';
-          _acceptedPayment = AcceptedPayment.parse({
-            'requiresPayment': false,
-            'paymentMethod': 'cash',
-            'paymentStatus': 'pending_collection',
-            'fare': _currentFare ?? widget.fare,
-            'isScheduled': _isScheduled,
-          }, fallbackFare: widget.fare);
-        });
-      }
+      // No post-accept echo mutation: booking-time choice is final, so the
+      // banner snapshot is never rewritten from `ride:paymentSelected` here.
     });
   }
 
