@@ -147,6 +147,7 @@
 - Phase 13 added: account suspension safeguard — startup lock of Book/Schedule + pay-online-only modal on accountSuspended:true per updated backend guide (live settlement stays in Phase 12)
 - Phase 14 added: excessCashConfirmed close-out — rider + driver handling of the driver-confirm socket event (verified zero hits in lib/, genuine gap; payloads in phase dir INTEGRATION-GUIDE.md)
 - **Completed todo:** Removed Account Temporarily Suspended dialog — suspension concept obsolete per Phase 15 contract; booking now silently includes balance (commit e626d04)
+- Phase 17 added: Backend enforces payment_link only for scheduled rides — remove cash from prebook flow and handle new error responses
 
 ## Session
 - Last session: Completed 16-02-PLAN.md (2026-09-21, 2 commits `4074559`, `202429d`, SUMMARY at phases/16-revert-ride-payments/16-02-SUMMARY.md). Next: 16-03.

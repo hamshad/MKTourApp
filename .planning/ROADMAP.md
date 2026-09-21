@@ -16,6 +16,8 @@
 | 10 | 2/2 | Complete    | 2026-09-12 | STACK-01..04 |
 | 11 | 3/3 | Complete   | 2026-09-17 | UPFRONT-01..05 |
 | 16 | Revert Ride Payments | In Progress | 2/3 | RVT-01..06 |
+| 17 | Backend payment_link only for scheduled | Planned | 0 | — |
+| 18 | Enforce payment_method constraints for scheduled | Planned | 0 | PAYCONST-01..06 |
 
 ---
 
@@ -278,7 +280,40 @@ Plans:
 - [x] `14-02-PLAN.md` — Rider close-out: waitingCash exit via authoritative refresh + thank-you copy
 - [x] `14-03-PLAN.md` — Driver close-out: Collect-Cash modal close + single toast + reconnect wiring
 
+### Phase 17: Backend enforces payment_link only for scheduled rides — remove cash from prebook flow and handle new error responses
+
+**Goal:** [To be planned]
+**Depends on:** Phase 16
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 17 to break down)
+
 ---
+
+## Phase 18: Enforce backend payment_method constraints for scheduled rides
+
+**Goal:** Scheduled rides accept payment_link only — cash rejected at create/schedule with 400; select-payment endpoint rejects cash for scheduled rides with 400. Frontend handles new error responses with friendly copy.
+
+**Requirements:**
+- **PAYCONST-01**: POST /rides/schedule returns 400 when payment_method=cash for scheduled rides
+- **PAYCONST-02**: POST /rides/create returns 400 when payment_method=cash for scheduled rides (if endpoint allows schedule)
+- **PAYCONST-03**: POST /rides/:id/select-payment returns 400 when payment_method=cash for scheduled rides
+- **PAYCONST-04**: Error mapper surfaces friendly "Scheduled rides require online payment" copy for all three 400 cases
+- **PAYCONST-05**: Booking/schedule UI disables cash option for scheduled rides preemptively
+- **PAYCONST-06**: Select-payment sheet (if ever shown for scheduled) filters cash option
+
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 18 to break down)
+
+**Success Criteria:**
+- Scheduled ride create/schedule with cash returns 400, not 500
+- Select-payment with cash on scheduled ride returns 400
+- Friendly error shown to user, no crashes
+- Cash option hidden/disabled in UI for scheduled rides
+- `flutter analyze` clean; contract tests green
 
 ## Phase 11: Upfront Ride Payments
 
