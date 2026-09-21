@@ -8,6 +8,7 @@ import '../../core/services/audio_service.dart';
 import '../../core/auth_provider.dart';
 import '../../core/theme.dart';
 import '../../core/services/socket_service.dart';
+import '../../core/ui_frame.dart';
 import '../../core/services/ride_event_dedupe.dart';
 import '../../core/api_service.dart';
 import '../../core/services/navigation_service.dart';
@@ -206,6 +207,22 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   // leaving a stale checkout open under the authorized banner.
   bool _isPaymentWebViewOpen = false;
 
+  // The exact checkout route pushed by [_openAcceptPaymentWebView]. The
+  // `payment:authorized` close-out pops ONLY this route and ONLY while it
+  // isCurrent — a bare Navigator.pop here ejected the assigned screen
+  // itself (rider dumped to the create-ride screen) whenever the event
+  // landed after the WebView self-closed or while its cancel-confirm
+  // dialog sat on top.
+  Route? _acceptWebViewRoute;
+
+  // Post-accept payment-method sheet (Online / Cash). The Pay Now banner is
+  // the persistent re-entry; this sheet is the primary selection UX.
+  // Dismissible on purpose — the rider must keep tracking the driver.
+  bool _isAcceptPaySheetOpen = false;
+  // The sheet's own route: authorized close-out dismisses it (its actions
+  // go stale the moment payment authorizes), again only while isCurrent.
+  ModalRoute? _acceptPaySheetRoute;
+
   // True while a select-payment switch request is in flight. Stale socket
   // callbacks captured against `_paymentSelectionSeq` bail out instead of
   // touching the newer flow.
@@ -367,7 +384,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                   child: ElevatedButton.icon(
                     onPressed: _isSwitchingPayment
                         ? null
-                        : _openAcceptPaymentWebView,
+                        : _showAcceptPaySheet,
                     icon: const Icon(Icons.lock_open, size: 16),
                     label: const Text('Pay Now'),
                     style: ElevatedButton.styleFrom(
@@ -450,14 +467,13 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     if (_isPaymentWebViewOpen) return;
     _isPaymentWebViewOpen = true;
     final guardSeq = _paymentSelectionSeq;
+    final route = MaterialPageRoute(
+      builder: (_) =>
+          PaymentWebViewScreen(paymentUrl: url, rideId: widget.rideId),
+    );
+    _acceptWebViewRoute = route;
     try {
-      final result = await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) =>
-              PaymentWebViewScreen(paymentUrl: url, rideId: widget.rideId),
-        ),
-      );
+      final result = await Navigator.push(context, route);
       if (!mounted || guardSeq != _paymentSelectionSeq) return;
       if (result is Map && result['success'] == true) {
         // The `payment:authorized` event may have closed this out already
@@ -482,8 +498,144 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         );
       }
     } finally {
+      _acceptWebViewRoute = null;
       _isPaymentWebViewOpen = false;
     }
+  }
+
+  /// Post-accept payment-method bottom sheet (bug-1 fix).
+  ///
+  /// Restores the pre-11-03 selection UX (Online / Cash) on top of the 16-02
+  /// mechanics: Online opens the accept-time `paymentUrl` WebView (the
+  /// booking method is already `payment_link`, so no select-payment call is
+  /// needed); Cash delegates to [_switchAcceptPaymentMethod]. Dismissible —
+  /// the rider must keep tracking the driver — with the Pay Now banner as
+  /// persistent re-entry. Auto-shown once per prompt transition (accepted
+  /// event / rehydrate / cold start), reopenable anytime via the banner.
+  void _showAcceptPaySheet() {
+    if (!mounted || _isAcceptPaySheetOpen || _isPaymentWebViewOpen) return;
+    if (_paymentAuthorized || _promoFullyCovered || _isSwitchingPayment) {
+      return;
+    }
+    if (_rideStatus != 'accepted' && _rideStatus != 'driver_arrived') return;
+    final ap = _acceptedPayment;
+    if (ap == null || !ap.showPrompt) return;
+    _isAcceptPaySheetOpen = true;
+    final fareLabel = ap.fareLabel;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        _acceptPaySheetRoute = ModalRoute.of(sheetContext);
+        return SafeArea(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.only(
+              left: 24,
+              right: 24,
+              top: 12,
+              bottom: 24 + MediaQuery.of(sheetContext).padding.bottom,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Select Payment Method',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Pay $fareLabel before your driver arrives.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
+                ),
+                const SizedBox(height: 20),
+                _buildAcceptPayOption(
+                  icon: Icons.lock_open,
+                  title: 'Pay Online',
+                  subtitle: 'Pay $fareLabel now via secure link',
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    if (!mounted || _paymentAuthorized) return;
+                    _openAcceptPaymentWebView();
+                  },
+                ),
+                const SizedBox(height: 12),
+                _buildAcceptPayOption(
+                  icon: Icons.payments_outlined,
+                  title: 'Cash',
+                  subtitle: 'Pay $fareLabel directly to your driver',
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    if (!mounted || _paymentAuthorized) return;
+                    _switchAcceptPaymentMethod('cash');
+                  },
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    ).whenComplete(() {
+      _isAcceptPaySheetOpen = false;
+      _acceptPaySheetRoute = null;
+    });
+  }
+
+  Widget _buildAcceptPayOption({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: AppTheme.primaryColor, size: 24),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: Colors.grey),
+          ],
+        ),
+      ),
+    );
   }
 
   /// Switch link<->cash before pickup (§4 Error 1, §7 item 5).
@@ -650,6 +802,11 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     // Reopen gap (§4 Error 2): cold start / reopen on an accepted unpaid
     // link ride re-shows the Pay Now prompt via GET ride details.
     _rehydrateAcceptPayment();
+    // Cold start with an already-accepted snapshot (widget driver args):
+    // surface the post-accept method sheet once the first frame is ready.
+    runAfterFrame((_) {
+      if (mounted) _showAcceptPaySheet();
+    });
   }
 
   @override
@@ -843,6 +1000,11 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         debugPrint(
           '🔄 [RideAssignedScreen] Rehydrated Pay Now prompt for ${widget.rideId}',
         );
+        if ((_acceptedPayment?.showPrompt ?? false) && !_paymentAuthorized) {
+          runAfterFrame((_) {
+            if (mounted) _showAcceptPaySheet();
+          });
+        }
       }
     } catch (e) {
       debugPrint('⚠️ [RideAssignedScreen] Rehydrate accept payment failed: $e');
@@ -1240,6 +1402,10 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       scheduleMicrotask(() {
         if (!mounted || !context.mounted) return;
 
+        // Post-accept sheet (bug-1 fix): auto-show only on the transition
+        // INTO an unpaid-link prompt, so duplicate accepted events (e.g.
+        // driver reassign) never reopen a dismissed sheet.
+        final hadPayPrompt = _acceptedPayment?.showPrompt ?? false;
         setState(() {
           _rideStatus = 'accepted';
           _driver = driverData as Map<String, dynamic>;
@@ -1310,6 +1476,14 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
           }
           _updateMarkers();
         });
+
+        if ((_acceptedPayment?.showPrompt ?? false) &&
+            !hadPayPrompt &&
+            !_paymentAuthorized) {
+          runAfterFrame((_) {
+            if (mounted) _showAcceptPaySheet();
+          });
+        }
 
         debugPrint('═══════════════════════════════════════════════════════');
         debugPrint(
@@ -1630,11 +1804,23 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       // exactly one confirmation shows.
       setState(() => _paymentAuthorized = true);
 
-      // If the accept-time checkout is still open on top, pop it with
-      // success — the awaiter in `_openAcceptPaymentWebView` treats it as
-      // done via the flag above.
-      if (_isPaymentWebViewOpen) {
+      // Route-guarded close-out: pop ONLY the checkout WebView pushed by
+      // `_openAcceptPaymentWebView`, and ONLY while it is still the top
+      // route. A bare pop here ejected the assigned screen itself (rider
+      // dumped to the create-ride screen) when the event landed after the
+      // WebView self-closed, or dismissed the cancel-confirm dialog when
+      // that sat on top. When the route isn't current there is nothing to
+      // pop — the awaiter sees the flag above and stays silent.
+      final webViewRoute = _acceptWebViewRoute;
+      if (webViewRoute?.isCurrent == true) {
         Navigator.of(context).pop({'success': true});
+      }
+
+      // The method sheet goes stale the moment payment authorizes (its
+      // Online/Cash actions no longer apply) — dismiss it, same guard.
+      final paySheetRoute = _acceptPaySheetRoute;
+      if (paySheetRoute?.isCurrent == true) {
+        Navigator.of(context).pop();
       }
 
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
