@@ -86,6 +86,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
 
   // Last position update timestamp (drives emit throttling bookkeeping)
   DateTime? _lastPositionUpdateTime;
+  // Silent telemetry: consecutive location failures (debugPrint only, no UI).
+  int _consecutiveLocationFailures = 0;
 
   // Track if socket listeners are set up to re-register after reconnection
   bool _socketListenersSetup = false;
@@ -590,9 +592,43 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   }
 
   void _onLocationStreamError(dynamic error) {
-    debugPrint('⚠️ [DriverHomeScreen] Location stream error: $error');
-    // GPS warnings removed — stream errors stay silent, tracking resumes
-    // on the next fix.
+    _consecutiveLocationFailures++;
+    debugPrint('⚠️ [DriverHomeScreen] Location stream error '
+        '(consecutive failures: $_consecutiveLocationFailures): $error');
+    // Silent: tracking resumes on the next fix. No UI.
+  }
+
+  /// Silent guard: best-effort freshest fix for completion. Never blocks,
+  /// never prompts for permission, never shows UI — always falls back to
+  /// _currentLocation on any failure.
+  Future<LatLng> _bestEffortCompletionLocation() async {
+    try {
+      final permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return _currentLocation;
+      }
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        return _currentLocation;
+      }
+      final fresh = await Geolocator.getLastKnownPosition().timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => null,
+      );
+      final stamp = fresh?.timestamp;
+      if (fresh != null && stamp != null) {
+        final lastUpdate = _lastPositionUpdateTime;
+        if (lastUpdate == null || stamp.isAfter(lastUpdate)) {
+          debugPrint('📍 [DriverHomeScreen] Completion uses fresher '
+              'last-known fix (${DateTime.now().difference(stamp).inSeconds}s old)');
+          return LatLng(fresh.latitude, fresh.longitude);
+        }
+      }
+    } catch (e) {
+      debugPrint(
+          '⚠️ [DriverHomeScreen] Completion location guard fallback: $e');
+    }
+    return _currentLocation;
   }
 
   /// One-shot position refresh after app resume. Updates the position clock
@@ -602,9 +638,15 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       final position = await _locationService.getCurrentLocation();
       if (position != null && mounted) {
         _handlePositionUpdate(position);
+      } else {
+        _consecutiveLocationFailures++;
+        debugPrint('⚠️ [DriverHomeScreen] Resume position refresh no fix '
+            '(consecutive failures: $_consecutiveLocationFailures)');
       }
     } catch (e) {
-      debugPrint('⚠️ [DriverHomeScreen] Resume position refresh failed: $e');
+      _consecutiveLocationFailures++;
+      debugPrint('⚠️ [DriverHomeScreen] Resume position refresh failed '
+          '(consecutive failures: $_consecutiveLocationFailures): $e');
     }
   }
 
@@ -620,8 +662,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       _emitLocationUpdate(position.latitude, position.longitude);
     } else {
       // No fix yet — stay silent, tracking resumes on the next fix.
+      _consecutiveLocationFailures++;
       debugPrint(
-        '⚠️ [DriverHomeScreen] Initial location fix unavailable — continuing silently',
+        '⚠️ [DriverHomeScreen] Initial location fix unavailable — continuing silently '
+        '(consecutive failures: $_consecutiveLocationFailures)',
       );
     }
 
@@ -657,6 +701,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   /// Handle incoming position updates
   void _handlePositionUpdate(Position position) {
     if (!mounted) return;
+
+    _consecutiveLocationFailures = 0;
 
     // Calculate bearing if we have a previous location
     if (_currentLocation.latitude != 0 && _currentLocation.longitude != 0) {
@@ -2264,8 +2310,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         // Main action mirrors the per-stop card: resume the trip.
         await _handleStopResume();
       } else if (_status == 'in_progress') {
-        // Complete Ride — uses the last known location, never blocks on GPS.
-        final pos = _currentLocation;
+        // Complete Ride — silent guard picks the freshest known fix first,
+        // always falls back to last known. Never blocks, never prompts.
+        final pos = await _bestEffortCompletionLocation();
         final response = await _apiService.completeRide(
           _currentRideId!,
           pos.latitude,
