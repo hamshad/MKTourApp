@@ -25,7 +25,7 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
   final TextEditingController _notesController = TextEditingController();
   PaymentTiming _paymentTiming = PaymentTiming.payLater;
   // Mandatory upfront method selector (11-02): 'cash' or 'payment_link'.
-  String _selectedPaymentMethod = 'cash';
+  String _selectedPaymentMethod = 'payment_link';
   List<Map<String, dynamic>> _stops = [];
   // Pending unpaid scheduled ride — switch payment via select-payment, no duplicate create.
   String? _pendingScheduledRideId;

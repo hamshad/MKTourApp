@@ -77,7 +77,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   @override
   void initState() {
     super.initState();
-    _selectedPaymentMethod = widget.paymentMethod ?? 'cash';
+    _selectedPaymentMethod = 'payment_link';
     // Initialize route synchronously from passed polyline
     _initializeRouteSync();
     // Multi-stop: the passed polyline may predate the stops editor —

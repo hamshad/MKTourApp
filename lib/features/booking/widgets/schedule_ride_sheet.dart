@@ -9,7 +9,7 @@ class SchedulePayload {
   /// ISO 8601 pickup time in UTC.
   final String pickupTime;
 
-  /// Selected payment method slug (payment_link, cash).
+  /// Selected payment method slug (payment_link only for scheduled).
   final String paymentMethod;
 
   /// Optional pre-booking note for the driver.
@@ -41,7 +41,7 @@ class ScheduleRideSheet extends StatefulWidget {
     super.key,
     required this.initialDateTime,
     this.stops = const [],
-    this.paymentMethod = 'cash',
+    this.paymentMethod = 'payment_link',
     required this.onSchedule,
   });
 
@@ -74,7 +74,7 @@ class _ScheduleRideSheetState extends State<ScheduleRideSheet> {
   void initState() {
     super.initState();
     _selectedDateTime = widget.initialDateTime;
-    _selectedPaymentMethod = widget.paymentMethod;
+    _selectedPaymentMethod = 'payment_link';
   }
 
   @override
@@ -291,7 +291,7 @@ class _ScheduleRideSheetState extends State<ScheduleRideSheet> {
               ),
             ),
 
-          // Payment method selector
+          // Payment method selector — backend enforces payment_link only
           Text(
             'Payment Method',
             style: TextStyle(
@@ -301,24 +301,35 @@ class _ScheduleRideSheetState extends State<ScheduleRideSheet> {
             ),
           ),
           const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: _buildPaymentOption(
-                  icon: Icons.link,
-                  label: 'Payment Link',
-                  value: 'payment_link',
-                ),
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryColor.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: AppTheme.primaryColor,
+                width: 1.5,
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _buildPaymentOption(
-                  icon: Icons.money,
-                  label: 'Cash',
-                  value: 'cash',
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.link,
+                  size: 18,
+                  color: AppTheme.primaryColor,
                 ),
-              ),
-            ],
+                const SizedBox(width: 8),
+                Text(
+                  'Payment Link (required for prebook)',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.primaryColor,
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 16),
 
@@ -349,10 +360,8 @@ class _ScheduleRideSheetState extends State<ScheduleRideSheet> {
                   borderRadius: BorderRadius.circular(14),
                 ),
               ),
-              child: Text(
-                _selectedPaymentMethod == 'cash'
-                    ? 'Confirm Booking'
-                    : 'Pay & Confirm Booking',
+              child: const Text(
+                'Pay & Confirm Booking',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
