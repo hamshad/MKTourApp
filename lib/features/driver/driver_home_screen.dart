@@ -84,43 +84,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   DateTime? _lastEmitTime;
   static const int _minEmitIntervalMs = 3000; // Minimum 3 seconds between emits
 
-  // Location-health watchdog
-  bool _locationStale = false;
+  // Last position update timestamp (drives emit throttling bookkeeping)
   DateTime? _lastPositionUpdateTime;
-  Timer? _locationWatchdog;
-  // Resume grace: after phone sleep/background, the position stream needs
-  // time to deliver its first fix. Without this, the watchdog sees the
-  // background gap as signal loss and shows a false "NO GPS signal" warning.
-  DateTime? _appResumedAt;
-  static const int _resumeGraceSeconds = 30;
-
-  // GPS health monitoring
-  String? _gpsServiceProblem; // non-null when GPS is off or permission denied
-  bool _noGpsSignal = false; // true when no location updates are received
-  Timer? _gpsHealthTimer;
-  String? _lastShownGpsWarning;
-  // Anti-spam: popup snackbar at most once per outage (cooldown), while the
-  // passive banner stays always accurate. Prevents repeated false popups
-  // when fixes jitter around the watchdog thresholds with healthy GPS.
-  DateTime? _lastGpsSnackbarAt;
-  static const int _gpsSnackbarCooldownMinutes = 5;
-  // Hysteresis: require sustained timeout before flagging no-signal, so a
-  // single slow fix doesn't flap the warning on/off.
-  int _noSignalStrikes = 0;
-  static const int _noSignalStrikesNeeded = 2;
-
-  /// Banner message describing the current location problem, or null if healthy.
-  String? get _locationBannerMessage {
-    if (_gpsServiceProblem != null) return _gpsServiceProblem;
-    if (_noGpsSignal) {
-      return 'No GPS signal received. Riders cannot see your live location — '
-          'check your signal or restart location services.';
-    }
-    if (_locationStale) {
-      return 'Location updates are delayed. Riders may see an outdated position.';
-    }
-    return null;
-  }
 
   // Track if socket listeners are set up to re-register after reconnection
   bool _socketListenersSetup = false;
@@ -276,33 +241,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     if (state == AppLifecycleState.resumed) {
       debugPrint('🔄 [DriverHomeScreen] App resumed, syncing state...');
 
-      // Resume grace: the background gap is NOT signal loss. Reset the
-      // watchdog clock and clear stale flags so a working GPS doesn't
-      // trigger a false "NO GPS signal" warning on unlock. The watchdog
-      // stays suppressed for _resumeGraceSeconds while GPS re-acquires.
-      _appResumedAt = DateTime.now();
+      // Resume is silent: no GPS warnings. Just refresh the position clock
+      // so tracking continues without surfacing any message on unlock.
       _lastPositionUpdateTime ??= DateTime.now();
-      if (_noGpsSignal || _locationStale) {
-        // Only clear the signal-loss flags here; a genuinely dead GPS will
-        // re-trip the watchdog after the grace window expires.
-        _lastPositionUpdateTime = DateTime.now();
-        _noGpsSignal = false;
-        _locationStale = false;
-        _noSignalStrikes = 0;
-        if (mounted) setState(() {});
-      } else {
-        // Even when flags are clear, clamp the clock so the background gap
-        // doesn't instantly push diff past the 15s/20s thresholds.
-        final gap = DateTime.now()
-            .difference(_lastPositionUpdateTime!)
-            .inSeconds;
-        if (gap > _resumeGraceSeconds) {
-          _lastPositionUpdateTime = DateTime.now();
-        }
-      }
-
-      // 0. Re-check GPS health (driver may have toggled location/permission)
-      _checkGpsHealth();
 
       // 1. Force check socket connection
       if (!_socketService.isConnected) {
@@ -604,8 +545,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
 
     // Clean up streams
     _positionStreamSubscription?.cancel();
-    _locationWatchdog?.cancel();
-    _gpsHealthTimer?.cancel();
     _connectionSubscription?.cancel();
     _fcmSubscription?.cancel();
     _fcmForegroundSubscription?.cancel();
@@ -650,68 +589,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     }
   }
 
-  void _updateGpsWarningState() {
-    final msg = _locationBannerMessage;
-    if (msg == _lastShownGpsWarning) return;
-    _lastShownGpsWarning = msg;
-    if (msg == null || !mounted) return;
-    // Hard failures (GPS off / permission denied) always notify on change —
-    // actionable and rare. Soft "no signal" popups are cooldown-guarded so a
-    // flapping watchdog can't spam the driver while GPS is healthy. The
-    // persistent banner (orange/red) still reflects the current state.
-    final isHardFailure = _gpsServiceProblem != null;
-    if (!isHardFailure) {
-      final last = _lastGpsSnackbarAt;
-      if (last != null &&
-          DateTime.now().difference(last).inMinutes <
-              _gpsSnackbarCooldownMinutes) {
-        return;
-      }
-    }
-    _lastGpsSnackbarAt = DateTime.now();
-    CustomSnackbar.show(
-      context,
-      message: msg,
-      type: SnackbarType.warning,
-    );
-  }
-
-  /// Detect GPS-off / permission-denied and surface it to the driver.
-  Future<void> _checkGpsHealth() async {
-    String? problem;
-    try {
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        problem = 'GPS / location services are OFF. Riders cannot see you — '
-            'turn on location services.';
-      } else {
-        final permission = await Geolocator.checkPermission();
-        if (permission == LocationPermission.denied ||
-            permission == LocationPermission.deniedForever) {
-          problem = 'Location permission denied. Riders cannot see you — '
-              'enable it in app settings.';
-        }
-      }
-    } catch (e) {
-      debugPrint('⚠️ [DriverHomeScreen] GPS health check failed: $e');
-    }
-    if (mounted) {
-      setState(() => _gpsServiceProblem = problem);
-      _updateGpsWarningState();
-    }
-  }
-
   void _onLocationStreamError(dynamic error) {
     debugPrint('⚠️ [DriverHomeScreen] Location stream error: $error');
-    _checkGpsHealth();
-    // Don't set _noGpsSignal immediately on a transient stream error
-    // (very common right after resume while GPS re-acquires). The watchdog
-    // will flag genuine loss after its timeout; instant flagging is what
-    // caused the false "NO GPS signal" warning on unlock.
+    // GPS warnings removed — stream errors stay silent, tracking resumes
+    // on the next fix.
   }
 
-  /// One-shot position refresh after app resume. Updates the watchdog clock
-  /// on success; silently ignores transient failures (watchdog decides).
+  /// One-shot position refresh after app resume. Updates the position clock
+  /// on success; silently ignores transient failures.
   void _refreshPositionAfterResume() async {
     try {
       final position = await _locationService.getCurrentLocation();
@@ -734,13 +619,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       });
       _emitLocationUpdate(position.latitude, position.longitude);
     } else {
-      // No fix at all — likely GPS off / permission denied / no signal.
-      // Don't flag _noGpsSignal instantly here: a cold fix (esp. right after
-      // resume) often times out once while GPS is fine. _checkGpsHealth
-      // surfaces real service/permission problems; the watchdog flags real
-      // signal loss after its timeout.
+      // No fix yet — stay silent, tracking resumes on the next fix.
       debugPrint(
-        '⚠️ [DriverHomeScreen] Initial location fix unavailable — deferring to GPS health check + watchdog',
+        '⚠️ [DriverHomeScreen] Initial location fix unavailable — continuing silently',
       );
     }
 
@@ -771,59 +652,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         '📍 [DriverHomeScreen] Started periodic location stream (4s interval)',
       );
     }
-
-    // Probe GPS health now (permission/service) and re-check periodically so the
-    // warning clears automatically once the driver fixes it.
-    _checkGpsHealth();
-    _gpsHealthTimer?.cancel();
-    _gpsHealthTimer = Timer.periodic(const Duration(seconds: 15), (_) {
-      if (mounted) _checkGpsHealth();
-    });
-
-    // Watchdog: surface "location lost" to the driver instead of failing silently.
-    _locationWatchdog?.cancel();
-    _locationWatchdog = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (!mounted) return;
-      // Resume grace: give GPS time to deliver its first post-resume fix
-      // before judging signal health. Prevents false warning on unlock.
-      if (_appResumedAt != null &&
-          DateTime.now().difference(_appResumedAt!).inSeconds <
-              _resumeGraceSeconds) {
-        return;
-      }
-      final needsLoc = _status == 'online' ||
-          _status == 'pickup' ||
-          _status == 'arrived' ||
-          _status == 'in_progress';
-      if (!needsLoc) {
-        if (_locationStale) setState(() => _locationStale = false);
-        _noSignalStrikes = 0;
-        if (_noGpsSignal) {
-          setState(() => _noGpsSignal = false);
-          _updateGpsWarningState();
-        }
-        return;
-      }
-      final diff = _lastPositionUpdateTime == null
-          ? 999999
-          : DateTime.now().difference(_lastPositionUpdateTime!).inSeconds;
-      final stale = diff > 15;
-      if (stale != _locationStale) setState(() => _locationStale = stale);
-      // Hysteresis: only flag no-signal after SUSTAINED timeout (2 x 5s ticks
-      // past the 20s threshold ≈ 30s without any fix). A single slow fix with
-      // healthy GPS must not flap the warning on/off. Clears immediately on
-      // the next fix in _handlePositionUpdate.
-      if (diff > 20) {
-        _noSignalStrikes++;
-      } else {
-        _noSignalStrikes = 0;
-      }
-      final noSignal = _noSignalStrikes >= _noSignalStrikesNeeded;
-      if (noSignal != _noGpsSignal) {
-        setState(() => _noGpsSignal = noSignal);
-        _updateGpsWarningState();
-      }
-    });
   }
 
   /// Handle incoming position updates
@@ -850,12 +678,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     });
 
     _lastPositionUpdateTime = DateTime.now();
-    _noSignalStrikes = 0;
-    if (_locationStale) setState(() => _locationStale = false);
-    if (_noGpsSignal) {
-      setState(() => _noGpsSignal = false);
-      _updateGpsWarningState();
-    }
 
     // Throttle location emissions to prevent overwhelming the server
     final now = DateTime.now();
@@ -1129,8 +951,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     final target = _proximityTarget.startsWith('stop')
         ? _proximityTarget
         : 'pickup point';
-    // Stack below the GPS banner when both are visible.
-    final topOffset = _locationBannerMessage != null ? 84.0 : 0.0;
+    // Proximity banner sits at the top (no GPS banner exists anymore).
+    const topOffset = 0.0;
     return Positioned(
       top: topOffset,
       left: 0,
@@ -2442,11 +2264,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         // Main action mirrors the per-stop card: resume the trip.
         await _handleStopResume();
       } else if (_status == 'in_progress') {
-        // Complete Ride — GPS is mandatory, never a silent fail.
-        if (!_gpsOkForCompletion()) {
-          _showGpsBlockedDialog();
-          return;
-        }
+        // Complete Ride — uses the last known location, never blocks on GPS.
         final pos = _currentLocation;
         final response = await _apiService.completeRide(
           _currentRideId!,
@@ -2574,47 +2392,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     } finally {
       setState(() => _isLoading = false);
     }
-  }
-
-  /// GPS must be healthy to complete — a silent fail would strand payment.
-  bool _gpsOkForCompletion() {
-    return _gpsServiceProblem == null && !_noGpsSignal;
-  }
-
-  /// Blocking guidance when GPS is unavailable at completion time.
-  void _showGpsBlockedDialog() {
-    final detail = _gpsServiceProblem ??
-        'No GPS signal received. Completion needs your current location.';
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('Location needed to complete'),
-        content: Text(
-          '$detail\n\nMove somewhere with a clear signal, then retry. '
-          'The trip stays open — nothing is lost.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              try {
-                await Geolocator.openLocationSettings();
-              } catch (_) {
-                // Settings can't be opened on some platforms — ignore.
-              }
-            },
-            child: const Text('Open settings'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _handleRideAction();
-            },
-            child: const Text('Retry'),
-          ),
-        ],
-      ),
-    );
   }
 
   /// Stage 2 excess-cash collect modal (STAGE2-04/05): rider requested to
@@ -3667,9 +3444,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           ),
         ),
 
-        // Location-lost / GPS-health warning
-        if (_locationBannerMessage != null) _buildGpsWarningBanner(),
-
         // Proximity guidance — persistent until arrival succeeds
         if (_proximityDistance != null &&
             (_status == 'pickup' || _status == 'in_progress'))
@@ -3717,70 +3491,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             ),
           ),
       ],
-    );
-  }
-
-  Widget _buildGpsWarningBanner() {
-    final message = _locationBannerMessage ?? '';
-    final isHardFailure = _gpsServiceProblem != null;
-    return Positioned(
-      top: 0,
-      left: 0,
-      right: 0,
-      child: SafeArea(
-        child: Container(
-          margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: isHardFailure ? Colors.red : Colors.orange,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.2),
-                blurRadius: 8,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Icon(
-                isHardFailure ? Icons.location_off : Icons.gps_off,
-                color: Colors.white,
-                size: 18,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  message,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 12,
-                  ),
-                ),
-              ),
-              if (isHardFailure)
-                TextButton(
-                  onPressed: () async {
-                    try {
-                      await Geolocator.openLocationSettings();
-                    } catch (_) {
-                      // Settings can't be opened on some platforms — ignore.
-                    }
-                  },
-                  child: const Text(
-                    'SETTINGS',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 
