@@ -42,6 +42,7 @@
 - 15-02: Fare transparency UI + silent-booking backstop — banners on both booking screens, selected-card caption, 403 kept as dormant backstop (`c1fece5`, `06acdd2`)
 - 16-01: Booking deferral — instant link to searching on both booking screens, scheduled WebView intact, 8 revert contract tests (`8ad56bb`, `b342097`, `4db2c89`)
 - 16-02: Accept-time payment — requiresPayment parser + 12 tests, Pay Now banner/WebView, authorized close-out, rehydrate, link<->cash switcher (`4074559`, `202429d`)
+- 19-01: Socket transport hardening — unbounded capped reconnect, listener registry + scoped off, ack-guarded critical emits, ping/pong heartbeat, durable idempotent queue, 13 tests (`bcca55d`, `edc6754`, `cf3b9c5`)
 - 19-02: Cold-start restore + re-sync — RideSession global entry (restoreActiveRide/resyncActiveRide), versioned snapshot (schemaVersion 2 + lastEventAt), rider/driver cold-start + resume + FCM-tap wiring, 15 merge tests (`02d9c81`, `7676fbe`, `77d07cd`)
 
 ## Decisions
@@ -131,6 +132,8 @@
 - [16-02] Accept rules in pure accept_payment_utils.dart (widget-free unit tests); screen renders parsed snapshot only
 - [16-02] No ApiService change — getRideDetails passthrough already carries paymentUrl/paymentStatus/status/driver
 - [16-02] Single _paymentAuthorized flag for WebView + socket close-out; event pops open WebView so exactly one confirmation shows
+- [19-01] Single emitWithAck send per critical emit (no double-send); 8s no-ack timeout requeues, idempotency keys make replays safe
+- [19-01] Queue tiers: critical user intents 2h TTL + 100-cap evicting oldest best-effort first; location stays 5-min deduped
 - [19-02] Fetch failure keeps snapshot (none/retry) instead of clearing — transient errors must not nuke restore state
 - [19-02] RideSession as top-level functions (bare restoreActiveRide/resyncActiveRide call sites per plan key-links)
 - [19-02] Driver resume resync touches UI only when resynced ride matches on-screen ride; resync never navigates or clears on stale
@@ -155,6 +158,7 @@
 
 ## Session
 - Last session: Completed 19-02-PLAN.md (2026-09-22, 3 commits `02d9c81`, `7676fbe`, `77d07cd`, SUMMARY at phases/19-ride-flow-resilience/19-02-SUMMARY.md). Next: 19-03.
+- Previous: Completed 19-01-PLAN.md (2026-09-22, 3 commits `bcca55d`, `edc6754`, `cf3b9c5`, SUMMARY at phases/19-ride-flow-resilience/19-01-SUMMARY.md). Socket transport hardening: unbounded reconnect, listener registry, ack emits, durable queue, 13 tests.
 - Last session: Completed 16-02-PLAN.md (2026-09-21, 2 commits `4074559`, `202429d`, SUMMARY at phases/16-revert-ride-payments/16-02-SUMMARY.md). Next: 16-03.
 - Previous: Completed 15-02-PLAN.md (2026-09-19, 2 commits `c1fece5`, `06acdd2`, SUMMARY at phases/15-outstanding-balance-silent-booking-fare-transparency/15-02-SUMMARY.md). Phase 15 complete. Next: phase transition.
 - Previous: Completed 15-01-PLAN.md (2026-09-19, 2 commits `06cadaf`, `6f9ce5b`, SUMMARY at phases/15-outstanding-balance-silent-booking-fare-transparency/15-01-SUMMARY.md). Next: 15-02.
