@@ -1,7 +1,7 @@
 # MK Tours - Project State
 
 ## Current Position
-- **Phase:** 19-ride-flow-resilience — Complete (3/3 plans, 19-03 complete 2026-09-22; rider device re-verify pending per SUMMARY checklist)
+- **Phase:** 19-ride-flow-resilience — Complete (3/3 plans, 19-03 complete 2026-09-22; driver kill-restore verified on device 2026-09-22, rider device re-verify pending per SUMMARY checklist)
 - **Next:** Rider kill-restore re-verify (searching/assigned/progress) → phase transition
 
 ## Completed Plans
