@@ -15,6 +15,7 @@ import 'package:latlong2/latlong.dart' as lat_lng;
 import 'dart:async';
 import '../../core/services/socket_service.dart';
 import '../../core/services/ride_event_dedupe.dart';
+import '../../core/services/ride_session.dart';
 import '../../core/services/audio_service.dart';
 import '../../core/ui_frame.dart';
 import '../../core/services/active_ride_storage.dart';
@@ -73,6 +74,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   OutstandingBalance? _pendingBalance;
   StreamSubscription<FcmNotificationData>? _balanceForegroundSub;
   StreamSubscription<FcmNotificationData>? _balanceTapSub;
+  // Ride-lifecycle push-tap resync (RideSession, no navigation).
+  StreamSubscription<FcmNotificationData>? _rideResyncTapSub;
 
   // Connection status subscription
   StreamSubscription<bool>? _connectionSubscription;
@@ -100,6 +103,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _restoreActiveRide();
     _checkPendingBalance();
     _listenBalanceFcm();
+    _listenRideResyncFcm();
   }
 
   @override
@@ -243,6 +247,32 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // 4. Re-check global balance on every app open — a balance can go
       // stale while backgrounded (paid elsewhere, or newly accrued).
       _checkPendingBalance();
+
+      // 5. Authoritative re-sync when a snapshot rideId exists (RideSession:
+      // fetch + merge + room rejoin, no navigation). Missed socket events
+      // during the background gap reconcile from server state.
+      _resyncOnResume();
+    }
+  }
+
+  /// Foreground-resume re-sync (no navigation). Rejoins driver tracking when
+  /// the reconciled status needs live driver position.
+  Future<void> _resyncOnResume() async {
+    final snapshotId = await ActiveRideStorage.getRideId();
+    if (snapshotId == null || snapshotId.isEmpty || !mounted) return;
+    final ride = await resyncActiveRide(
+      api: _apiService,
+      socket: _socketService,
+    );
+    if (ride == null || !mounted) return;
+    final status = (ride['status'] ?? '').toString().toLowerCase();
+    if (status == 'accepted' ||
+        status == 'driver_arrived' ||
+        status == 'arrived') {
+      final driverId = driverIdFromRide(ride);
+      if (driverId != null && driverId.isNotEmpty) {
+        _socketService.startTrackingDriver(driverId);
+      }
     }
   }
 
@@ -1195,6 +1225,59 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
   }
 
+  /// Ride-lifecycle push tap (app backgrounded/terminated, socket dead):
+  /// the tap carries a rideId → authoritative resync + room rejoin, never
+  /// navigation. The cold-start restore above lands on the right screen;
+  /// this only reconciles missed events. Reuses the existing FcmService tap
+  /// stream — no new push SDK. No RideEventDedupe re-check here: the
+  /// lastEventAt/status compare inside RideSession already skips socket-
+  /// already-applied writes.
+  void _listenRideResyncFcm() {
+    _rideResyncTapSub = FcmService.instance.onNotificationTap.listen((data) {
+      final rideId = data.rideId;
+      if (rideId == null || rideId.isEmpty) return;
+      switch (data.type) {
+        case NotificationType.rideAccepted:
+        case NotificationType.driverArrived:
+        case NotificationType.rideStarted:
+        case NotificationType.rideCompleted:
+        case NotificationType.rideEarlyCompleted:
+        case NotificationType.rideCancelledByDriver:
+        case NotificationType.rideDriverReassigning:
+        case NotificationType.rideCancelledTimeout:
+        case NotificationType.rideExpired:
+        case NotificationType.scheduledRideActivated:
+        case NotificationType.scheduledDriverCancelled:
+        case NotificationType.depositTimeout:
+        case NotificationType.scheduledRideExpired:
+          _resyncFromPush(rideId);
+          break;
+        default:
+          break;
+      }
+    });
+  }
+
+  /// Authoritative resync for a push tap (no navigation). Rejoins driver
+  /// tracking when the reconciled status needs live driver position.
+  Future<void> _resyncFromPush(String rideId) async {
+    final ride = await resyncActiveRide(
+      api: _apiService,
+      socket: _socketService,
+      rideId: rideId,
+    );
+    if (ride == null || !mounted) return;
+    final status = (ride['status'] ?? '').toString().toLowerCase();
+    if (status == 'accepted' ||
+        status == 'driver_arrived' ||
+        status == 'arrived') {
+      final driverId = driverIdFromRide(ride);
+      if (driverId != null && driverId.isNotEmpty) {
+        _socketService.startTrackingDriver(driverId);
+      }
+    }
+  }
+
   Future<void> _setPendingBalanceFromFcm(FcmNotificationData data) async {
     final rideId = data.rideId;
     if (rideId == null || rideId.isEmpty) return;
@@ -1347,39 +1430,30 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// Cold-start restore via the global [RideSession] entry: authoritative
+  /// server reconcile + room rejoin. Navigation targets below are
+  /// pixel-identical to the legacy inline version — only the decision
+  /// source changed.
   Future<void> _restoreActiveRide() async {
-    final id = await ActiveRideStorage.getRideId();
     final role = await ActiveRideStorage.getRole();
-    if (id == null || role != 'passenger') return;
+    if (role != 'passenger') return;
 
-    // Stale snapshot (older than ActiveRideStorage.staleAfter) → clear + home.
-    if (await ActiveRideStorage.isStale()) {
-      debugPrint('🧹 [HomeScreen] Stored ride is stale, clearing');
-      await ActiveRideStorage.clear();
-      return;
-    }
+    final outcome = await restoreActiveRide(
+      api: _apiService,
+      socket: _socketService,
+    );
+    if (outcome is! Restored) return;
+    final ride = outcome.ride;
+    final status = (ride['status'] ?? '').toString().toLowerCase();
+    final id =
+        ride['_id']?.toString() ??
+        ride['id']?.toString() ??
+        ride['rideId']?.toString() ??
+        await ActiveRideStorage.getRideId();
+    if (id == null || id.isEmpty) return;
 
-    try {
-      final response = await _apiService.getRideDetails(id);
-      if (response['success'] != true) {
-        await ActiveRideStorage.clear();
-        return;
-      }
-      final raw = response['data'];
-      final ride = raw is Map ? (raw['ride'] ?? raw) : null;
-      if (ride == null) {
-        await ActiveRideStorage.clear();
-        return;
-      }
-      final status = (ride['status'] ?? '').toString().toLowerCase();
-      if (ActiveRideStorage.finalStatuses.contains(status)) {
-        await ActiveRideStorage.clear();
-        return;
-      }
-      await ActiveRideStorage.updateStatus(status);
-
-      if (!mounted || !context.mounted) return;
-      runAfterFrame((_) {
+    if (!mounted || !context.mounted) return;
+    runAfterFrame((_) {
         if (!mounted || !context.mounted) return;
         if (status == 'in_progress' || status == 'at_stop') {
           Navigator.of(context).pushReplacementNamed('/ride-progress');
@@ -1417,10 +1491,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           );
         }
       });
-    } catch (e) {
-      debugPrint('⚠️ [HomeScreen] Restore active ride failed: $e');
-      await ActiveRideStorage.clear();
-    }
   }
 
   void _initLocation() async {
@@ -1497,6 +1567,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     debugPrint('🧹 [HomeScreen] Cleaning up socket listeners...');
     _balanceForegroundSub?.cancel();
     _balanceTapSub?.cancel();
+    _rideResyncTapSub?.cancel();
     _socketService.off('ride:accepted');
     _socketService.off('ride:expired');
     _socketService.off('ride:cancelled');

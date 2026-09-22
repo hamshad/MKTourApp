@@ -16,6 +16,7 @@ import '../../core/models/error_display_helper.dart';
 import '../../core/models/vehicle.dart';
 import '../../core/services/socket_service.dart';
 import '../../core/services/ride_event_dedupe.dart';
+import '../../core/services/ride_session.dart';
 import '../../core/services/location_service.dart';
 import '../../core/services/navigation_service.dart';
 import '../../core/services/active_ride_storage.dart';
@@ -170,6 +171,25 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         }
       } else if (data.type == NotificationType.excessCashCancelled) {
         if (mounted) _closeExcessCashDialogIfOpen();
+      } else if (data.rideId != null && data.rideId!.isNotEmpty) {
+        // Ride-lifecycle push tap (socket dead while backgrounded/terminated):
+        // authoritative resync + room rejoin, never navigation. Reuses the
+        // existing FcmService tap stream — no new push SDK.
+        switch (data.type) {
+          case NotificationType.rideCancelled:
+          case NotificationType.rideCancelledByUser:
+          case NotificationType.paymentSelected:
+          case NotificationType.rideReminder:
+          case NotificationType.scheduledRideCancelledByUser:
+            resyncActiveRide(
+              api: _apiService,
+              socket: _socketService,
+              rideId: data.rideId,
+            );
+            break;
+          default:
+            break;
+        }
       }
     });
 
@@ -274,11 +294,36 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         // quickly instead of waiting for the next stream/timer tick.
         _refreshPositionAfterResume();
       }
+
+      // Authoritative re-sync when a snapshot rideId exists (RideSession:
+      // fetch + merge + room rejoin, no navigation). Missed socket events
+      // during the background gap reconcile from server state.
+      _resyncOnResume();
     } else if (state == AppLifecycleState.paused) {
       debugPrint('🔴 [DriverHomeScreen] App paused');
       // Optional: You could pause location updates here to save battery
       // But for a ride app, you probably want to keep them running
     }
+  }
+
+  /// Foreground-resume re-sync (no navigation). Refreshes the on-screen
+  /// execution state only when the resynced ride is the one on screen, so
+  /// stop-arrive/resume buttons reflect the reconciled position.
+  Future<void> _resyncOnResume() async {
+    final snapshotId = await ActiveRideStorage.getRideId();
+    if (snapshotId == null || snapshotId.isEmpty || !mounted) return;
+    final ride = await resyncActiveRide(
+      api: _apiService,
+      socket: _socketService,
+    );
+    if (ride == null || !mounted) return;
+    if (_currentRideId == null || _currentRideId != snapshotId) return;
+    final status = (ride['status'] ?? '').toString().toLowerCase();
+    final merged = await _withTripBlobParity(Map<String, dynamic>.from(ride));
+    setState(() {
+      _rideData = merged;
+      _status = _uiStatusForServerStatus(status);
+    });
   }
 
   /// Listen for socket reconnection and re-emit driver online status
@@ -799,68 +844,94 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
 
   /// Restore an active ride from local storage (covers the case where the backend
   /// profile didn't carry currentRide, e.g. accept -> kill app -> reopen).
+  ///
+  /// Delegates to the global [RideSession] entry (authoritative server
+  /// reconcile + room rejoin); only the UI mapping below is screen-local.
+  /// The persisted trip blob is overlaid for keys the server payload lacks
+  /// so stop-arrive/resume buttons reflect the pre-kill position.
   Future<void> _restoreActiveRideFromStorage() async {
     if (_currentRideId != null) return; // already restored from profile
-    final id = await ActiveRideStorage.getRideId();
     final role = await ActiveRideStorage.getRole();
-    if (id == null || role != 'driver') return;
+    if (role != 'driver') return;
 
-    try {
-      final response = await _apiService.getRideDetails(id);
-      if (response['success'] != true) {
-        await ActiveRideStorage.clear();
-        return;
-      }
-      final raw = response['data'];
-      final ride = raw is Map ? (raw['ride'] ?? raw) : null;
-      if (ride == null) {
-        await ActiveRideStorage.clear();
-        return;
-      }
-      final status = (ride['status'] ?? '').toString().toLowerCase();
-      if (const [
-        'completed',
-        'early_completed',
-        'cancelled',
-        'cancelled_by_user',
-        'cancelled_by_driver',
-        'expired',
-      ].contains(status)) {
-        await ActiveRideStorage.clear();
-        return;
-      }
+    final outcome = await restoreActiveRide(
+      api: _apiService,
+      socket: _socketService,
+    );
+    if (outcome is! Restored) return;
+    final ride = outcome.ride;
+    final status = (ride['status'] ?? '').toString().toLowerCase();
 
-      String uiStatus;
-      switch (status) {
-        case 'accepted':
-          uiStatus = 'pickup';
-          break;
-        case 'arrived':
-        case 'driver_arrived':
-          uiStatus = 'arrived';
-          break;
-        case 'in_progress':
-          uiStatus = 'in_progress';
-          break;
-        case 'at_stop':
-          uiStatus = 'at_stop';
-          break;
-        default:
-          uiStatus = 'pickup';
-      }
+    final storedId = await ActiveRideStorage.getRideId();
+    final id =
+        storedId ??
+        ride['_id']?.toString() ??
+        ride['id']?.toString() ??
+        ride['rideId']?.toString();
+    if (id == null || id.isEmpty) return;
 
-      if (!mounted) return;
-      setState(() {
-        _currentRideId = id;
-        _rideData = Map<String, dynamic>.from(ride as Map);
-        _status = uiStatus;
-      });
-      await ActiveRideStorage.updateStatus(status);
-      _fetchNavigationRoute();
-    } catch (e) {
-      debugPrint('⚠️ [DriverHomeScreen] Restore active ride failed: $e');
-      await ActiveRideStorage.clear();
+    if (!mounted) return;
+    final merged = await _withTripBlobParity(Map<String, dynamic>.from(ride));
+    setState(() {
+      _currentRideId = id;
+      _rideData = merged;
+      _status = _uiStatusForServerStatus(status);
+    });
+    _fetchNavigationRoute();
+  }
+
+  /// Map a backend ride status onto this screen's execution states.
+  String _uiStatusForServerStatus(String status) {
+    switch (status) {
+      case 'accepted':
+        return 'pickup';
+      case 'arrived':
+      case 'driver_arrived':
+        return 'arrived';
+      case 'in_progress':
+        return 'in_progress';
+      case 'at_stop':
+        return 'at_stop';
+      default:
+        return 'pickup';
     }
+  }
+
+  /// Overlay the persisted trip blob onto [ride] for keys the server payload
+  /// lacks, so stop-arrive/resume buttons reflect the pre-kill position.
+  /// Server values always win when present.
+  Future<Map<String, dynamic>> _withTripBlobParity(
+    Map<String, dynamic> ride,
+  ) async {
+    final blob = await ActiveRideStorage.getTripState();
+    final merged = Map<String, dynamic>.from(ride);
+    final storedStops = blob['stops'];
+    final rideStops = merged['stops'];
+    if ((rideStops is! List || rideStops.isEmpty) &&
+        storedStops is List &&
+        storedStops.isNotEmpty) {
+      merged['stops'] = storedStops;
+    }
+    if (merged['currentStopIndex'] == null) {
+      merged['currentStopIndex'] = blob['currentStopIndex'];
+    }
+    if (merged['totalWaitMinutes'] == null) {
+      merged['totalWaitMinutes'] = blob['totalWaitMinutes'];
+    }
+    if (merged['totalWaitFee'] == null) {
+      merged['totalWaitFee'] = blob['totalWaitFee'];
+    }
+    if (merged['actualFare'] == null &&
+        (blob['actualFare'] as num? ?? 0) != 0) {
+      merged['actualFare'] = blob['actualFare'];
+    }
+    if (merged['paymentMethod'] == null && blob['paymentMethod'] != null) {
+      merged['paymentMethod'] = blob['paymentMethod'];
+    }
+    if (merged['paymentStatus'] == null && blob['paymentStatus'] != null) {
+      merged['paymentStatus'] = blob['paymentStatus'];
+    }
+    return merged;
   }
 
   /// Fetch navigation route based on current status
