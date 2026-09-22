@@ -1748,6 +1748,33 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                 const SizedBox(height: 8),
               ],
 
+              // Cancellation policy hint (subtle, one line)
+              if (!hasError)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.schedule_outlined,
+                        size: 14,
+                        color: Colors.grey[500],
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          widget.isScheduled
+                              ? 'Free cancel up to 60 min before pickup · 15% fee after · 15 min grace after booking'
+                              : 'Free cancel within 2 min · 10% fee after grace · free after driver accepts',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
               // Outstanding-balance transparency (Phase 15): shown only
               // when the fare map carries balance > 0. Backend total is
               // authoritative — display as-is, no client-side fare math.
