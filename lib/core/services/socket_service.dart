@@ -1,11 +1,16 @@
 import 'dart:async';
 import 'dart:io' as io;
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/api_constants.dart';
 import 'socket_event_queue.dart';
+
+/// Connectivity-aware socket state, exposed alongside the legacy
+/// boolean [SocketService.connectionStatus] stream (kept for back-compat).
+enum SocketConnectionState { online, reconnecting, offline }
 
 class SocketService with WidgetsBindingObserver {
   static final SocketService _instance = SocketService._internal();
@@ -14,13 +19,26 @@ class SocketService with WidgetsBindingObserver {
   bool _isReconnecting = false;
   Timer? _reconnectionTimer;
   Timer? _heartbeatTimer;
+  Timer? _pongTimeoutTimer;
   Timer? _flushDebounceTimer;
   int _reconnectionAttempts = 0;
-  static const int _maxReconnectionAttempts = 10;
+  // Unbounded reconnect: exponential backoff from 3s, capped at 30s, ±20% jitter.
+  // The attempt counter only resets on a successful connect — never gives up.
   static const int _reconnectionDelayMs = 3000;
+  static const int _maxBackoffDelayMs = 30000;
   static const int _heartbeatIntervalSeconds = 25;
+  static const int _ackTimeoutSeconds = 8;
+  static const int _pongTimeoutSeconds = 10;
+  // Effectively unbounded client-library retries to match our own timer.
+  static const int _libReconnectionAttempts = 999999;
+  bool _awaitingPong = false;
   String? _currentToken; // Track current token to detect changes
   bool _isAppInBackground = false;
+
+  /// Registry of screen-registered listeners, re-attached after every
+  /// re-init/connect so screens never go silently deaf when the underlying
+  /// socket instance is disposed and recreated.
+  final Map<String, List<Function(dynamic)>> _listenerRegistry = {};
 
   /// Timestamp of last disconnection — screens use this to decide if API sync needed
   DateTime? _lastDisconnectedAt;
@@ -105,6 +123,21 @@ class SocketService with WidgetsBindingObserver {
 
   /// Stream of connection status changes
   Stream<bool> get connectionStatus => _connectionStatusController.stream;
+
+  /// Connectivity-aware connection state (online | reconnecting | offline).
+  /// The boolean [connectionStatus] stream is kept for back-compat.
+  final StreamController<SocketConnectionState> _connectionStateController =
+      StreamController<SocketConnectionState>.broadcast();
+
+  /// Stream of connectivity-aware connection state changes.
+  Stream<SocketConnectionState> get connectionState =>
+      _connectionStateController.stream;
+
+  void _emitState(SocketConnectionState state) {
+    if (!_connectionStateController.isClosed) {
+      _connectionStateController.add(state);
+    }
+  }
 
   Future<void> initSocket({bool forceReconnect = false}) async {
     final prefs = await SharedPreferences.getInstance();
@@ -206,7 +239,7 @@ class SocketService with WidgetsBindingObserver {
           .setTimeout(isIOS ? 30000 : 20000) // Longer timeout for iOS
           .enableForceNew()
           .enableReconnection()
-          .setReconnectionAttempts(_maxReconnectionAttempts)
+          .setReconnectionAttempts(_libReconnectionAttempts)
           .setReconnectionDelay(_reconnectionDelayMs)
           .disableAutoConnect() // Disable auto connect to control when it connects
           .setExtraHeaders({'Authorization': 'Bearer $token'})
@@ -230,6 +263,7 @@ class SocketService with WidgetsBindingObserver {
       _isReconnecting = false;
       _reconnectionAttempts = 0;
       _reconnectionTimer?.cancel();
+      _emitState(SocketConnectionState.online);
 
       if (!_connectionStatusController.isClosed) {
         _connectionStatusController.add(true);
@@ -248,6 +282,9 @@ class SocketService with WidgetsBindingObserver {
       // Rejoin all rooms after reconnection
       _rejoinRooms();
 
+      // Re-attach every screen-registered listener (socket was recreated)
+      _reattachListeners();
+
       // Flush any queued events that accumulated while disconnected
       _flushQueue();
 
@@ -259,6 +296,9 @@ class SocketService with WidgetsBindingObserver {
       _isConnected = false;
       _lastDisconnectedAt = DateTime.now();
       _heartbeatTimer?.cancel();
+      _pongTimeoutTimer?.cancel();
+      _awaitingPong = false;
+      _emitState(SocketConnectionState.reconnecting);
 
       if (!_connectionStatusController.isClosed) {
         _connectionStatusController.add(false);
@@ -272,6 +312,7 @@ class SocketService with WidgetsBindingObserver {
 
     _socket!.onConnectError((data) {
       _isConnected = false;
+      _emitState(SocketConnectionState.reconnecting);
       debugPrint('\u{1f534} [SocketService] Connection Error: $data');
 
       // Start reconnection attempts
@@ -306,6 +347,12 @@ class SocketService with WidgetsBindingObserver {
       );
     });
 
+    // Pong response for the real ping/pong heartbeat (_startHeartbeat).
+    _socket!.on('pong', (_) {
+      _awaitingPong = false;
+      _pongTimeoutTimer?.cancel();
+    });
+
     // Listen for room join confirmation
     _socket!.on('room:joined', (data) {
       debugPrint('\u{1f3e0} [SocketService] Room joined: $data');
@@ -321,36 +368,67 @@ class SocketService with WidgetsBindingObserver {
 
   // ── Heartbeat ──────────────────────────────────────────────────────────────
 
-  /// Start a periodic heartbeat ping to detect silent disconnections.
-  /// If the socket is silently dead (no pong), we force a reconnection.
+  /// Start a real ping/pong heartbeat to detect silent disconnections.
+  /// Every [_heartbeatIntervalSeconds] we `emit('ping')` and expect a `pong`
+  /// within [_pongTimeoutSeconds]; a missed pong (or null transport) forces
+  /// a reconnect. The `pong` handler is registered in [initSocket].
   void _startHeartbeat() {
     _heartbeatTimer?.cancel();
+    _pongTimeoutTimer?.cancel();
+    _awaitingPong = false;
     _heartbeatTimer = Timer.periodic(
       const Duration(seconds: _heartbeatIntervalSeconds),
       (_) {
         if (_socket != null && _socket!.connected) {
-          // Socket.IO has built-in ping/pong, but we verify connectivity
-          // by checking the socket's connected state. If the engine is
-          // disconnected but the flag wasn't updated, force reconnect.
           try {
             final transport = _socket?.io.engine?.transport;
             if (transport == null) {
-              debugPrint(
-                '\u{1f49b} [SocketService] Heartbeat: transport is null, forcing reconnect',
-              );
-              _isConnected = false;
-              _lastDisconnectedAt = DateTime.now();
-              if (!_connectionStatusController.isClosed) {
-                _connectionStatusController.add(false);
-              }
-              _attemptReconnection();
+              _forceReconnect('transport is null');
+              return;
             }
           } catch (_) {
-            // Transport check failed — likely disconnected
+            // Transport check failed - fall through to the ping probe,
+            // whose missed pong will force the reconnect.
           }
+          _awaitingPong = true;
+          try {
+            _socket!.emit('ping', {
+              'ts': DateTime.now().millisecondsSinceEpoch,
+            });
+          } catch (_) {
+            _forceReconnect('ping emit failed');
+            return;
+          }
+          _pongTimeoutTimer?.cancel();
+          _pongTimeoutTimer = Timer(
+            const Duration(seconds: _pongTimeoutSeconds),
+            () {
+              if (_awaitingPong) {
+                _awaitingPong = false;
+                _forceReconnect('missed pong');
+              }
+            },
+          );
         }
       },
     );
+  }
+
+  /// Mark the connection dead and kick the (unbounded) reconnection loop.
+  void _forceReconnect(String reason) {
+    debugPrint('[SocketService] Heartbeat: $reason, forcing reconnect');
+    _isConnected = false;
+    _lastDisconnectedAt = DateTime.now();
+    if (!_connectionStatusController.isClosed) {
+      _connectionStatusController.add(false);
+    }
+    _emitState(SocketConnectionState.reconnecting);
+    try {
+      _socket?.disconnect();
+    } catch (_) {
+      // Socket already dead - the reconnection timer handles the rest.
+    }
+    _attemptReconnection();
   }
 
   // ── Reliable Emit ────────────────────────────────────────────────────────
@@ -362,14 +440,54 @@ class SocketService with WidgetsBindingObserver {
   /// For best-effort events (location), this still queues but deduplicates.
   void emitReliable(String event, dynamic data) {
     if (_socket != null && _socket!.connected) {
-      _socket!.emit(event, data);
-      debugPrint('\u{1f4e4} [SocketService] Emitted: $event, Data: $data');
+      if (SocketEventQueue.criticalEvents.contains(event)) {
+        _emitWithAckGuard(event, data);
+      } else {
+        _socket!.emit(event, data);
+      }
+      debugPrint('[SocketService] Emitted: $event, Data: $data');
     } else {
       // Queue for later delivery
       _eventQueue.enqueue(event, data);
       debugPrint(
-        '\u{1f4e5} [SocketService] Queued (offline): $event (${_eventQueue.pendingCount} pending)',
+        '[SocketService] Queued (offline): $event (${_eventQueue.pendingCount} pending)',
       );
+    }
+  }
+
+  /// Emit a critical event once with a server-ack guard: if no ack arrives
+  /// within [_ackTimeoutSeconds], the event is enqueued for retry on the
+  /// next flush. Idempotency keys (see [SocketEventQueue]) make a
+  /// send-but-no-ack duplicate safe to replay.
+  void _emitWithAckGuard(String event, dynamic data) {
+    final socket = _socket;
+    if (socket == null || !socket.connected) {
+      _eventQueue.enqueue(event, data);
+      return;
+    }
+    var settled = false;
+    Timer? ackTimer;
+    void requeueOnce() {
+      if (settled) return;
+      settled = true;
+      ackTimer?.cancel();
+      debugPrint('[SocketService] Ack timeout, re-queuing: $event');
+      _eventQueue.enqueue(event, data);
+    }
+
+    ackTimer = Timer(const Duration(seconds: _ackTimeoutSeconds), requeueOnce);
+    try {
+      socket.emitWithAck(
+        event,
+        data,
+        ack: (_) {
+          if (settled) return;
+          settled = true;
+          ackTimer?.cancel();
+        },
+      );
+    } catch (_) {
+      requeueOnce();
     }
   }
 
@@ -395,7 +513,11 @@ class SocketService with WidgetsBindingObserver {
     final events = _eventQueue.drain();
     for (final event in events) {
       if (_socket != null && _socket!.connected) {
-        _socket!.emit(event.event, event.data);
+        if (SocketEventQueue.criticalEvents.contains(event.event)) {
+          _emitWithAckGuard(event.event, event.data);
+        } else {
+          _socket!.emit(event.event, event.data);
+        }
         debugPrint(
           '\u{1f4e4} [SocketService] Flushed: ${event.event} (attempt ${event.attempts + 1})',
         );
@@ -416,30 +538,44 @@ class SocketService with WidgetsBindingObserver {
 
   // ── Reconnection ──────────────────────────────────────────────────────────
 
-  /// Attempt to reconnect with exponential backoff
+  /// Attempt to reconnect forever with capped exponential backoff plus
+  /// jitter. The counter resets only on a successful connect - there is no
+  /// give-up path: a killed app on poor network keeps retrying.
   void _attemptReconnection() {
     if (_isReconnecting || _isConnected) return;
 
     _isReconnecting = true;
     _reconnectionAttempts++;
+    _emitState(SocketConnectionState.reconnecting);
 
-    if (_reconnectionAttempts > _maxReconnectionAttempts) {
-      debugPrint('\u{1f534} [SocketService] Max reconnection attempts reached');
-      _isReconnecting = false;
-      return;
-    }
-
-    // Exponential backoff: delay increases with each attempt
-    final delay = _reconnectionDelayMs * _reconnectionAttempts;
+    // Exponential backoff from 3s, capped at 30s, with +/-20% jitter.
+    // Shift is clamped so the counter can grow unboundedly without overflow.
+    final shift = (_reconnectionAttempts - 1).clamp(0, 4);
+    var delayMs = _reconnectionDelayMs * (1 << shift);
+    if (delayMs > _maxBackoffDelayMs) delayMs = _maxBackoffDelayMs;
+    final jitter = 0.8 + math.Random().nextDouble() * 0.4;
+    delayMs = (delayMs * jitter).round();
     debugPrint(
-      '\u{1f504} [SocketService] Attempting reconnection #$_reconnectionAttempts in ${delay}ms...',
+      '[SocketService] Reconnect attempt #$_reconnectionAttempts in ${delayMs}ms...',
     );
 
     _reconnectionTimer?.cancel();
-    _reconnectionTimer = Timer(Duration(milliseconds: delay), () async {
+    _reconnectionTimer = Timer(Duration(milliseconds: delayMs), () async {
       if (!_isConnected) {
-        debugPrint('\u{1f504} [SocketService] Reconnecting...');
-        _socket?.connect();
+        debugPrint('[SocketService] Reconnecting...');
+        try {
+          _socket?.connect();
+        } catch (_) {
+          // connect() threw - schedule the next attempt below.
+        }
+        // If connect did not succeed, onConnectError/onDisconnect will fire
+        // and re-arm this loop; if neither fires, re-arm directly so a
+        // silently swallowed failure still retries.
+        Future.delayed(const Duration(seconds: 5), () {
+          _isReconnecting = false;
+          if (!_isConnected) _attemptReconnection();
+        });
+        return;
       }
       _isReconnecting = false;
     });
@@ -722,9 +858,14 @@ class SocketService with WidgetsBindingObserver {
   void disconnect() {
     _reconnectionTimer?.cancel();
     _heartbeatTimer?.cancel();
+    _pongTimeoutTimer?.cancel();
+    _awaitingPong = false;
     _flushDebounceTimer?.cancel();
     _joinedRooms.clear();
+    _listenerRegistry.clear();
     _currentToken = null; // Clear token to force fresh connection next time
+    _isReconnecting = false;
+    _emitState(SocketConnectionState.offline);
 
     if (_socket != null) {
       _socket!.disconnect();
@@ -739,8 +880,10 @@ class SocketService with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _reconnectionTimer?.cancel();
     _heartbeatTimer?.cancel();
+    _pongTimeoutTimer?.cancel();
     _flushDebounceTimer?.cancel();
     _connectionStatusController.close();
+    _connectionStateController.close();
     _eventQueue.dispose();
     disconnect();
   }
@@ -761,7 +904,16 @@ class SocketService with WidgetsBindingObserver {
     }
   }
 
+  /// Register [handler] for [event] and record it in the listener
+  /// registry so it survives socket re-init via [_reattachListeners].
+  /// Registering while the socket is null no longer silently deafens the
+  /// caller - the handler is still recorded and attached on next connect.
+  /// Identical closures are deduped so reconnects never double-fire.
   void on(String event, Function(dynamic) handler) {
+    final handlers = _listenerRegistry.putIfAbsent(event, () => []);
+    if (!handlers.contains(handler)) {
+      handlers.add(handler);
+    }
     if (_socket != null) {
       _socket!.on(event, handler);
       debugPrint(
@@ -781,14 +933,65 @@ class SocketService with WidgetsBindingObserver {
   /// dispose/re-register silently deafens other mounted screens (e.g. an
   /// open settlement sheet losing `payment:succeeded` on home reconnect).
   void off(String event, [Function(dynamic)? handler]) {
-    if (_socket != null) {
-      if (handler != null) {
-        _socket!.off(event, handler);
-      } else {
-        _socket!.off(event);
+    if (handler != null) {
+      _listenerRegistry[event]?.remove(handler);
+      if (_listenerRegistry[event]?.isEmpty ?? false) {
+        _listenerRegistry.remove(event);
       }
-      debugPrint('🔇 [SocketService] Stopped listening for: $event');
+      _socket?.off(event, handler);
+      debugPrint('[SocketService] Removed scoped listener for: $event');
+    } else {
+      // Bare off(event) keeps its legacy global behavior, but that deafens
+      // sibling screens sharing this singleton - name the caller so the
+      // offender is visible in logs and migrate it to off(event, handler).
+      _listenerRegistry.remove(event);
+      _socket?.off(event);
+      final caller = _offCaller();
+      debugPrint(
+        '[SocketService] WARNING: global off($event) removed ALL handlers. '
+        'Caller: $caller. Prefer off(event, handler).',
+      );
     }
+  }
+
+  /// Re-register every recorded listener on the current socket. Called after
+  /// each re-init/connect because disposing the socket wipes its handlers.
+  void _reattachListeners() {
+    final socket = _socket;
+    if (socket == null) return;
+    var count = 0;
+    _listenerRegistry.forEach((event, handlers) {
+      for (final handler in List<Function(dynamic)>.from(handlers)) {
+        try {
+          socket.off(event, handler);
+        } catch (_) {
+          // Handler was never attached - attach below regardless.
+        }
+        socket.on(event, handler);
+        count++;
+      }
+    });
+    if (count > 0) {
+      debugPrint('[SocketService] Re-attached $count registered listeners');
+    }
+  }
+
+  /// Best-effort caller identification for the bare-off warning: first
+  /// stack frame outside this service file.
+  String _offCaller() {
+    try {
+      final lines = StackTrace.current.toString().split('\n');
+      for (final line in lines) {
+        if (!line.contains('socket_service.dart') &&
+            !line.contains('_offCaller') &&
+            line.trim().isNotEmpty) {
+          return line.trim();
+        }
+      }
+    } catch (_) {
+      // Fall through to unknown.
+    }
+    return 'unknown';
   }
 
   /// Check if a handler is registered for an event
