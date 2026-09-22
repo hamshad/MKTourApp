@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Persists the in-progress ride id + role so the app can restore the correct
@@ -222,6 +223,11 @@ class ActiveRideStorage {
   }
 
   static Future<void> clear() async {
+    // DEBUG-RESTORE (keep): every snapshot wipe logs its caller. A wipe on
+    // cold start before restore explains a land-on-home with empty snapshot.
+    debugPrint(
+      '[DriverRestore] ActiveRideStorage.clear() called from:\n${StackTrace.current.toString().split('\n').take(7).join('\n')}',
+    );
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_idKey);
     await prefs.remove(_roleKey);

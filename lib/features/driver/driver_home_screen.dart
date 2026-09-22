@@ -365,7 +365,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
 
   /// Sync ride status with backend after reconnection gap
   Future<void> _syncRideStatus() async {
-    if (_currentRideId == null) return;
+    if (_currentRideId == null) {
+      debugPrint('[DriverRestore] sync skipped (no currentRideId)');
+      return;
+    }
 
     try {
       debugPrint(
@@ -427,14 +430,22 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           final repaired = (stuckOnHome || wasOptimistic)
               ? _uiStatusForServerStatus(status.toLowerCase())
               : _status;
+          debugPrint(
+            '[DriverRestore] sync ok server=$status stuckOnHome=$stuckOnHome wasOptimistic=$wasOptimistic repaired=$repaired',
+          );
           setState(() {
             _rideData = ride is Map<String, dynamic> ? ride : null;
             _status = repaired;
           });
         }
+      } else {
+        debugPrint(
+          '[DriverRestore] sync !success success=${response['success']} hasData=${response['data'] != null} rideId=$_currentRideId statusUnchanged=$_status',
+        );
       }
     } catch (e) {
       debugPrint('⚠️ [DriverHomeScreen] Error syncing ride status: $e');
+      debugPrint('[DriverRestore] sync fetch FAILED e=$e rideId=$_currentRideId statusUnchanged=$_status');
     }
   }
 
@@ -490,11 +501,24 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       
       if (user != null) {
         debugPrint('🚖 [DriverHomeScreen] Driver profile found: ${user['name']}');
+        // DEBUG-RESTORE (keep): cold-start snapshot probe BEFORE the profile
+        // adopt below can overwrite it. Paste these lines on a kill-restore miss.
+        final snapId = await ActiveRideStorage.getRideId();
+        final snapRole = await ActiveRideStorage.getRole();
+        final snapStatus = await ActiveRideStorage.getStatus();
+        final snapStale = await ActiveRideStorage.isStale();
+        final snapBlob = await ActiveRideStorage.getTripState();
+        debugPrint(
+          '[DriverRestore] snapshot id=$snapId role=$snapRole status=$snapStatus stale=$snapStale stops=${(snapBlob['stops'] as List).length} stopIndex=${snapBlob['currentStopIndex']}',
+        );
         // Sync online status from database
         final bool isOnline = user['isOnline'] == true || user['status'] == 'online';
-        
+
         // Check for active ride in user object
         final currentRide = user['currentRide'];
+        debugPrint(
+          '[DriverRestore] profile currentRide type=${currentRide.runtimeType} status=${currentRide is Map ? (currentRide as Map)['status'] : currentRide}',
+        );
         
         setState(() {
           if (currentRide != null) {
@@ -528,11 +552,18 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         // Trigger sync if we found an active ride
         if (_currentRideId != null) {
           debugPrint('🚖 [DriverHomeScreen] Syncing active ride data from backend...');
+          debugPrint(
+            '[DriverRestore] branch=profile-adopt id=$_currentRideId status=$_status (storage restore will be SKIPPED)',
+          );
           // Snapshot never lags the profile: a kill before the next
           // transition still restores from storage.
           _persistActiveRide();
           _syncRideStatus();
           _fetchNavigationRoute();
+        } else {
+          debugPrint(
+            '[DriverRestore] branch=storage (no profile currentRide — storage restore will run)',
+          );
         }
       } else {
         debugPrint('⚠️ [DriverHomeScreen] User is still null after _ensureUserLoaded()');
@@ -942,15 +973,26 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   /// The persisted trip blob is overlaid for keys the server payload lacks
   /// so stop-arrive/resume buttons reflect the pre-kill position.
   Future<void> _restoreActiveRideFromStorage() async {
-    if (_currentRideId != null) return; // already restored from profile
+    if (_currentRideId != null) {
+      debugPrint(
+        '[DriverRestore] storage restore SKIPPED (profile adopt holds id=$_currentRideId status=$_status)',
+      );
+      return; // already restored from profile
+    }
     final role = await ActiveRideStorage.getRole();
-    if (role != 'driver') return;
+    if (role != 'driver') {
+      debugPrint('[DriverRestore] storage restore SKIPPED (role=$role)');
+      return;
+    }
 
     final outcome = await restoreActiveRide(
       api: _apiService,
       socket: _socketService,
     );
     if (outcome is RideNone) {
+      debugPrint(
+        '[DriverRestore] storage outcome=RideNone (fetch failed, snapshot kept) → trying optimistic',
+      );
       // Authoritative fetch failed (offline / token race / cold TLS) but
       // the live snapshot was kept — restore optimistically from snapshot
       // + blob instead of stranding a mid-trip driver on home. Never fires
@@ -958,9 +1000,16 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       await _restoreOptimisticFromSnapshot();
       return;
     }
+    if (outcome is Cleared) {
+      debugPrint('[DriverRestore] storage outcome=Cleared reason=${outcome.reason}');
+      return;
+    }
     if (outcome is! Restored) return;
     final ride = outcome.ride;
     final status = (ride['status'] ?? '').toString().toLowerCase();
+    debugPrint(
+      '[DriverRestore] storage outcome=Restored serverStatus=$status route=${outcome.route}',
+    );
 
     final storedId = await ActiveRideStorage.getRideId();
     final id =
@@ -991,7 +1040,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     if (_currentRideId != null || !mounted) return;
     final storedId = await ActiveRideStorage.getRideId();
     final snapStatus = await ActiveRideStorage.getStatus();
-    if (storedId == null || storedId.isEmpty || snapStatus == null) return;
+    if (storedId == null || storedId.isEmpty || snapStatus == null) {
+      debugPrint(
+        '[DriverRestore] optimistic SKIPPED (id=$storedId status=$snapStatus)',
+      );
+      return;
+    }
     final canonical = snapshotStatusForDriver(snapStatus);
     const liveExecution = {
       'accepted',
@@ -1000,7 +1054,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       'in_progress',
       'at_stop',
     };
-    if (!liveExecution.contains(canonical)) return;
+    if (!liveExecution.contains(canonical)) {
+      debugPrint(
+        '[DriverRestore] optimistic SKIPPED (snapshot status=$snapStatus canonical=$canonical not live-execution)',
+      );
+      return;
+    }
     final blob = await ActiveRideStorage.getTripState();
     final ride = syntheticRideFromSnapshot(
       rideId: storedId,
