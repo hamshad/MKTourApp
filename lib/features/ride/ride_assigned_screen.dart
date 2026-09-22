@@ -2681,11 +2681,6 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       };
       return RideCompleteScreen(rideData: completedData);
     }
-
-    // Stale chip gate: only once a driver position exists (a null feed on
-    // a fresh searching screen is "waiting", not "stale").
-    final showStaleChip = _driverLocation != null &&
-        isRideDataStale(_lastDriverUpdateAt);
     return Scaffold(
       body: Stack(
         children: [
@@ -2708,15 +2703,6 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
             ),
           ),
 
-          if (showStaleChip)
-            Positioned(
-              top: 104,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: StaleDataChip(lastUpdated: _lastDriverUpdateAt),
-              ),
-            ),
 
           // Status Panel
           Positioned(bottom: 0, left: 0, right: 0, child: _buildStatusPanel()),
@@ -3132,12 +3118,6 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                                       fontWeight: FontWeight.w500,
                                     ),
                                   ),
-                                  if (etaStale) ...[
-                                    const SizedBox(height: 4),
-                                    StaleDataChip(
-                                      lastUpdated: _lastDriverUpdateAt,
-                                    ),
-                                  ],
                                 ],
                               );
                             },

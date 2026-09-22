@@ -230,9 +230,6 @@ class _ConnectionBannerState extends State<ConnectionBanner> {
     if (state != SocketConnectionState.offline) {
       return const SizedBox.shrink();
     }
-    final base = lastDisconnectedAt ?? DateTime.now();
-    final gap = DateTime.now().difference(base);
-    final age = formatLastUpdated(gap.isNegative ? Duration.zero : gap);
     return SafeArea(
       bottom: false,
       child: Container(
@@ -268,20 +265,13 @@ class _ConnectionBannerState extends State<ConnectionBanner> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+children: [
                   const Text(
                     'No connection — actions will send when reconnected',
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                       color: Color(0xFF4B5563),
-                    ),
-                  ),
-                  Text(
-                    age,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFF6B7280),
                     ),
                   ),
                 ],
