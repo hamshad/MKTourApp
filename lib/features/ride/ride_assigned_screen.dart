@@ -8,6 +8,8 @@ import '../../core/services/audio_service.dart';
 import '../../core/auth_provider.dart';
 import '../../core/theme.dart';
 import '../../core/services/socket_service.dart';
+import '../../core/services/active_ride_storage.dart';
+import '../../core/services/ride_session.dart';
 import '../../core/ui_frame.dart';
 import '../../core/services/ride_event_dedupe.dart';
 import '../../core/api_service.dart';
@@ -683,6 +685,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
             debugPrint(
               '✅ [RideAssignedScreen] UI updated to match backend status: $status',
             );
+            // Resume-time sync adopted a newer server status — persist it so
+            // the snapshot matches what the UI shows.
+            _updateRiderSnapshot(status?.toString() ?? normalizedStatus);
             }
           }
         }
@@ -756,11 +761,37 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     }
   }
 
+  /// Persist the rider snapshot so kill+reopen restores this screen instead
+  /// of dropping to home. Instant rides only — scheduled rides never persist
+  /// (08-01: an accept can arrive days before day-of; persisting would corrupt
+  /// cold-start into tracking early. Day-of scheduled entry stays home-owned
+  /// via Upcoming → Go to Pickup).
+  Future<void> _persistRiderSnapshot(String uiStatus) async {
+    if (widget.isScheduled || _isScheduled) return;
+    await ActiveRideStorage.save(
+      rideId: widget.rideId,
+      role: 'passenger',
+      status: snapshotStatusForRider(uiStatus),
+    );
+  }
+
+  /// Refresh the snapshot status on every ride transition so the persisted
+  /// state never goes stale (kill at any stage restores the right screen).
+  Future<void> _updateRiderSnapshot(String uiStatus) async {
+    if (widget.isScheduled || _isScheduled) return;
+    await ActiveRideStorage.updateStatus(snapshotStatusForRider(uiStatus));
+  }
+
+  /// Drop the snapshot on terminal rider states (cancel / expire / done) so
+  /// the next cold start lands on home instead of a dead ride.
+  Future<void> _clearRiderSnapshot() async {
+    if (widget.isScheduled || _isScheduled) return;
+    await ActiveRideStorage.clear();
+  }
+
   void _setupInitialState() {
     debugPrint('🚀 [RideAssignedScreen] Setting up initial state...');
-    debugPrint('🚀 [RideAssignedScreen] widget.driver: ${widget.driver}');
-
-    // Initialise scheduled flag from widget param
+    debugPrint('🚀 [RideAssignedScreen] widget.driver: ${widget.driver}');    // Initialise scheduled flag from widget param
     _isScheduled = widget.isScheduled;
 
     // Cold start with booking-time link args (11-02 fields): synthesize the
@@ -828,6 +859,10 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         '⏳ [RideAssignedScreen] No initial driver data, waiting for socket event...',
       );
     }
+
+    // Booking creates this screen directly (no home searching overlay in the
+    // modern flow) — persist now or kill-during-searching restores to home.
+    _persistRiderSnapshot(_rideStatus);
   }
 
   /// Initialize the marker interpolation service for smooth car animation
@@ -1066,6 +1101,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
           _currentDriverId = null;
           _reassignMessage = message;
         });
+        // Backend moved the ride back to `requested` — keep the snapshot on
+        // the searching route so kill-during-reassign restores the overlay.
+        _updateRiderSnapshot('requested');
 
         // Leave the old driver's location room if joined.
         // (joinDriverRoom is keyed by driver id; old id already cleared above)
@@ -1242,6 +1280,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
           '✅ [RideAssignedScreen] State updated - Status: $_rideStatus',
         );
         debugPrint('═══════════════════════════════════════════════════════');
+
+        // Snapshot follows the transition — kill-after-accept restores here.
+        _updateRiderSnapshot('accepted');
       });
     });
 
@@ -1378,7 +1419,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         debugPrint('✅ [RideAssignedScreen] Ride started state update complete');
         debugPrint('   → New status after setState: $_rideStatus');
         debugPrint('   → Widget is still mounted: $mounted');
-      });
+        _updateRiderSnapshot('in_progress');
+        });
     });
 
     _socketService.on('ride:completed', (data) {
@@ -1447,6 +1489,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
         _rideStatus = 'completed';
       });
+
+      // Terminal snapshot: finalStatuses clear on the next cold start.
+      _updateRiderSnapshot('completed');
 
       // Cash / payment_link need no server capture wait: show the receipt
       // now (Outcome A). If an excess follows, `payment:balanceDue` opens
@@ -1704,6 +1749,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     _socketService.on('ride:cancelled', (data) {
       if (mounted) {
         debugPrint('❌ [RideAssignedScreen] Ride Cancelled: $data');
+        _clearRiderSnapshot();
         final reason = data['reason'] ?? 'Unknown reason';
         showDialog(
           context: context,
@@ -1751,6 +1797,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
               );
             }
           });
+          _updateRiderSnapshot('requested');
           ScaffoldMessenger.of(context).hideCurrentSnackBar();
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -1761,6 +1808,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
           );
           return;
         }
+        // Hard cancel (no reassign): the ride is dead — drop the snapshot so
+        // cold start lands on home.
+        _clearRiderSnapshot();
         final reason = data['reason'] ?? 'Unknown reason';
         final refundStatus = data['refundStatus'] ?? 'processing';
         showDialog(
@@ -1803,6 +1853,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         setState(() {
           _rideStatus = 'early_completed';
         });
+        _updateRiderSnapshot('early_completed');
 
         final timing =
             widget.paymentTiming ?? data['paymentTiming']?.toString();
@@ -1899,6 +1950,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     _socketService.on('ride:expired', (data) {
       if (mounted) {
         debugPrint('⚠️ [RideAssignedScreen] Ride Expired: $data');
+        _clearRiderSnapshot();
         showDialog(
           context: context,
           barrierDismissible: false,
@@ -2315,6 +2367,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       if (!mounted) return;
 
       if (response['success'] == true) {
+        _clearRiderSnapshot();
         final data = response['data'];
         final cancellationFee = data?['cancellationFee'] ?? 0.0;
         final refundStatus = data?['refundStatus'] ?? 'refunded';
@@ -2493,6 +2546,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       _polylines = [];
       _updateMarkers();
     });
+    _updateRiderSnapshot('driver_arrived');
 
     _showDriverArrivedDialog();
 

@@ -156,6 +156,23 @@ RestoreDecision decideRestore({
   );
 }
 
+/// Map a rider UI/socket status to the canonical snapshot status persisted
+/// in [ActiveRideStorage].
+///
+/// The rider searching overlay covers `requested`/`searching`/`reassigning`
+/// (all route to [RestoreRoute.searching]) but the snapshot stores the
+/// backend-canonical `requested` so cold start reconciles 1:1 with
+/// `getRideDetails`. `arrived` normalizes to `driver_arrived` and `at_stop`
+/// to `in_progress` (identical restore routes). Unknown statuses pass
+/// through lower-cased so future backend states still persist verbatim.
+String snapshotStatusForRider(String status) {
+  final s = status.trim().toLowerCase();
+  if (s == 'searching' || s == 'reassigning') return 'requested';
+  if (s == 'arrived') return 'driver_arrived';
+  if (s == 'at_stop') return 'in_progress';
+  return s;
+}
+
 /// Extract the driver id from a `getRideDetails` ride payload.
 /// Tolerates `driver` as map (`_id`/`id`/`driverId`) or a top-level id field.
 String? driverIdFromRide(Map<String, dynamic> ride) {

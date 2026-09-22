@@ -216,6 +216,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _isSearching = true;
         _reassignmentCount = count is num ? count.toInt() : _reassignmentCount + 1;
       });
+      // Backend moved the ride back to `requested` — keep the snapshot on the
+      // searching route. Guarded: when the assigned screen owns the ride
+      // (_activeRide == null here) its own handler persists.
+      if (_activeRide != null) {
+        ActiveRideStorage.updateStatus('requested');
+      }
     });
 
     // Balance listeners dropped by force-reconnect — re-register.
@@ -806,6 +812,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _isSearching = true;
         _reassignmentCount = count is num ? count.toInt() : _reassignmentCount + 1;
       });
+      // Backend moved the ride back to `requested` — keep the snapshot on the
+      // searching route. Guarded: when the assigned screen owns the ride
+      // (_activeRide == null here) its own handler persists.
+      if (_activeRide != null) {
+        ActiveRideStorage.updateStatus('requested');
+      }
     });
 
     _socketService.on('ride:depositConfirmed', (data) {
@@ -932,6 +944,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
   }
 
+  /// Persist the rider searching snapshot so kill+reopen restores the overlay
+  /// instead of landing on home. Skips scheduled rides (08-01: never persist
+  /// scheduled accepts) and empty rideIds.
+  Future<void> _persistSearchingSnapshot(dynamic ride) async {
+    final map = ride is Map<String, dynamic>
+        ? ride
+        : ride is Map
+            ? Map<String, dynamic>.from(ride)
+            : null;
+    final rideId = map?['_id']?.toString() ??
+        map?['rideId']?.toString() ??
+        map?['id']?.toString() ??
+        '';
+    if (rideId.isEmpty || map?['isScheduled'] == true) return;
+    await ActiveRideStorage.save(
+      rideId: rideId,
+      role: 'passenger',
+      status: 'requested',
+    );
+  }
+
   Future<void> _cancelRide() async {
     if (_activeRide == null) return;
 
@@ -954,6 +987,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (mounted) {
         if (response['success'] == true || response['status'] == 'cancelled') {
           debugPrint('🟢 [HomeScreen] Ride cancelled successfully');
+          await ActiveRideStorage.clear();
           setState(() {
             _isSearching = false;
             _activeRide = null;
@@ -996,6 +1030,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!mounted) return;
 
     debugPrint('⏰ [HomeScreen] Ride request expired - showing popup');
+    ActiveRideStorage.clear();
     setState(() {
       _isSearching = false;
       _reassignmentCount = 0;
@@ -1123,6 +1158,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _activeRide = result['ride'];
         _lastRideConfirmationData = result['confirmationData'];
       });
+      await _persistSearchingSnapshot(result['ride']);
     }
   }
 
@@ -1828,6 +1864,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               _lastRideConfirmationData =
                                   result['confirmationData'];
                             });
+                            await _persistSearchingSnapshot(result['ride']);
                           }
                         },
                         child: Hero(
@@ -1888,6 +1925,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               _lastRideConfirmationData =
                                   result['confirmationData'];
                             });
+                            await _persistSearchingSnapshot(result['ride']);
                           }
                         },
                         child: Container(
