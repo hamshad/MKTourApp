@@ -181,4 +181,39 @@ void main() {
       expect(driverIdFromRide({'status': 'accepted'}), isNull);
     });
   });
+
+  group('snapshotStatusForRider: save-path canonicalization', () {
+    test('searching overlay family persists as backend-canonical requested', () {
+      // Regression pin for the rider kill-on-searching dead-end (19-03):
+      // the searching entries must persist a restorable snapshot, and the
+      // snapshot must carry `requested` so cold start reconciles 1:1 with
+      // getRideDetails and routes back to the searching overlay.
+      for (final s in ['requested', 'searching', 'reassigning']) {
+        final snap = snapshotStatusForRider(s);
+        expect(snap, 'requested', reason: s);
+        expect(routeForStatus(snap), RestoreRoute.searching, reason: s);
+      }
+    });
+
+    test('post-searching transitions persist their restore route', () {
+      expect(snapshotStatusForRider('accepted'), 'accepted');
+      expect(
+        routeForStatus(snapshotStatusForRider('accepted')),
+        RestoreRoute.assigned,
+      );
+      expect(snapshotStatusForRider('driver_arrived'), 'driver_arrived');
+      expect(snapshotStatusForRider('arrived'), 'driver_arrived');
+      expect(snapshotStatusForRider('in_progress'), 'in_progress');
+      expect(snapshotStatusForRider('at_stop'), 'in_progress');
+      expect(
+        routeForStatus(snapshotStatusForRider('at_stop')),
+        RestoreRoute.progress,
+      );
+    });
+
+    test('unknown statuses pass through lower-cased and trimmed', () {
+      expect(snapshotStatusForRider('  Accepted '), 'accepted');
+      expect(snapshotStatusForRider('CASH_PENDING'), 'cash_pending');
+    });
+  });
 }
