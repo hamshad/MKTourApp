@@ -18,6 +18,7 @@
 | 16 | Revert Ride Payments | In Progress | 2/3 | RVT-01..06 |
 | 17 | Backend payment_link only for scheduled | Planned | 0 | — |
 | 18 | Enforce payment_method constraints for scheduled | Planned | 0 | PAYCONST-01..06 |
+| 19 | Ride Flow Resilience (socket-robust) | Planned | 3 | RES-01..06 |
 
 ---
 
@@ -391,3 +392,27 @@ Plans:
 - Balance > 0 shows transparency copy pre-confirm; balance 0 renders pixel-identical
 - Booking with debt succeeds via normal flow; Stripe covers combined total, no client math
 - `flutter analyze` clean; fare-balance + outstanding + upfront tests green
+
+## Phase 19: Ride Flow Resilience (socket-robust cold-start restore)
+
+**Goal:** Kill-proof ride flow — app kill, device lock, OS restart, or socket drop never breaks an active ride; cold start restores exact screen from authoritative backend state with Uber/Bolt-style reconnecting UX.
+
+**Requirements:**
+- **RES-01**: Socket transport survives drops — unbounded reconnect with backoff, ack/timeout on critical emits, no silent listener loss on re-init
+- **RES-02**: Cold start restores exact ride screen — kill + reopen lands on searching/assigned/progress/receipt via GET ride details, never home-dead-end
+- **RES-03**: Background/lock/restart re-syncs — foreground resume + FCM data-message trigger authoritative refresh + room rejoin, missed events reconciled
+- **RES-04**: Stale/offline states are explicit — reconnecting banner, last-known chip, retry action; never fake-live UI (Uber/Bolt/Lyft reference)
+- **RES-05**: Outgoing actions never lost — queued across restart with sane expiry, deduped, flushed in order on reconnect
+- **RES-06**: No regressions — instant + scheduled + payment flows behavior-identical when network healthy
+
+**Plans:** 3 plans
+
+Plans:
+- [ ] `19-01-PLAN.md` — Socket transport hardening (unbounded reconnect, ack emits, listener registry, durable queue + tests)
+- [ ] `19-02-PLAN.md` — Cold-start restore + re-sync (RideSession global entry, rider/driver wiring, FCM/resume, merge tests)
+- [ ] `19-03-PLAN.md` — Resilience UX + verification (ConnectionBanner, stale chips, regression sweep, human device pass)
+
+**Success Criteria:**
+- Kill app mid-trip (rider + driver) → reopen restores exact screen with live updates resumed
+- Airplane-mode 60s → reconnect reconciles missed status without duplicate actions
+- `flutter analyze` clean; contract/unit tests green; human kill-restart pass on both roles
