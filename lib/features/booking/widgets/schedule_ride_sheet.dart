@@ -3,6 +3,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:intl/intl.dart';
 import '../../../core/theme.dart';
 import '../../../core/constants.dart';
+import '../../../core/api_service.dart';
+import '../../../core/models/vehicle.dart';
 
 /// Structured payload returned when a scheduled ride is confirmed.
 class SchedulePayload {
@@ -50,9 +52,14 @@ class ScheduleRideSheet extends StatefulWidget {
 }
 
 class _ScheduleRideSheetState extends State<ScheduleRideSheet> {
+  final ApiService _apiService = ApiService();
   late DateTime _selectedDateTime;
   final TextEditingController _notesController = TextEditingController();
   late String _selectedPaymentMethod;
+
+  // Cancellation policy
+  CancellationPolicyResponse? _cancellationPolicy;
+  bool _isFetchingCancellationPolicy = false;
 
   /// Minimum pickup time: 5 minutes in dev (testing), 2 hours in prod
   /// (backend constraint).
@@ -75,6 +82,25 @@ class _ScheduleRideSheetState extends State<ScheduleRideSheet> {
     super.initState();
     _selectedDateTime = widget.initialDateTime;
     _selectedPaymentMethod = 'payment_link';
+    _fetchCancellationPolicy();
+  }
+
+  Future<void> _fetchCancellationPolicy() async {
+    setState(() => _isFetchingCancellationPolicy = true);
+    try {
+      final response = await _apiService.getCancellationPolicy();
+      if (mounted) {
+        setState(() {
+          _cancellationPolicy = CancellationPolicyResponse.fromJson(response);
+          _isFetchingCancellationPolicy = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ Failed to fetch cancellation policy: $e');
+      if (mounted) {
+        setState(() => _isFetchingCancellationPolicy = false);
+      }
+    }
   }
 
   @override
@@ -290,6 +316,69 @@ class _ScheduleRideSheetState extends State<ScheduleRideSheet> {
                 style: TextStyle(fontSize: 12, color: Colors.red[600]),
               ),
             ),
+
+          // Cancellation policy for scheduled rides (from API)
+          if (_cancellationPolicy?.data != null) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.blue.withOpacity(0.2)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    color: AppTheme.primaryColor,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      _cancellationPolicy!.data!.messages.userScheduledRide,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey[700],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ] else if (_isFetchingCancellationPolicy) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: Colors.grey.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.withOpacity(0.2)),
+              ),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.grey[500],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Loading cancellation policy...',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
 
           // Payment method selector — backend enforces payment_link only
           Text(

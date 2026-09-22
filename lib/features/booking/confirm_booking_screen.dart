@@ -7,6 +7,7 @@ import '../../core/api_service.dart';
 import '../../core/services/payment_service.dart';
 import '../../core/models/outstanding_balance.dart';
 import '../../core/models/error_display_helper.dart';
+import '../../core/models/vehicle.dart';
 import '../ride/outstanding_balance_screen.dart';
 import '../ride/payment_webview_screen.dart';
 import 'widgets/stops_editor_widget.dart';
@@ -33,6 +34,10 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
   DateTime? _lastScheduledTime;
   // Whether this booking is a scheduled/prebook ride (args: isScheduled)
   bool _isScheduled = false;
+  
+  // Cancellation policy
+  CancellationPolicyResponse? _cancellationPolicy;
+  bool _isFetchingCancellationPolicy = false;
 
   Future<void> _confirmBooking(
     Map<String, dynamic> vehicle,
@@ -680,6 +685,25 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
     final args =
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     _isScheduled = args?['isScheduled'] ?? false;
+    _fetchCancellationPolicy();
+  }
+
+  Future<void> _fetchCancellationPolicy() async {
+    setState(() => _isFetchingCancellationPolicy = true);
+    try {
+      final response = await _apiService.getCancellationPolicy();
+      if (mounted) {
+        setState(() {
+          _cancellationPolicy = CancellationPolicyResponse.fromJson(response);
+          _isFetchingCancellationPolicy = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ Failed to fetch cancellation policy: $e');
+      if (mounted) {
+        setState(() => _isFetchingCancellationPolicy = false);
+      }
+    }
   }
 
   @override
@@ -920,31 +944,32 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
                     ),
                   ),
 
-                  // Cancellation policy hint (subtle, one line)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8, bottom: 4),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.schedule_outlined,
-                          size: 14,
-                          color: Colors.grey[500],
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            _isScheduled
-                                ? 'A cancellation fee of 15% will apply if you cancel less than 60 min before pickup.'
-                                : 'Free cancel within 2 min. After that, a 10% fee applies. Free cancel after driver accepts.',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey[600],
+                  // Cancellation policy hint (from API)
+                  if (_cancellationPolicy?.data != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8, bottom: 4),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.schedule_outlined,
+                            size: 14,
+                            color: Colors.grey[500],
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              _isScheduled
+                                  ? _cancellationPolicy!.data!.messages.userScheduledRide
+                                  : _cancellationPolicy!.data!.messages.userNormalRide,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey[600],
+                              ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
 
                   const SizedBox(height: 16),
 

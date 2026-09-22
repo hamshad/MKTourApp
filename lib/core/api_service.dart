@@ -2641,4 +2641,62 @@ class ApiService {
       rethrow;
     }
   }
+
+  /// Fetch cancellation policy for normal and scheduled rides.
+  /// Can be called by both User App (at booking time) and Driver App (at scheduled ride acceptance).
+  /// Returns settings (fees, grace periods) and user-friendly messages.
+  Future<Map<String, dynamic>> getCancellationPolicy() async {
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
+    debugPrint('🔵 [ApiService] getCancellationPolicy called');
+    debugPrint('🔵 [Request] URL: ${ApiConstants.cancellationPolicy}');
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString(_prefsAuthTokenKey);
+
+      if (token == null) {
+        throw Exception('No auth token found');
+      }
+
+      debugPrint(
+        '🔵 [Request] Headers: Authorization: Bearer ${token.substring(0, 10)}...',
+      );
+
+      final response = await http.get(
+        Uri.parse(ApiConstants.cancellationPolicy),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
+      debugPrint('🟣 [Response] Body: ${response.body}');
+
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
+
+      if (response.statusCode == 200) {
+        debugPrint('🟢 [ApiService] getCancellationPolicy Success');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
+        return jsonDecode(response.body);
+      } else {
+        debugPrint('🔴 [ApiService] getCancellationPolicy Failed: ${response.body}');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
+        throw Exception('Failed to get cancellation policy: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('🟠 [ApiService] Exception caught: $e');
+      debugPrint(
+        '🔵 ------------------------------------------------------------------',
+      );
+      throw Exception('Failed to get cancellation policy: $e');
+    }
+  }
 }

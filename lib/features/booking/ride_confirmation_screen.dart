@@ -98,12 +98,37 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
       _fetchDirectionsAndFare();
     }
 
+    // Fetch cancellation policy
+    _fetchCancellationPolicy();
+
     // Auto-open the schedule sheet if this is a prebook request WITHOUT a pre-selected time
     // If scheduledDateTime is already provided, skip this (user already scheduled)
     if (widget.isScheduled && widget.scheduledDateTime == null) {
       runAfterFrame((_) {
         _showScheduleSheet();
       });
+    }
+  }
+
+  // Cancellation policy
+  CancellationPolicyResponse? _cancellationPolicy;
+  bool _isFetchingCancellationPolicy = false;
+
+  Future<void> _fetchCancellationPolicy() async {
+    setState(() => _isFetchingCancellationPolicy = true);
+    try {
+      final response = await _apiService.getCancellationPolicy();
+      if (mounted) {
+        setState(() {
+          _cancellationPolicy = CancellationPolicyResponse.fromJson(response);
+          _isFetchingCancellationPolicy = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ Failed to fetch cancellation policy: $e');
+      if (mounted) {
+        setState(() => _isFetchingCancellationPolicy = false);
+      }
     }
   }
 
@@ -280,7 +305,8 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     // Preserve last picked time across webview cancel; fall back to
     // pre-set time, otherwise default to minimum lead time
     // (5 min dev, 2 hours prod).
-    final initialTime = _lastScheduledTime ??
+    final initialTime =
+        _lastScheduledTime ??
         widget.scheduledDateTime ??
         DateTime.now().add(
           AppConstants.isDev
@@ -296,8 +322,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
         initialDateTime: initialTime,
         onSchedule: (SchedulePayload payload) {
           _selectedPaymentMethod = payload.paymentMethod;
-          _lastScheduledTime =
-              DateTime.parse(payload.pickupTime).toLocal();
+          _lastScheduledTime = DateTime.parse(payload.pickupTime).toLocal();
           // Payment switched after a cancelled webview → update existing ride
           if (_pendingScheduledRideId != null) {
             _switchScheduledPayment(_pendingScheduledRideId!, payload);
@@ -345,7 +370,10 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
 
   Future<void> _confirmRide() async {
     // Upfront contract (11-02): mandatory method, sheet-skipping payNow semantics.
-    _processBooking(PaymentTiming.payNow, paymentMethod: _selectedPaymentMethod);
+    _processBooking(
+      PaymentTiming.payNow,
+      paymentMethod: _selectedPaymentMethod,
+    );
 
     /* Original Pay Now / Pay Later selection logic - Commented for future iteration
     // Show payment choice popup
@@ -568,7 +596,10 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
               );
             } else {
               _pendingScheduledRideId = null;
-              Provider.of<AuthProvider>(context, listen: false).markRideAsScheduled(rideId);
+              Provider.of<AuthProvider>(
+                context,
+                listen: false,
+              ).markRideAsScheduled(rideId);
               setState(() => _isLoading = false);
               _showPreBookingSuccess(rideId, scheduledAt);
             }
@@ -642,10 +673,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                   })()
                 : raw;
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(text),
-                backgroundColor: Colors.red,
-              ),
+              SnackBar(content: Text(text), backgroundColor: Colors.red),
             );
           }
         }
@@ -681,9 +709,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
         final resolved = global['success'] == true
             ? OutstandingBalance.fromBalanceEnvelope(global, '')
             : null;
-        if (resolved != null &&
-            resolved.isOwed &&
-            resolved.rideId.isNotEmpty) {
+        if (resolved != null && resolved.isOwed && resolved.rideId.isNotEmpty) {
           rideId = resolved.rideId;
           amount ??= resolved.amount;
         }
@@ -703,7 +729,8 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
       rideId: rideId,
       amount: amount ?? 0,
       status: 'balance_due',
-      message: message ?? 'Please clear your balance before booking a new ride.',
+      message:
+          message ?? 'Please clear your balance before booking a new ride.',
     );
     try {
       final res = await _apiService.getPaymentBalance(rideId);
@@ -721,7 +748,8 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     );
   }
 
-  Future<void> _handleScheduledPayment({    required String rideId,
+  Future<void> _handleScheduledPayment({
+    required String rideId,
     required String paymentUrl,
     required DateTime scheduledAt,
   }) async {
@@ -740,7 +768,10 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
         // Payment successful — mark scheduled and show success
         if (mounted) {
           _pendingScheduledRideId = null;
-          Provider.of<AuthProvider>(context, listen: false).markRideAsScheduled(rideId);
+          Provider.of<AuthProvider>(
+            context,
+            listen: false,
+          ).markRideAsScheduled(rideId);
           setState(() => _isLoading = false);
           _showPreBookingSuccess(rideId, scheduledAt);
         }
@@ -790,8 +821,10 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
           );
         } else {
           _pendingScheduledRideId = null;
-          Provider.of<AuthProvider>(context, listen: false)
-              .markRideAsScheduled(rideId);
+          Provider.of<AuthProvider>(
+            context,
+            listen: false,
+          ).markRideAsScheduled(rideId);
           setState(() => _isLoading = false);
           _showPreBookingSuccess(rideId, scheduledAt);
         }
@@ -1244,7 +1277,11 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                     const SizedBox(height: 4),
                     Text(
                       'Payment required to confirm',
-                      style: TextStyle(fontSize: 12, color: AppTheme.primaryColor, fontWeight: FontWeight.w500),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.primaryColor,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ],
                 ),
@@ -1578,12 +1615,9 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   Widget _buildBottomBar() {
     // Check if there's a fare error
     final hasError = _fareError != null;
-    final isPrebooked =
-        widget.isScheduled && widget.scheduledDateTime != null;
+    final isPrebooked = widget.isScheduled && widget.scheduledDateTime != null;
     final confirmLabel = isPrebooked ? 'Confirm Prebook' : 'Confirm';
-    final priceLabel = _isFetchingFare
-        ? '...'
-        : '£${_fare.toStringAsFixed(2)}';
+    final priceLabel = _isFetchingFare ? '...' : '£${_fare.toStringAsFixed(2)}';
 
     return Container(
       decoration: BoxDecoration(
@@ -1748,8 +1782,8 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                 const SizedBox(height: 8),
               ],
 
-              // Cancellation policy hint (subtle, one line)
-              if (!hasError)
+              // Cancellation policy hint (from API)
+              if (!hasError && _cancellationPolicy?.data != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Row(
@@ -1763,8 +1797,14 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                       Expanded(
                         child: Text(
                           widget.isScheduled
-                              ? 'A cancellation fee of 15% will apply if you cancel less than 60 min before pickup.'
-                              : 'Free cancel within 2 min. After that, a 10% fee applies. Free cancel after driver accepts.',
+                              ? _cancellationPolicy!
+                                    .data!
+                                    .messages
+                                    .userScheduledRide
+                              : _cancellationPolicy!
+                                    .data!
+                                    .messages
+                                    .userNormalRide,
                           style: TextStyle(
                             fontSize: 11,
                             color: Colors.grey[600],
@@ -1774,7 +1814,6 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                     ],
                   ),
                 ),
-
               // Outstanding-balance transparency (Phase 15): shown only
               // when the fare map carries balance > 0. Backend total is
               // authoritative — display as-is, no client-side fare math.
@@ -1837,8 +1876,8 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                                 onPressed: (_isLoading || _isFetchingFare)
                                     ? null
                                     : isPrebooked
-                                        ? _confirmPrebook
-                                        : _confirmRide,
+                                    ? _confirmPrebook
+                                    : _confirmRide,
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: AppTheme.primaryColor,
                                   foregroundColor: Colors.white,
@@ -1884,8 +1923,9 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: AppTheme.primaryColor,
                                   side: BorderSide(
-                                    color: AppTheme.primaryColor
-                                        .withOpacity(0.4),
+                                    color: AppTheme.primaryColor.withOpacity(
+                                      0.4,
+                                    ),
                                   ),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12),
@@ -1902,10 +1942,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Icon(
-                                        Icons.calendar_month,
-                                        size: 16,
-                                      ),
+                                      Icon(Icons.calendar_month, size: 16),
                                       SizedBox(width: 4),
                                       Text(
                                         'Schedule',
@@ -1945,11 +1982,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
       ),
       child: Row(
         children: [
-          Icon(
-            Icons.info_outline,
-            size: 18,
-            color: Colors.amber.shade800,
-          ),
+          Icon(Icons.info_outline, size: 18, color: Colors.amber.shade800),
           const SizedBox(width: 8),
           Expanded(
             child: Text(

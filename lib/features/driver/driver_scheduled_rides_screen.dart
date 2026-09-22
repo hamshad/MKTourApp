@@ -5,6 +5,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../core/api_service.dart';
 import '../../core/theme.dart';
 import '../../core/models/scheduled_ride.dart';
+import '../../core/models/vehicle.dart';
 import '../../core/widgets/platform_map.dart';
 
 /// Dedicated screen for driver scheduled rides.
@@ -23,8 +24,7 @@ class DriverScheduledRidesScreen extends StatefulWidget {
       _DriverScheduledRidesScreenState();
 }
 
-class _DriverScheduledRidesScreenState
-    extends State<DriverScheduledRidesScreen>
+class _DriverScheduledRidesScreenState extends State<DriverScheduledRidesScreen>
     with SingleTickerProviderStateMixin {
   final ApiService _apiService = ApiService();
   late TabController _tabController;
@@ -37,11 +37,34 @@ class _DriverScheduledRidesScreenState
   bool _isConfirmedLoading = true;
   List<ScheduledRide> _confirmedRides = [];
 
+  // Cancellation policy
+  CancellationPolicyResponse? _cancellationPolicy;
+  bool _isFetchingCancellationPolicy = false;
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _fetchAll();
+    _fetchCancellationPolicy();
+  }
+
+  Future<void> _fetchCancellationPolicy() async {
+    setState(() => _isFetchingCancellationPolicy = true);
+    try {
+      final response = await _apiService.getCancellationPolicy();
+      if (mounted) {
+        setState(() {
+          _cancellationPolicy = CancellationPolicyResponse.fromJson(response);
+          _isFetchingCancellationPolicy = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ Failed to fetch cancellation policy: $e');
+      if (mounted) {
+        setState(() => _isFetchingCancellationPolicy = false);
+      }
+    }
   }
 
   @override
@@ -64,14 +87,18 @@ class _DriverScheduledRidesScreenState
         if (data is List) {
           for (final item in data) {
             debugPrint('🟢 [ScheduledRides] Pool ride raw: $item');
-            debugPrint('🟢 [ScheduledRides] → fare: ${item['fare']}, type: ${item['fare'].runtimeType}');
+            debugPrint(
+              '🟢 [ScheduledRides] → fare: ${item['fare']}, type: ${item['fare'].runtimeType}',
+            );
           }
         }
         _poolRides = data is List
             ? data.map((e) => ScheduledRide.fromJson(e)).toList()
             : [];
         for (final ride in _poolRides) {
-          debugPrint('🟢 [ScheduledRides] Parsed pool ride: ${ride.id}, fare=${ride.fare}, pickup=${ride.pickupLocation.address}');
+          debugPrint(
+            '🟢 [ScheduledRides] Parsed pool ride: ${ride.id}, fare=${ride.fare}, pickup=${ride.pickupLocation.address}',
+          );
         }
       } else {
         _poolRides = [];
@@ -92,14 +119,18 @@ class _DriverScheduledRidesScreenState
         if (data is List) {
           for (final item in data) {
             debugPrint('🟢 [ScheduledRides] Confirmed ride raw: $item');
-            debugPrint('🟢 [ScheduledRides] → fare: ${item['fare']}, type: ${item['fare'].runtimeType}');
+            debugPrint(
+              '🟢 [ScheduledRides] → fare: ${item['fare']}, type: ${item['fare'].runtimeType}',
+            );
           }
         }
         _confirmedRides = data is List
             ? data.map((e) => ScheduledRide.fromJson(e)).toList()
             : [];
         for (final ride in _confirmedRides) {
-          debugPrint('🟢 [ScheduledRides] Parsed confirmed: ${ride.id}, fare=${ride.fare}');
+          debugPrint(
+            '🟢 [ScheduledRides] Parsed confirmed: ${ride.id}, fare=${ride.fare}',
+          );
         }
       } else {
         _confirmedRides = [];
@@ -114,9 +145,76 @@ class _DriverScheduledRidesScreenState
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Claim Ride'),
-        content: Text(
-          'Claim scheduled ride from ${ride.pickupLocation.address}?',
+        title: const Text('Claim Scheduled Ride'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Claim scheduled ride from ${ride.pickupLocation.address}?'),
+              const SizedBox(height: 16),
+              if (_cancellationPolicy?.data != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.warning_amber_rounded,
+                        color: Colors.orange[800],
+                        size: 20,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _cancellationPolicy!
+                              .data!
+                              .messages
+                              .driverScheduledRide,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.orange[800],
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ] else if (_isFetchingCancellationPolicy) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.grey[500],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        'Loading cancellation policy...',
+                        style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -125,7 +223,10 @@ class _DriverScheduledRidesScreenState
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Claim'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryColor,
+            ),
+            child: const Text('Claim Ride'),
           ),
         ],
       ),
@@ -243,10 +344,7 @@ class _DriverScheduledRidesScreenState
           Text(
             hint,
             textAlign: TextAlign.center,
-            style: GoogleFonts.outfit(
-              fontSize: 12,
-              color: Colors.grey[500],
-            ),
+            style: GoogleFonts.outfit(fontSize: 12, color: Colors.grey[500]),
           ),
         ],
       ],
@@ -298,10 +396,9 @@ class _DriverScheduledRidesScreenState
                           onSelected: isLoading
                               ? null
                               : (selected) => setDialogState(() {
-                                    selectedReason =
-                                        selected ? r['value'] : null;
-                                    showReasonError = false;
-                                  }),
+                                  selectedReason = selected ? r['value'] : null;
+                                  showReasonError = false;
+                                }),
                         ),
                       )
                       .toList(),
@@ -334,11 +431,11 @@ class _DriverScheduledRidesScreenState
                   : () async {
                       setDialogState(() => isLoading = true);
                       try {
-                        final result =
-                            await _apiService.cancelScheduledRideDriver(
-                          ride.id,
-                          reason: selectedReason,
-                        );
+                        final result = await _apiService
+                            .cancelScheduledRideDriver(
+                              ride.id,
+                              reason: selectedReason,
+                            );
                         if (ctx.mounted) Navigator.pop(ctx);
                         if (result['success'] == true) {
                           if (mounted) {
@@ -450,10 +547,7 @@ class _DriverScheduledRidesScreenState
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [
-          _buildRequestsTab(),
-          _buildConfirmedTab(),
-        ],
+        children: [_buildRequestsTab(), _buildConfirmedTab()],
       ),
     );
   }
@@ -471,7 +565,11 @@ class _DriverScheduledRidesScreenState
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.calendar_month_outlined, size: 64, color: Colors.grey[300]),
+            Icon(
+              Icons.calendar_month_outlined,
+              size: 64,
+              color: Colors.grey[300],
+            ),
             const SizedBox(height: 16),
             Text(
               'No requests available',
@@ -483,10 +581,7 @@ class _DriverScheduledRidesScreenState
             const SizedBox(height: 8),
             Text(
               'Check back later for scheduled rides',
-              style: GoogleFonts.outfit(
-                fontSize: 13,
-                color: Colors.grey[400],
-              ),
+              style: GoogleFonts.outfit(fontSize: 13, color: Colors.grey[400]),
             ),
           ],
         ),
@@ -518,9 +613,7 @@ class _DriverScheduledRidesScreenState
                 ),
               ),
               // Cards
-              ...section.rides.map(
-                (ride) => _buildRequestCard(ride),
-              ),
+              ...section.rides.map((ride) => _buildRequestCard(ride)),
               const SizedBox(height: 8),
             ],
           );
@@ -532,24 +625,31 @@ class _DriverScheduledRidesScreenState
   Widget _buildRequestCard(ScheduledRide ride) {
     final pickupTime = _parsePickupTime(ride.scheduledPickupTime);
     final pickupLat =
-        ride.pickupLocation.coordinates != null && ride.pickupLocation.coordinates!.length >= 2
-            ? ride.pickupLocation.coordinates![1]
-            : null;
+        ride.pickupLocation.coordinates != null &&
+            ride.pickupLocation.coordinates!.length >= 2
+        ? ride.pickupLocation.coordinates![1]
+        : null;
     final pickupLng =
-        ride.pickupLocation.coordinates != null && ride.pickupLocation.coordinates!.length >= 2
-            ? ride.pickupLocation.coordinates![0]
-            : null;
+        ride.pickupLocation.coordinates != null &&
+            ride.pickupLocation.coordinates!.length >= 2
+        ? ride.pickupLocation.coordinates![0]
+        : null;
     final dropoffLat =
-        ride.dropoffLocation.coordinates != null && ride.dropoffLocation.coordinates!.length >= 2
-            ? ride.dropoffLocation.coordinates![1]
-            : null;
+        ride.dropoffLocation.coordinates != null &&
+            ride.dropoffLocation.coordinates!.length >= 2
+        ? ride.dropoffLocation.coordinates![1]
+        : null;
     final dropoffLng =
-        ride.dropoffLocation.coordinates != null && ride.dropoffLocation.coordinates!.length >= 2
-            ? ride.dropoffLocation.coordinates![0]
-            : null;
+        ride.dropoffLocation.coordinates != null &&
+            ride.dropoffLocation.coordinates!.length >= 2
+        ? ride.dropoffLocation.coordinates![0]
+        : null;
 
     final hasCoords =
-        pickupLat != null && pickupLng != null && dropoffLat != null && dropoffLng != null;
+        pickupLat != null &&
+        pickupLng != null &&
+        dropoffLat != null &&
+        dropoffLng != null;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -643,7 +743,11 @@ class _DriverScheduledRidesScreenState
                 Row(
                   children: [
                     if (ride.user != null) ...[
-                      Icon(Icons.person_outline, size: 14, color: Colors.grey[500]),
+                      Icon(
+                        Icons.person_outline,
+                        size: 14,
+                        color: Colors.grey[500],
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         (ride.user as Map)['name']?.toString() ?? 'Passenger',
@@ -654,7 +758,11 @@ class _DriverScheduledRidesScreenState
                       ),
                       const SizedBox(width: 12),
                     ],
-                    Icon(Icons.directions_car, size: 14, color: Colors.grey[500]),
+                    Icon(
+                      Icons.directions_car,
+                      size: 14,
+                      color: Colors.grey[500],
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       '${ride.distance.toStringAsFixed(1)} mi',
@@ -665,7 +773,11 @@ class _DriverScheduledRidesScreenState
                     ),
                     if (ride.stops.isNotEmpty) ...[
                       const SizedBox(width: 12),
-                      Icon(Icons.stop_circle, size: 14, color: Colors.grey[500]),
+                      Icon(
+                        Icons.stop_circle,
+                        size: 14,
+                        color: Colors.grey[500],
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         '${ride.stops.length} stop${ride.stops.length > 1 ? 's' : ''}',
@@ -736,10 +848,7 @@ class _DriverScheduledRidesScreenState
             const SizedBox(height: 8),
             Text(
               'Claimed rides will appear here',
-              style: GoogleFonts.outfit(
-                fontSize: 13,
-                color: Colors.grey[400],
-              ),
+              style: GoogleFonts.outfit(fontSize: 13, color: Colors.grey[400]),
             ),
           ],
         ),
@@ -769,9 +878,7 @@ class _DriverScheduledRidesScreenState
                   ),
                 ),
               ),
-              ...section.rides.map(
-                (ride) => _buildConfirmedCard(ride),
-              ),
+              ...section.rides.map((ride) => _buildConfirmedCard(ride)),
               const SizedBox(height: 8),
             ],
           );
@@ -783,24 +890,31 @@ class _DriverScheduledRidesScreenState
   Widget _buildConfirmedCard(ScheduledRide ride) {
     final pickupTime = _parsePickupTime(ride.scheduledPickupTime);
     final pickupLat =
-        ride.pickupLocation.coordinates != null && ride.pickupLocation.coordinates!.length >= 2
-            ? ride.pickupLocation.coordinates![1]
-            : null;
+        ride.pickupLocation.coordinates != null &&
+            ride.pickupLocation.coordinates!.length >= 2
+        ? ride.pickupLocation.coordinates![1]
+        : null;
     final pickupLng =
-        ride.pickupLocation.coordinates != null && ride.pickupLocation.coordinates!.length >= 2
-            ? ride.pickupLocation.coordinates![0]
-            : null;
+        ride.pickupLocation.coordinates != null &&
+            ride.pickupLocation.coordinates!.length >= 2
+        ? ride.pickupLocation.coordinates![0]
+        : null;
     final dropoffLat =
-        ride.dropoffLocation.coordinates != null && ride.dropoffLocation.coordinates!.length >= 2
-            ? ride.dropoffLocation.coordinates![1]
-            : null;
+        ride.dropoffLocation.coordinates != null &&
+            ride.dropoffLocation.coordinates!.length >= 2
+        ? ride.dropoffLocation.coordinates![1]
+        : null;
     final dropoffLng =
-        ride.dropoffLocation.coordinates != null && ride.dropoffLocation.coordinates!.length >= 2
-            ? ride.dropoffLocation.coordinates![0]
-            : null;
+        ride.dropoffLocation.coordinates != null &&
+            ride.dropoffLocation.coordinates!.length >= 2
+        ? ride.dropoffLocation.coordinates![0]
+        : null;
 
     final hasCoords =
-        pickupLat != null && pickupLng != null && dropoffLat != null && dropoffLng != null;
+        pickupLat != null &&
+        pickupLng != null &&
+        dropoffLat != null &&
+        dropoffLng != null;
 
     // Status chip
     final statusColor = _statusColor(ride.status);
@@ -916,7 +1030,11 @@ class _DriverScheduledRidesScreenState
                 Row(
                   children: [
                     if (ride.user != null) ...[
-                      Icon(Icons.person_outline, size: 14, color: Colors.grey[500]),
+                      Icon(
+                        Icons.person_outline,
+                        size: 14,
+                        color: Colors.grey[500],
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         (ride.user as Map)['name']?.toString() ?? 'Passenger',
@@ -927,7 +1045,11 @@ class _DriverScheduledRidesScreenState
                       ),
                       const SizedBox(width: 12),
                     ],
-                    Icon(Icons.directions_car, size: 14, color: Colors.grey[500]),
+                    Icon(
+                      Icons.directions_car,
+                      size: 14,
+                      color: Colors.grey[500],
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       '${ride.distance.toStringAsFixed(1)} mi',
@@ -938,7 +1060,11 @@ class _DriverScheduledRidesScreenState
                     ),
                     if (ride.stops.isNotEmpty) ...[
                       const SizedBox(width: 12),
-                      Icon(Icons.stop_circle, size: 14, color: Colors.grey[500]),
+                      Icon(
+                        Icons.stop_circle,
+                        size: 14,
+                        color: Colors.grey[500],
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         '${ride.stops.length} stop${ride.stops.length > 1 ? 's' : ''}',
@@ -1051,10 +1177,7 @@ class _DriverScheduledRidesScreenState
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.transparent,
-                      Colors.white.withOpacity(0.9),
-                    ],
+                    colors: [Colors.transparent, Colors.white.withOpacity(0.9)],
                   ),
                 ),
               ),

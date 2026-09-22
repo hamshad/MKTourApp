@@ -628,3 +628,133 @@ class FareSummary {
   String toString() =>
       'FareSummary(fare: £$fare, wait: ${totalWaitMinutes}min/£$totalWaitFee, actual: £$actualFare)';
 }
+
+/// Cancellation policy settings model
+class CancellationPolicySettings {
+  final int cancellationFeePercentage;
+  final int gracePeriodMinutes;
+  final int scheduledCancellationFeePercentage;
+  final int scheduledCancellationFreeWindowMinutes;
+  final int scheduledCancellationBookingGraceMinutes;
+  final int scheduledDriverPenaltyPercentage;
+
+  const CancellationPolicySettings({
+    required this.cancellationFeePercentage,
+    required this.gracePeriodMinutes,
+    required this.scheduledCancellationFeePercentage,
+    required this.scheduledCancellationFreeWindowMinutes,
+    required this.scheduledCancellationBookingGraceMinutes,
+    required this.scheduledDriverPenaltyPercentage,
+  });
+
+  factory CancellationPolicySettings.fromJson(Map<String, dynamic> json) {
+    return CancellationPolicySettings(
+      cancellationFeePercentage: json['cancellationFeePercentage'] ?? 20,
+      gracePeriodMinutes: json['gracePeriodMinutes'] ?? 2,
+      scheduledCancellationFeePercentage: json['scheduledCancellationFeePercentage'] ?? 10,
+      scheduledCancellationFreeWindowMinutes: json['scheduledCancellationFreeWindowMinutes'] ?? 30,
+      scheduledCancellationBookingGraceMinutes: json['scheduledCancellationBookingGraceMinutes'] ?? 15,
+      scheduledDriverPenaltyPercentage: json['scheduledDriverPenaltyPercentage'] ?? 10,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'cancellationFeePercentage': cancellationFeePercentage,
+      'gracePeriodMinutes': gracePeriodMinutes,
+      'scheduledCancellationFeePercentage': scheduledCancellationFeePercentage,
+      'scheduledCancellationFreeWindowMinutes': scheduledCancellationFreeWindowMinutes,
+      'scheduledCancellationBookingGraceMinutes': scheduledCancellationBookingGraceMinutes,
+      'scheduledDriverPenaltyPercentage': scheduledDriverPenaltyPercentage,
+    };
+  }
+}
+
+/// Cancellation policy messages model
+class CancellationPolicyMessages {
+  final String userNormalRide;
+  final String userScheduledRide;
+  final String driverScheduledRide;
+
+  const CancellationPolicyMessages({
+    required this.userNormalRide,
+    required this.userScheduledRide,
+    required this.driverScheduledRide,
+  });
+
+  factory CancellationPolicyMessages.fromJson(Map<String, dynamic> json) {
+    return CancellationPolicyMessages(
+      userNormalRide: json['userNormalRide'] ?? '',
+      userScheduledRide: json['userScheduledRide'] ?? '',
+      driverScheduledRide: json['driverScheduledRide'] ?? '',
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'userNormalRide': userNormalRide,
+      'userScheduledRide': userScheduledRide,
+      'driverScheduledRide': driverScheduledRide,
+    };
+  }
+}
+
+/// Cancellation policy data model
+class CancellationPolicyData {
+  final CancellationPolicySettings settings;
+  final CancellationPolicyMessages messages;
+
+  const CancellationPolicyData({
+    required this.settings,
+    required this.messages,
+  });
+
+  factory CancellationPolicyData.fromJson(Map<String, dynamic> json) {
+    return CancellationPolicyData(
+      settings: CancellationPolicySettings.fromJson(json['settings'] ?? {}),
+      messages: CancellationPolicyMessages.fromJson(json['messages'] ?? {}),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'settings': settings.toJson(),
+      'messages': messages.toJson(),
+    };
+  }
+}
+
+/// Cancellation policy response model
+class CancellationPolicyResponse {
+  final bool success;
+  final int statusCode;
+  final String message;
+  final CancellationPolicyData? data;
+
+  const CancellationPolicyResponse({
+    required this.success,
+    required this.statusCode,
+    required this.message,
+    this.data,
+  });
+
+  factory CancellationPolicyResponse.fromJson(Map<String, dynamic> json) {
+    return CancellationPolicyResponse(
+      success: json['success'] ?? false,
+      statusCode: json['statusCode'] ?? 0,
+      message: json['message'] ?? '',
+      data: json['data'] != null
+          ? CancellationPolicyData.fromJson(json['data'])
+          : null,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'success': success,
+      'statusCode': statusCode,
+      'message': message,
+      'data': data?.toJson(),
+    };
+  }
+}

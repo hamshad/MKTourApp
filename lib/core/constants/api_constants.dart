@@ -88,6 +88,9 @@ class ApiConstants {
   static String cancelScheduledRideDriver(String id) =>
       '$baseUrl/rides/$id/cancel/scheduled/driver';
 
+  // Cancellation Policy Endpoint
+  static const String cancellationPolicy = '$baseUrl/rides/cancellation-policy';
+
   // Airport Endpoints
   static const String airports = '$baseUrl/airports';
   static String getAirportPrice(String placeId) =>
