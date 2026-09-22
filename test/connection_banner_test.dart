@@ -3,9 +3,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mktours/core/services/socket_service.dart';
 import 'package:mktours/core/widgets/connection_banner.dart';
 
-// Widget tests pinning the 19-03 connection UX contract:
-// live renders nothing (pixel-identical healthy UI), reconnecting shows the
-// pill + age, offline shows retry that fires exactly once (2s debounce).
+// Widget tests pinning the connection UX contract:
+// live renders nothing (pixel-identical healthy UI), reconnecting renders
+// nothing (transient self-heal, no nag), offline shows retry that fires
+// exactly once (2s debounce).
 void main() {
   group('ConnectionBanner states', () {
     testWidgets('live renders nothing (zero layout shift)', (tester) async {
@@ -25,7 +26,7 @@ void main() {
       expect(find.textContaining('Last updated'), findsNothing);
     });
 
-    testWidgets('reconnecting shows pill plus last-updated age', (tester) async {
+    testWidgets('reconnecting renders nothing (no idle nag)', (tester) async {
       final disconnectedAt =
           DateTime.now().subtract(const Duration(seconds: 45));
       await tester.pumpWidget(
@@ -41,10 +42,9 @@ void main() {
 
       expect(
         find.text('Reconnecting… showing last known'),
-        findsOneWidget,
+        findsNothing,
       );
-      expect(find.textContaining('Last updated'), findsOneWidget);
-      // Reconnecting self-heals: no manual retry button.
+      expect(find.textContaining('Last updated'), findsNothing);
       expect(find.text('Retry'), findsNothing);
     });
 

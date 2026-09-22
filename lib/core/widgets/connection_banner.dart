@@ -117,7 +117,7 @@ class StaleDataChip extends StatelessWidget {
 /// Uber-style connection pill mounted as an overlay above the map.
 ///
 /// - `live` → renders nothing (zero layout shift, pixel-identical healthy UI)
-/// - `reconnecting` → amber "Reconnecting… showing last known" + ticking age
+/// - `reconnecting` → renders nothing (transient self-heal, no UX nag)
 /// - `offline` → grey "No connection — actions will send when reconnected"
 ///   + Retry button (`initSocket(forceReconnect: true)` + `resyncActiveRide`)
 ///
@@ -149,9 +149,10 @@ class _ConnectionBannerState extends State<ConnectionBanner> {
   @override
   void initState() {
     super.initState();
-    // Ticks the "Xs ago" label once per second while visible.
+    // Ticks the "Xs ago" label once per second while visible (offline only —
+    // reconnecting renders nothing).
     if (widget.forcedState != null &&
-        widget.forcedState != SocketConnectionState.online) {
+        widget.forcedState == SocketConnectionState.offline) {
       _tick = Timer.periodic(const Duration(seconds: 1), (_) {
         if (mounted) setState(() {});
       });
@@ -209,7 +210,7 @@ class _ConnectionBannerState extends State<ConnectionBanner> {
       stream: SocketService().connectionState,
       builder: (context, snapshot) {
         final state = snapshot.data ?? SocketConnectionState.online;
-        if (state == SocketConnectionState.online) {
+        if (state != SocketConnectionState.offline) {
           return const SizedBox.shrink();
         }
         return _buildForState(
@@ -226,10 +227,9 @@ class _ConnectionBannerState extends State<ConnectionBanner> {
     SocketConnectionState state,
     DateTime? lastDisconnectedAt,
   ) {
-    if (state == SocketConnectionState.online) {
+    if (state != SocketConnectionState.offline) {
       return const SizedBox.shrink();
     }
-    final isReconnecting = state == SocketConnectionState.reconnecting;
     final base = lastDisconnectedAt ?? DateTime.now();
     final gap = DateTime.now().difference(base);
     final age = formatLastUpdated(gap.isNegative ? Duration.zero : gap);
@@ -239,14 +239,10 @@ class _ConnectionBannerState extends State<ConnectionBanner> {
         margin: const EdgeInsets.symmetric(horizontal: 16),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: isReconnecting
-              ? const Color(0xFFFFF7E6)
-              : const Color(0xFFF1F2F4),
+          color: const Color(0xFFF1F2F4),
           borderRadius: BorderRadius.circular(24),
           border: Border.all(
-            color: isReconnecting
-                ? const Color(0xFFE8A33D)
-                : const Color(0xFFC9CDD3),
+            color: const Color(0xFFC9CDD3),
           ),
           boxShadow: [
             BoxShadow(
@@ -259,14 +255,12 @@ class _ConnectionBannerState extends State<ConnectionBanner> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            SizedBox(
+            const SizedBox(
               width: 14,
               height: 14,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
-                color: isReconnecting
-                    ? const Color(0xFFB7791F)
-                    : const Color(0xFF6B7280),
+                color: Color(0xFF6B7280),
               ),
             ),
             const SizedBox(width: 8),
@@ -275,31 +269,25 @@ class _ConnectionBannerState extends State<ConnectionBanner> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    isReconnecting
-                        ? 'Reconnecting… showing last known'
-                        : 'No connection — actions will send when reconnected',
+                  const Text(
+                    'No connection — actions will send when reconnected',
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
-                      color: isReconnecting
-                          ? const Color(0xFF8A5A00)
-                          : const Color(0xFF4B5563),
+                      color: Color(0xFF4B5563),
                     ),
                   ),
                   Text(
                     age,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 11,
-                      color: isReconnecting
-                          ? const Color(0xFF8A5A00).withValues(alpha: 0.8)
-                          : const Color(0xFF6B7280),
+                      color: Color(0xFF6B7280),
                     ),
                   ),
                 ],
               ),
             ),
-            if (!isReconnecting && widget.showRetry) ...[
+            if (widget.showRetry) ...[
               const SizedBox(width: 8),
               TextButton(
                 onPressed: _onRetryTap,

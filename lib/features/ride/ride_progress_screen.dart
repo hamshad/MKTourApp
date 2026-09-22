@@ -53,6 +53,19 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
   // Location-health watchdog (silent: dead feed auto-reconnects, no UI nag)
   DateTime? _lastLocationUpdateTime;
   Timer? _staleTimer;
+  DateTime? _lastWatchdogReconnectAt;
+
+  /// Active-ride gate for the watchdog: only auto-reconnect when a ride is
+  /// actually underway (driver updates expected). Idle screens (finding
+  /// driver / no ride) must leave a healthy socket alone — otherwise the
+  /// watchdog disposes a working socket every 20s and the banner cycles.
+  static const Set<String> _activeWatchdogStatuses = {
+    'accepted',
+    'arrived',
+    'driver_arrived',
+    'in_progress',
+    'at_stop',
+  };
 
   // ── Trip progress: stops + wait state ──────────────────────────────────
   List<RideStop> _stops = [];
@@ -105,15 +118,23 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
     _fetchDetailedAddress();
     _setupNavigation();
 
-    // Silent watchdog: if no driver:locationUpdate arrives for a while,
+    // Silent watchdog: if no driver:locationUpdate arrives for a while
     // reconnect the socket in the background. Never shows anything to user.
+    // Guarded: only when a ride is active (updates expected) + rate-limited
+    // to at most once per 60s. Idle screens leave the socket alone.
     _staleTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (!mounted) return;
+      if (!_activeWatchdogStatuses.contains(_rideStatus)) return;
       final stale = _lastLocationUpdateTime == null ||
           DateTime.now().difference(_lastLocationUpdateTime!).inSeconds > 20;
       if (stale) {
+        final lastReconnect = _lastWatchdogReconnectAt;
+        if (lastReconnect != null &&
+            DateTime.now().difference(lastReconnect).inSeconds < 60) {
+          return;
+        }
+        _lastWatchdogReconnectAt = DateTime.now();
         _socketService.initSocket(forceReconnect: true);
-        _lastLocationUpdateTime = DateTime.now();
       }
     });
 
