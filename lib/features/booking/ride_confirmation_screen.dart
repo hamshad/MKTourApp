@@ -77,7 +77,8 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   @override
   void initState() {
     super.initState();
-    _selectedPaymentMethod = 'payment_link';
+    final isScheduled = widget.isScheduled && widget.scheduledDateTime != null;
+    _selectedPaymentMethod = isScheduled ? 'payment_link' : 'payment_link';
     // Initialize route synchronously from passed polyline
     _initializeRouteSync();
     // Multi-stop: the passed polyline may predate the stops editor —
@@ -1462,7 +1463,23 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
 
   // Always-visible payment options (no expandable card — both choices stay
   // on screen so the method can't be missed). Writes [_selectedPaymentMethod].
+  // For scheduled rides, only show Online (payment_link).
   Widget _buildPaymentMethodSelector() {
+    final isScheduled = widget.isScheduled && widget.scheduledDateTime != null;
+
+    if (isScheduled) {
+      // Scheduled rides: only Online (payment_link)
+      return _buildPaymentMethodOption(
+        icon: Icons.credit_card,
+        iconColor: const Color(0xFF2563EB),
+        iconBackground: const Color(0xFF2563EB).withOpacity(0.12),
+        label: 'Online',
+        subtitle: 'Card via Link',
+        value: 'payment_link',
+      );
+    }
+
+    // Normal rides: show both Online and Cash
     return Row(
       children: [
         Expanded(
