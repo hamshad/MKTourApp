@@ -663,6 +663,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // Add a small delay to ensure socket is fully connected
     await Future.delayed(const Duration(milliseconds: 500));
 
+    // Restore-cold-start race: _restoreActiveRide can pushReplacement to
+    // RideAssignedScreen (disposing this Home) while we were awaiting. The
+    // global off()s below would then wipe the restored screen's just-attached
+    // handlers and replace them with dead (unmounted) Home closures — the
+    // restored screen goes deaf to ride lifecycle events (stuck on "driver is
+    // on the way" forever). Bail when disposed; the live screen owns its own
+    // listeners.
+    if (!mounted) return;
+
     debugPrint('🔌 [HomeScreen] Socket initialized, emitting user online...');
     _emitUserOnline();
 
