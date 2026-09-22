@@ -920,6 +920,32 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
                     ),
                   ),
 
+                  // Cancellation policy hint (subtle, one line)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8, bottom: 4),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.schedule_outlined,
+                          size: 14,
+                          color: Colors.grey[500],
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            isScheduled
+                                ? 'Free cancel up to 60 min before pickup · 15% fee after · 15 min grace after booking'
+                                : 'Free cancel within 2 min · 10% fee after grace · free after driver accepts',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
                   const SizedBox(height: 16),
 
                   // Outstanding-balance transparency (Phase 15): backend
