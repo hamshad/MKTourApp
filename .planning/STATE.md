@@ -1,8 +1,8 @@
 # MK Tours - Project State
 
 ## Current Position
-- **Phase:** 16-revert-ride-payments — In Progress (2/3 plans, 16-02 complete 2026-09-21)
-- **Next:** 16-03 (scheduled + error audit, regression sweep, human end-to-end pass)
+- **Phase:** 19-ride-flow-resilience — Complete (3/3 plans, 19-03 complete 2026-09-22; rider device re-verify pending per SUMMARY checklist)
+- **Next:** Rider kill-restore re-verify (searching/assigned/progress) → phase transition
 
 ## Completed Plans
 - 02-01: Ride-flow API layer — no-OTP startRide, stopArrive/stopResume, stops-aware fare/create, reason cancel, fixed end-early (`c0c7d26`, `0e95c3b`)
@@ -44,6 +44,7 @@
 - 16-02: Accept-time payment — requiresPayment parser + 12 tests, Pay Now banner/WebView, authorized close-out, rehydrate, link<->cash switcher (`4074559`, `202429d`)
 - 19-01: Socket transport hardening — unbounded capped reconnect, listener registry + scoped off, ack-guarded critical emits, ping/pong heartbeat, durable idempotent queue, 13 tests (`bcca55d`, `edc6754`, `cf3b9c5`)
 - 19-02: Cold-start restore + re-sync — RideSession global entry (restoreActiveRide/resyncActiveRide), versioned snapshot (schemaVersion 2 + lastEventAt), rider/driver cold-start + resume + FCM-tap wiring, 15 merge tests (`02d9c81`, `7676fbe`, `77d07cd`)
+- 19-03: Connection UX + kill-proofing — ConnectionBanner on rider/driver screens, stale chips, queued-intent copy, widget tests + sweep (`98b4aeb`, `70e2a6a`); rider searching-save bug fixed + canonicalization tests (`8532ad2`, `c708cba`)
 
 ## Decisions
 - [02-01] OTP dialog UI left in place; only API call path made OTP-free (UI strip-out in 03-01)
@@ -137,6 +138,9 @@
 - [19-02] Fetch failure keeps snapshot (none/retry) instead of clearing — transient errors must not nuke restore state
 - [19-02] RideSession as top-level functions (bare restoreActiveRide/resyncActiveRide call sites per plan key-links)
 - [19-02] Driver resume resync touches UI only when resynced ride matches on-screen ride; resync never navigates or clears on stale
+- [19-03] RideAssignedScreen owns its rider snapshot (booking pushes it directly, home off-tree) — save on init, updateStatus per transition, clear on terminal
+- [19-03] Snapshot stores backend-canonical status via snapshotStatusForRider (searching→requested, arrived→driver_arrived, at_stop→in_progress)
+- [19-03] Scheduled rides never persist on rider path (08-01 preserved); terminal rider states clear or stamp final
 
 ## Blockers
 - None
@@ -157,7 +161,8 @@
 - Phase 17 added: Backend enforces payment_link only for scheduled rides — remove cash from prebook flow and handle new error responses
 
 ## Session
-- Last session: Completed 19-02-PLAN.md (2026-09-22, 3 commits `02d9c81`, `7676fbe`, `77d07cd`, SUMMARY at phases/19-ride-flow-resilience/19-02-SUMMARY.md). Next: 19-03.
+- Last session: Completed 19-03-PLAN.md (2026-09-22, 4 commits `98b4aeb`, `70e2a6a`, `8532ad2`, `c708cba`, SUMMARY at phases/19-ride-flow-resilience/19-03-SUMMARY.md). Human device pass: driver approved, rider searching-save bug fixed, rider re-verify pending. Next: phase transition after re-verify.
+- Previous: Completed 19-02-PLAN.md (2026-09-22, 3 commits `02d9c81`, `7676fbe`, `77d07cd`, SUMMARY at phases/19-ride-flow-resilience/19-02-SUMMARY.md). Next: 19-03.
 - Previous: Completed 19-01-PLAN.md (2026-09-22, 3 commits `bcca55d`, `edc6754`, `cf3b9c5`, SUMMARY at phases/19-ride-flow-resilience/19-01-SUMMARY.md). Socket transport hardening: unbounded reconnect, listener registry, ack emits, durable queue, 13 tests.
 - Last session: Completed 16-02-PLAN.md (2026-09-21, 2 commits `4074559`, `202429d`, SUMMARY at phases/16-revert-ride-payments/16-02-SUMMARY.md). Next: 16-03.
 - Previous: Completed 15-02-PLAN.md (2026-09-19, 2 commits `c1fece5`, `06acdd2`, SUMMARY at phases/15-outstanding-balance-silent-booking-fare-transparency/15-02-SUMMARY.md). Phase 15 complete. Next: phase transition.

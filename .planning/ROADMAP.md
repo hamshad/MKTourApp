@@ -18,7 +18,7 @@
 | 16 | Revert Ride Payments | In Progress | 2/3 | RVT-01..06 |
 | 17 | Backend payment_link only for scheduled | Planned | 0 | — |
 | 18 | Enforce payment_method constraints for scheduled | Planned | 0 | PAYCONST-01..06 |
-| 19 | 2/3 | In Progress|  | RES-01..06 |
+| 19 | 3/3 | Complete   | 2026-09-22 | RES-01..06 |
 
 ---
 
@@ -405,12 +405,12 @@ Plans:
 - **RES-05**: Outgoing actions never lost — queued across restart with sane expiry, deduped, flushed in order on reconnect
 - **RES-06**: No regressions — instant + scheduled + payment flows behavior-identical when network healthy
 
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
-- [ ] `19-01-PLAN.md` — Socket transport hardening (unbounded reconnect, ack emits, listener registry, durable queue + tests)
-- [ ] `19-02-PLAN.md` — Cold-start restore + re-sync (RideSession global entry, rider/driver wiring, FCM/resume, merge tests)
-- [ ] `19-03-PLAN.md` — Resilience UX + verification (ConnectionBanner, stale chips, regression sweep, human device pass)
+- [x] `19-01-PLAN.md` — Socket transport hardening (unbounded reconnect, ack emits, listener registry, durable queue + tests)
+- [x] `19-02-PLAN.md` — Cold-start restore + re-sync (RideSession global entry, rider/driver wiring, FCM/resume, merge tests)
+- [x] `19-03-PLAN.md` — Resilience UX + verification (ConnectionBanner, stale chips, regression sweep, human device pass)
 
 **Success Criteria:**
 - Kill app mid-trip (rider + driver) → reopen restores exact screen with live updates resumed
