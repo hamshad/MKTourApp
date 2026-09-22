@@ -31,6 +31,17 @@ class ActiveRideStorage {
   static const String _stopIndexKey = 'active_ride_stop_index';
   static const String _savedAtKey = 'active_ride_saved_at';
 
+  /// Snapshot schema version. Current writer stamps [currentSchemaVersion];
+  /// readers default a missing version to 1 (pre-versioned installs).
+  static const String _schemaVersionKey = 'active_ride_schema_version';
+  static const int currentSchemaVersion = 2;
+
+  /// ISO8601 of the last socket/API status change applied to this snapshot.
+  /// Used by [RideSession] to avoid double-applying an event already handled
+  /// via socket (5s FCM+socket dedupe window). Missing → null → treated as
+  /// stale (no dedupe skip, full authoritative apply).
+  static const String _lastEventAtKey = 'active_ride_last_event_at';
+
   // Scheduled-ride metadata — persisted so a cold-start restores the
   // scheduled-ride UI without re-fetching.
   static const String _scheduledPickupTimeKey = 'active_ride_scheduled_pickup_time';
@@ -64,12 +75,48 @@ class ActiveRideStorage {
     await prefs.setString(_idKey, rideId);
     await prefs.setString(_roleKey, role);
     await prefs.setString(_savedAtKey, DateTime.now().toIso8601String());
-    if (status != null) await prefs.setString(_statusKey, status);
+    await prefs.setInt(_schemaVersionKey, currentSchemaVersion);
+    if (status != null) {
+      await prefs.setString(_statusKey, status);
+      await prefs.setString(
+        _lastEventAtKey,
+        DateTime.now().toIso8601String(),
+      );
+    }
   }
 
   static Future<void> updateStatus(String status) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_statusKey, status);
+    await prefs.setString(_lastEventAtKey, DateTime.now().toIso8601String());
+  }
+
+  /// Schema version of the stored snapshot. Missing key (pre-versioned
+  /// installs) defaults to 1. Never throws.
+  static Future<int> getSchemaVersion() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_schemaVersionKey) ?? 1;
+  }
+
+  /// Timestamp of the last applied status change, or null when never
+  /// recorded (pre-versioned installs). Callers treat null as stale
+  /// (no dedupe skip). Never throws.
+  static Future<DateTime?> getLastEventAt() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_lastEventAtKey);
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      return DateTime.parse(raw);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Explicitly stamp the last-event clock (used after a reconciled server
+  /// fetch so a racing socket duplicate is recognised as already applied).
+  static Future<void> setLastEventAt(DateTime at) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_lastEventAtKey, at.toIso8601String());
   }
 
   /// Persist the mid-trip state blob (stops, wait totals, fare, payment).
@@ -187,6 +234,8 @@ class ActiveRideStorage {
     await prefs.remove(_paymentStatusKey);
     await prefs.remove(_stopIndexKey);
     await prefs.remove(_savedAtKey);
+    await prefs.remove(_schemaVersionKey);
+    await prefs.remove(_lastEventAtKey);
     await prefs.remove(_legacyOtpKey);
     await prefs.remove(_scheduledPickupTimeKey);
     await prefs.remove(_scheduledStatusKey);
