@@ -42,6 +42,7 @@
 - 15-02: Fare transparency UI + silent-booking backstop — banners on both booking screens, selected-card caption, 403 kept as dormant backstop (`c1fece5`, `06acdd2`)
 - 16-01: Booking deferral — instant link to searching on both booking screens, scheduled WebView intact, 8 revert contract tests (`8ad56bb`, `b342097`, `4db2c89`)
 - 16-02: Accept-time payment — requiresPayment parser + 12 tests, Pay Now banner/WebView, authorized close-out, rehydrate, link<->cash switcher (`4074559`, `202429d`)
+- 19-02: Cold-start restore + re-sync — RideSession global entry (restoreActiveRide/resyncActiveRide), versioned snapshot (schemaVersion 2 + lastEventAt), rider/driver cold-start + resume + FCM-tap wiring, 15 merge tests (`02d9c81`, `7676fbe`, `77d07cd`)
 
 ## Decisions
 - [02-01] OTP dialog UI left in place; only API call path made OTP-free (UI strip-out in 03-01)
@@ -130,6 +131,9 @@
 - [16-02] Accept rules in pure accept_payment_utils.dart (widget-free unit tests); screen renders parsed snapshot only
 - [16-02] No ApiService change — getRideDetails passthrough already carries paymentUrl/paymentStatus/status/driver
 - [16-02] Single _paymentAuthorized flag for WebView + socket close-out; event pops open WebView so exactly one confirmation shows
+- [19-02] Fetch failure keeps snapshot (none/retry) instead of clearing — transient errors must not nuke restore state
+- [19-02] RideSession as top-level functions (bare restoreActiveRide/resyncActiveRide call sites per plan key-links)
+- [19-02] Driver resume resync touches UI only when resynced ride matches on-screen ride; resync never navigates or clears on stale
 
 ## Blockers
 - None
@@ -150,6 +154,7 @@
 - Phase 17 added: Backend enforces payment_link only for scheduled rides — remove cash from prebook flow and handle new error responses
 
 ## Session
+- Last session: Completed 19-02-PLAN.md (2026-09-22, 3 commits `02d9c81`, `7676fbe`, `77d07cd`, SUMMARY at phases/19-ride-flow-resilience/19-02-SUMMARY.md). Next: 19-03.
 - Last session: Completed 16-02-PLAN.md (2026-09-21, 2 commits `4074559`, `202429d`, SUMMARY at phases/16-revert-ride-payments/16-02-SUMMARY.md). Next: 16-03.
 - Previous: Completed 15-02-PLAN.md (2026-09-19, 2 commits `c1fece5`, `06acdd2`, SUMMARY at phases/15-outstanding-balance-silent-booking-fare-transparency/15-02-SUMMARY.md). Phase 15 complete. Next: phase transition.
 - Previous: Completed 15-01-PLAN.md (2026-09-19, 2 commits `06cadaf`, `6f9ce5b`, SUMMARY at phases/15-outstanding-balance-silent-booking-fare-transparency/15-01-SUMMARY.md). Next: 15-02.

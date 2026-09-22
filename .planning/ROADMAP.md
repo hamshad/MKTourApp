@@ -18,7 +18,7 @@
 | 16 | Revert Ride Payments | In Progress | 2/3 | RVT-01..06 |
 | 17 | Backend payment_link only for scheduled | Planned | 0 | — |
 | 18 | Enforce payment_method constraints for scheduled | Planned | 0 | PAYCONST-01..06 |
-| 19 | Ride Flow Resilience (socket-robust) | Planned | 3 | RES-01..06 |
+| 19 | 2/3 | In Progress|  | RES-01..06 |
 
 ---
 
@@ -405,7 +405,7 @@ Plans:
 - **RES-05**: Outgoing actions never lost — queued across restart with sane expiry, deduped, flushed in order on reconnect
 - **RES-06**: No regressions — instant + scheduled + payment flows behavior-identical when network healthy
 
-**Plans:** 3 plans
+**Plans:** 2/3 plans executed
 
 Plans:
 - [ ] `19-01-PLAN.md` — Socket transport hardening (unbounded reconnect, ack emits, listener registry, durable queue + tests)
