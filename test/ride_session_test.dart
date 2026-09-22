@@ -216,4 +216,106 @@ void main() {
       expect(snapshotStatusForRider('CASH_PENDING'), 'cash_pending');
     });
   });
+
+  group('snapshotStatusForDriver: save-path canonicalization', () {
+    test('driver UI states persist as backend-canonical statuses', () {
+      // The driver screen stores its own state names (pickup/arrived);
+      // the snapshot must carry backend-canonical values so cold start
+      // reconciles 1:1 with getRideDetails.
+      expect(snapshotStatusForDriver('pickup'), 'accepted');
+      expect(snapshotStatusForDriver('arrived'), 'driver_arrived');
+      expect(snapshotStatusForDriver('driver_arrived'), 'driver_arrived');
+      expect(snapshotStatusForDriver('in_progress'), 'in_progress');
+    });
+
+    test('at_stop stays distinct (driver wait timer keys off it)', () {
+      // Unlike the rider side (which collapses at_stop → in_progress),
+      // the driver must keep at_stop so the wait timer restores.
+      expect(snapshotStatusForDriver('at_stop'), 'at_stop');
+      expect(routeForStatus(snapshotStatusForDriver('at_stop')),
+          RestoreRoute.progress);
+    });
+
+    test('unknown statuses pass through lower-cased and trimmed', () {
+      expect(snapshotStatusForDriver('  Pickup '), 'accepted');
+      expect(snapshotStatusForDriver('CASH_PENDING'), 'cash_pending');
+    });
+  });
+
+  group('syntheticRideFromSnapshot: optimistic cold-start ride', () {
+    Map<String, dynamic> blob() => {
+          'stops': [
+            {'label': 'A'},
+            {'label': 'B'},
+          ],
+          'totalWaitMinutes': 7,
+          'totalWaitFee': 3.5,
+          'actualFare': 12.0,
+          'paymentMethod': 'cash',
+          'paymentStatus': 'pending',
+          'currentStopIndex': 1,
+        };
+
+    test('driver UI snapshot rebuilds canonical ride with blob', () {
+      final ride = syntheticRideFromSnapshot(
+        rideId: 'r1',
+        snapshotStatus: 'at_stop',
+        blob: blob(),
+      );
+      expect(ride, isNotNull);
+      expect(ride!['status'], 'at_stop');
+      expect(ride['currentStopIndex'], 1);
+      expect(ride['totalWaitMinutes'], 7);
+      expect((ride['stops'] as List).length, 2);
+      expect(ride['optimistic'], isTrue);
+    });
+
+    test('pickup UI snapshot canonicalizes to accepted', () {
+      final ride = syntheticRideFromSnapshot(
+        rideId: 'r1',
+        snapshotStatus: 'pickup',
+        blob: blob(),
+      );
+      expect(ride, isNotNull);
+      expect(ride!['status'], 'accepted');
+    });
+
+    test('null id / status / final status yield null (no optimistic)', () {
+      expect(
+        syntheticRideFromSnapshot(
+            rideId: null, snapshotStatus: 'in_progress', blob: blob()),
+        isNull,
+      );
+      expect(
+        syntheticRideFromSnapshot(rideId: 'r1', snapshotStatus: null, blob: blob()),
+        isNull,
+      );
+      expect(
+        syntheticRideFromSnapshot(
+            rideId: 'r1', snapshotStatus: 'completed', blob: blob()),
+        isNull,
+      );
+    });
+  });
+
+  group('decideRestore: driver snapshot shapes', () {
+    test('driver UI snapshot reconciles via server-wins status', () {
+      // Driver persists UI names (pickup); the server status decides.
+      final decision = decideRestore(
+        snapshotStatus: 'pickup',
+        serverStatus: 'accepted',
+      );
+      expect(decision.shouldRestore, isTrue);
+      expect(decision.route, RestoreRoute.assigned);
+    });
+
+    test('driver at_stop snapshot + server at_stop restores progress', () {
+      final decision = decideRestore(
+        snapshotStatus: 'at_stop',
+        serverStatus: 'at_stop',
+      );
+      expect(decision.shouldRestore, isTrue);
+      expect(decision.route, RestoreRoute.progress);
+    });
+  });
 }

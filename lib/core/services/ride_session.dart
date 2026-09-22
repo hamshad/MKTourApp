@@ -173,6 +173,54 @@ String snapshotStatusForRider(String status) {
   return s;
 }
 
+/// Map a driver UI status to the backend-canonical snapshot status.
+///
+/// The driver execution screen persists ITS OWN state names (`pickup` for
+/// accepted, `arrived` for driver_arrived); `in_progress`/`at_stop` already
+/// match the backend (at_stop stays distinct — the driver wait timer keys
+/// off it, unlike the rider side which collapses it). Unknown statuses pass
+/// through lower-cased so future states still persist verbatim.
+String snapshotStatusForDriver(String status) {
+  final s = status.trim().toLowerCase();
+  if (s == 'pickup') return 'accepted';
+  if (s == 'arrived') return 'driver_arrived';
+  if (s == 'driver_arrived') return 'driver_arrived';
+  if (s == 'in_progress') return 'in_progress';
+  if (s == 'at_stop') return 'at_stop';
+  return s;
+}
+
+/// Build an optimistic cold-start ride map from a live snapshot + trip blob
+/// when the authoritative fetch failed (offline / token race / cold TLS).
+/// Server values always win later via the background reconcile — this only
+/// keeps the driver on the execution screen instead of a dead home.
+///
+/// Returns null when there is nothing restorable (no id, no status, or a
+/// status in [ActiveRideStorage.finalStatuses]).
+Map<String, dynamic>? syntheticRideFromSnapshot({
+  required String? rideId,
+  required String? snapshotStatus,
+  required Map<String, dynamic> blob,
+}) {
+  if (rideId == null || rideId.isEmpty) return null;
+  if (snapshotStatus == null || snapshotStatus.trim().isEmpty) return null;
+  final canonical = snapshotStatusForDriver(snapshotStatus);
+  if (ActiveRideStorage.finalStatuses.contains(canonical)) return null;
+  final stops = blob['stops'];
+  return {
+    '_id': rideId,
+    'status': canonical,
+    'stops': stops is List ? stops : [],
+    'currentStopIndex': blob['currentStopIndex'] ?? 0,
+    'totalWaitMinutes': blob['totalWaitMinutes'] ?? 0,
+    'totalWaitFee': blob['totalWaitFee'] ?? 0.0,
+    'actualFare': blob['actualFare'] ?? 0.0,
+    'paymentMethod': blob['paymentMethod'],
+    'paymentStatus': blob['paymentStatus'],
+    'optimistic': true,
+  };
+}
+
 /// Extract the driver id from a `getRideDetails` ride payload.
 /// Tolerates `driver` as map (`_id`/`id`/`driverId`) or a top-level id field.
 String? driverIdFromRide(Map<String, dynamic> ride) {

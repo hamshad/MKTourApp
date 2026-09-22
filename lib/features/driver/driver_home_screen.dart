@@ -394,6 +394,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             _currentRideId = null;
             _rideData = null;
           });
+          _clearActiveRideStorage();
           _promoteParkedRequests();
           debugPrint(
             '⚠️ [DriverHomeScreen] Ride ended while disconnected ($status), returning to online',
@@ -404,6 +405,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             _currentRideId = null;
             _rideData = null;
           });
+          _clearActiveRideStorage();
           _promoteParkedRequests();
           debugPrint(
             '✅ [DriverHomeScreen] Ride completed while disconnected, returning to online',
@@ -412,8 +414,22 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         // For active states (accepted, in_progress, etc.), the UI should already
         // reflect the correct state. Just update ride data to sync any changes.
         else if (ride != null) {
+          // Stuck-shape repair: online WITH a ride id means the cold-start
+          // profile adopt mapped an unknown shape (bare id / unmapped
+          // status) — the server status is authoritative, adopt it so the
+          // driver lands on the execution screen instead of a dead home.
+          // An optimistic restore also always yields to the server on first
+          // contact. Never touches settled execution states (a fresh local
+          // transition always beats a racing sync) or queue browsing
+          // (status == request).
+          final stuckOnHome = _status == 'online' && _currentRideId != null;
+          final wasOptimistic = _rideData?['optimistic'] == true;
+          final repaired = (stuckOnHome || wasOptimistic)
+              ? _uiStatusForServerStatus(status.toLowerCase())
+              : _status;
           setState(() {
             _rideData = ride is Map<String, dynamic> ? ride : null;
+            _status = repaired;
           });
         }
       }
@@ -512,6 +528,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         // Trigger sync if we found an active ride
         if (_currentRideId != null) {
           debugPrint('🚖 [DriverHomeScreen] Syncing active ride data from backend...');
+          // Snapshot never lags the profile: a kill before the next
+          // transition still restores from storage.
+          _persistActiveRide();
           _syncRideStatus();
           _fetchNavigationRoute();
         }
@@ -847,12 +866,67 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   }
 
   /// Persist the current active ride so it can be restored after an app restart.
+  ///
+  /// Also persists the trip blob from [_rideData] (stops, stop index, wait
+  /// totals, fare, payment) so a kill mid-trip restores position + wait
+  /// timer even when the server payload omits them. Single choke point —
+  /// every transition (accept/arrive/start/stop-arrive/resume/cash) flows
+  /// through here.
   Future<void> _persistActiveRide() async {
     if (_currentRideId == null) return;
     await ActiveRideStorage.save(
       rideId: _currentRideId!,
       role: 'driver',
       status: _status,
+    );
+    final ride = _rideData;
+    if (ride == null) return;
+    final stops = ride['stops'];
+    int? stopIndex;
+    final rawIndex = ride['currentStopIndex'];
+    if (rawIndex is num) {
+      stopIndex = rawIndex.toInt();
+    } else if (rawIndex is String) {
+      stopIndex = int.tryParse(rawIndex);
+    }
+    int? waitMinutes;
+    final rawWaitMins = ride['totalWaitMinutes'];
+    if (rawWaitMins is num) {
+      waitMinutes = rawWaitMins.toInt();
+    } else if (rawWaitMins is String) {
+      waitMinutes = int.tryParse(rawWaitMins);
+    }
+    double? waitFee;
+    final rawWaitFee = ride['totalWaitFee'];
+    if (rawWaitFee is num) {
+      waitFee = rawWaitFee.toDouble();
+    } else if (rawWaitFee is String) {
+      waitFee = double.tryParse(rawWaitFee);
+    }
+    double? fare;
+    for (final key in ['actualFare', 'adjustedFare']) {
+      final raw = ride[key];
+      if (raw is num) {
+        fare = raw.toDouble();
+        break;
+      } else if (raw is String) {
+        final parsed = double.tryParse(raw);
+        if (parsed != null) {
+          fare = parsed;
+          break;
+        }
+      }
+    }
+    await ActiveRideStorage.saveTripState(
+      stops: stops is List && stops.isNotEmpty
+          ? List<dynamic>.from(stops)
+          : null,
+      totalWaitMinutes: waitMinutes,
+      totalWaitFee: waitFee,
+      actualFare: fare,
+      paymentMethod: ride['paymentMethod']?.toString(),
+      paymentStatus: ride['paymentStatus']?.toString(),
+      currentStopIndex: stopIndex,
     );
   }
 
@@ -876,6 +950,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       api: _apiService,
       socket: _socketService,
     );
+    if (outcome is RideNone) {
+      // Authoritative fetch failed (offline / token race / cold TLS) but
+      // the live snapshot was kept — restore optimistically from snapshot
+      // + blob instead of stranding a mid-trip driver on home. Never fires
+      // when the server said final (that returns Cleared, not RideNone).
+      await _restoreOptimisticFromSnapshot();
+      return;
+    }
     if (outcome is! Restored) return;
     final ride = outcome.ride;
     final status = (ride['status'] ?? '').toString().toLowerCase();
@@ -896,6 +978,48 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       _status = _uiStatusForServerStatus(status);
     });
     _fetchNavigationRoute();
+  }
+
+  /// Optimistic cold-start restore when the authoritative fetch failed but
+  /// a live snapshot survived (offline / token race / cold TLS on reopen).
+  /// Rebuilds the execution screen from snapshot + trip blob, then
+  /// reconciles in the background via [_syncRideStatus] — server values win
+  /// as soon as the network answers. Only fires for pre-completion
+  /// execution states; anything else (online, cash-confirm, unknown) stays
+  /// home, matching prior behavior.
+  Future<void> _restoreOptimisticFromSnapshot() async {
+    if (_currentRideId != null || !mounted) return;
+    final storedId = await ActiveRideStorage.getRideId();
+    final snapStatus = await ActiveRideStorage.getStatus();
+    if (storedId == null || storedId.isEmpty || snapStatus == null) return;
+    final canonical = snapshotStatusForDriver(snapStatus);
+    const liveExecution = {
+      'accepted',
+      'driver_arrived',
+      'arrived',
+      'in_progress',
+      'at_stop',
+    };
+    if (!liveExecution.contains(canonical)) return;
+    final blob = await ActiveRideStorage.getTripState();
+    final ride = syntheticRideFromSnapshot(
+      rideId: storedId,
+      snapshotStatus: snapStatus,
+      blob: blob,
+    );
+    if (ride == null || !mounted) return;
+    debugPrint(
+      '⚡ [DriverHomeScreen] Optimistic restore $storedId → $canonical (fetch failed, reconciling in background)',
+    );
+    setState(() {
+      _currentRideId = storedId;
+      _rideData = ride;
+      _status = _uiStatusForServerStatus(canonical);
+    });
+    _fetchNavigationRoute();
+    // Background reconcile: replaces the optimistic ride with server truth
+    // (and repairs _status if the server disagrees) when reachable.
+    _syncRideStatus();
   }
 
   /// Map a backend ride status onto this screen's execution states.
