@@ -34,12 +34,34 @@ void main() {
       queue.dispose();
     });
 
-    test('critical events are never deduped', () {
+    test('distinct user intents are never merged', () {
       final queue = SocketEventQueue();
       queue.enqueue('ride:accept', {'rideId': 'r1'});
       queue.enqueue('ride:accept', {'rideId': 'r2'});
 
       expect(queue.pendingCount, 2);
+      queue.dispose();
+    });
+
+    test('idempotent presence intents coalesce per identity', () {
+      final queue = SocketEventQueue();
+      queue.enqueue('driver:goOnline', {'driverId': 'd1'});
+      queue.enqueue('driver:goOnline', {'driverId': 'd1'});
+      queue.enqueue('join:room', {'room': 'ride:r1'});
+      queue.enqueue('join:room', {'room': 'ride:r1'});
+
+      expect(queue.pendingCount, 2);
+      queue.dispose();
+    });
+
+    test('coalescing keeps distinct identities', () {
+      final queue = SocketEventQueue();
+      queue.enqueue('driver:goOnline', {'driverId': 'd1'});
+      queue.enqueue('driver:goOnline', {'driverId': 'd2'});
+      queue.enqueue('join:room', {'room': 'ride:r1'});
+      queue.enqueue('join:room', {'room': 'ride:r2'});
+
+      expect(queue.pendingCount, 4);
       queue.dispose();
     });
   });
@@ -68,10 +90,22 @@ void main() {
       queue.dispose();
     });
 
-    test('key is random local key when payload has no rideId', () {
+    test('presence key carries driver identity for server dedupe', () {
       final queue = SocketEventQueue();
       queue.enqueue('driver:goOnline', {'driverId': 'd1'});
       queue.enqueue('driver:goOnline', {'driverId': 'd1'});
+
+      // Same identity coalesces to a single entry (no goOnline storm).
+      final drained = queue.drain();
+      expect(drained, hasLength(1));
+      expect(drained.single.idempotencyKey, startsWith('d1:driver:goOnline:'));
+      queue.dispose();
+    });
+
+    test('key is random local key when payload has no identity', () {
+      final queue = SocketEventQueue();
+      queue.enqueue('ride:accept', {'foo': 'bar'});
+      queue.enqueue('ride:accept', {'foo': 'bar'});
 
       final drained = queue.drain();
       expect(drained, hasLength(2));

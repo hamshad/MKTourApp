@@ -47,13 +47,18 @@ class QueuedEvent {
                 ? EventPriority.critical
                 : EventPriority.bestEffort);
 
-  /// `rideId:event:createdAtMs` when the payload carries a ride id, else a
-  /// random `local:` key. Stable for a given intent, unique across intents.
+  /// `rideId:event:createdAtMs` when the payload carries a ride id,
+  /// `{identity}:event:createdAtMs` for idempotent presence/room/tracking
+  /// intents (driver/user/room identity), else a random `local:` key.
+  /// Identity-prefixed so the server can dedupe ack-timeout replays of the
+  /// same intent. Stable for a given intent, unique across intents.
   static String buildIdempotencyKey(
     String event,
     dynamic data,
     int createdAtMs,
   ) {
+    final identity = SocketEventQueue.coalesceKey(event, data);
+    if (identity != null) return '$identity:$event:$createdAtMs';
     String? rideId;
     if (data is Map) {
       for (final key in ['rideId', 'ride_id']) {
@@ -122,6 +127,8 @@ class QueuedEvent {
 /// - Persist queue to SharedPreferences so events survive app restarts
 /// - Flush queue when connection is restored (critical-first ordering)
 /// - Deduplicate events (e.g., only keep latest location update)
+/// - Coalesce idempotent presence/room/tracking intents per identity
+///   (goOnline/join/track for the same driver/room keep only the latest)
 /// - Expire stale events automatically (tiered: 2h critical, 5m best-effort)
 /// - Cap persisted queue at 100 events (oldest best-effort evicted first)
 ///
@@ -158,8 +165,26 @@ class SocketEventQueue {
   /// Events where only the latest value matters (deduplicated, short TTL).
   static const Set<String> deduplicatedEvents = {'driver:locationUpdate'};
 
+  /// Idempotent presence/room/tracking intents: re-emitting the same
+  /// identity is a no-op server-side, so the queue keeps only the latest
+  /// entry per (event, identity). Without this, every offline goOnline /
+  /// reconnect / resume appends another copy that all flush at once
+  /// (driver-goonline-storm: 23 duplicate flushes + server status echoes).
+  /// Distinct user intents (ride:accept/cancel, payments) are NEVER
+  /// coalesced — see [coalesceKey].
+  static const Set<String> coalescedEvents = {
+    'user:goOnline',
+    'driver:goOnline',
+    'driver:goOffline',
+    'join:room',
+    'leave:room',
+    'ride:trackDriver',
+    'ride:stopTracking',
+  };
+
   final List<QueuedEvent> _queue = [];
   bool _isPersisting = false;
+  bool _persistScheduled = false;
 
   /// Stream controller to notify when queue state changes
   final StreamController<int> _queueSizeController =
@@ -171,6 +196,28 @@ class SocketEventQueue {
   /// Current number of pending events
   int get pendingCount => _queue.length;
 
+  /// Identity for coalescing [coalescedEvents]: the driver/user/room the
+  /// intent targets. Null for non-coalesced events (distinct user intents
+  /// are never merged — e.g. ride:accept for two different rideIds).
+  static String? coalesceKey(String event, dynamic data) {
+    if (!coalescedEvents.contains(event)) return null;
+    if (data is! Map) return null;
+    switch (event) {
+      case 'join:room':
+      case 'leave:room':
+        final room = data['room']?.toString();
+        if (room != null && room.isNotEmpty) return 'room:$room';
+        return null;
+      default:
+        for (final key in ['driverId', 'userId', 'driver_id', 'user_id']) {
+          final value = data[key];
+          if (value != null && value.toString().isNotEmpty) {
+            return value.toString();
+          }
+        }
+        return null;
+    }
+  }
   /// True when [event] for [rideId] already has a queued intent.
   /// Screens use this to keep offline action buttons from double-firing
   /// while the same rideId+action is still pending (19-03).
@@ -193,6 +240,9 @@ class SocketEventQueue {
   ///
   /// If the event is a deduplicated type (like location updates),
   /// it replaces any existing event of the same type.
+  /// If the event is a coalesced idempotent intent (presence/room/tracking
+  /// for the same identity), it replaces the matching entry so offline
+  /// taps + reconnect re-emits can never stack duplicates.
   void enqueue(String event, dynamic data, {bool requiresAck = false}) {
     // Auto-classify: critical events always require ack
     final isCritical = criticalEvents.contains(event);
@@ -201,6 +251,14 @@ class SocketEventQueue {
     // For deduplicated events, remove any existing event of the same type
     if (deduplicatedEvents.contains(event)) {
       _queue.removeWhere((e) => e.event == event);
+    }
+
+    // For coalesced idempotent intents, replace the same (event, identity)
+    // entry. Entries without an extractable identity fall through and append
+    // (fail-open: never drop an intent we cannot prove duplicate).
+    final key = coalesceKey(event, data);
+    if (key != null) {
+      _queue.removeWhere((e) => e.event == event && coalesceKey(e.event, e.data) == key);
     }
 
     final now = DateTime.now();
@@ -333,9 +391,14 @@ class SocketEventQueue {
     }
   }
 
-  /// Persist queue to SharedPreferences.
+  /// Persist queue to SharedPreferences. Concurrent callers chain a
+  /// trailing write instead of dropping (a dropped drain-empty write
+  /// resurrects already-flushed events on the next loadFromDisk).
   Future<void> _persistQueue() async {
-    if (_isPersisting) return;
+    if (_isPersisting) {
+      _persistScheduled = true;
+      return;
+    }
     _isPersisting = true;
 
     try {
@@ -346,6 +409,10 @@ class SocketEventQueue {
       debugPrint('❌ [EventQueue] Failed to persist: $e');
     } finally {
       _isPersisting = false;
+      if (_persistScheduled) {
+        _persistScheduled = false;
+        await _persistQueue();
+      }
     }
   }
 

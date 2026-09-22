@@ -35,6 +35,19 @@ class SocketService with WidgetsBindingObserver {
   String? _currentToken; // Track current token to detect changes
   bool _isAppInBackground = false;
 
+  /// Events protected by the server-ack guard ([_emitWithAckGuard]).
+  /// ONLY intents with a server ack contract belong here. Presence / room /
+  /// tracking events (goOnline, join:room, trackDriver) are idempotent
+  /// broadcasts the server never acks — ack-guarding them re-queues a
+  /// duplicate 8s after every successful emit (driver-goonline-storm).
+  static const Set<String> ackGuardedEvents = {
+    'ride:accept',
+    'ride:cancel',
+    'payment:excessCashRequested',
+    'payment:selected',
+    'payment_selected',
+  };
+
   /// Registry of screen-registered listeners, re-attached after every
   /// re-init/connect so screens never go silently deaf when the underlying
   /// socket instance is disposed and recreated.
@@ -370,8 +383,10 @@ class SocketService with WidgetsBindingObserver {
 
   /// Start a real ping/pong heartbeat to detect silent disconnections.
   /// Every [_heartbeatIntervalSeconds] we `emit('ping')` and expect a `pong`
-  /// within [_pongTimeoutSeconds]; a missed pong (or null transport) forces
-  /// a reconnect. The `pong` handler is registered in [initSocket].
+  /// within [_pongTimeoutSeconds]. A missed app-level pong is advisory only
+  /// (no server pong contract — never force a reconnect on it); a null
+  /// transport or failed ping emit still forces one. The `pong` handler is
+  /// registered in [initSocket].
   void _startHeartbeat() {
     _heartbeatTimer?.cancel();
     _pongTimeoutTimer?.cancel();
@@ -404,8 +419,16 @@ class SocketService with WidgetsBindingObserver {
             const Duration(seconds: _pongTimeoutSeconds),
             () {
               if (_awaitingPong) {
+                // Advisory only: the backend has no custom 'pong' handler
+                // contract, so a missed app-level pong must NOT kill a
+                // healthy socket (that self-inflicted reconnect re-flushes
+                // the queue + replays goOnline every heartbeat cycle).
+                // Real death is still caught by engine.io keepalive via
+                // onDisconnect. Just clear the flag and log.
                 _awaitingPong = false;
-                _forceReconnect('missed pong');
+                debugPrint(
+                  '[SocketService] Heartbeat: no app-level pong (advisory, keeping connection)',
+                );
               }
             },
           );
@@ -440,7 +463,7 @@ class SocketService with WidgetsBindingObserver {
   /// For best-effort events (location), this still queues but deduplicates.
   void emitReliable(String event, dynamic data) {
     if (_socket != null && _socket!.connected) {
-      if (SocketEventQueue.criticalEvents.contains(event)) {
+      if (ackGuardedEvents.contains(event)) {
         _emitWithAckGuard(event, data);
       } else {
         _socket!.emit(event, data);
@@ -513,7 +536,7 @@ class SocketService with WidgetsBindingObserver {
     final events = _eventQueue.drain();
     for (final event in events) {
       if (_socket != null && _socket!.connected) {
-        if (SocketEventQueue.criticalEvents.contains(event.event)) {
+        if (ackGuardedEvents.contains(event.event)) {
           _emitWithAckGuard(event.event, event.data);
         } else {
           _socket!.emit(event.event, event.data);

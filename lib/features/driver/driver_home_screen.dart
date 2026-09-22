@@ -94,6 +94,13 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   // Track if socket listeners are set up to re-register after reconnection
   bool _socketListenersSetup = false;
 
+  // Debounce for driver:goOnline re-emits: reconnect + resume + tap paths
+  // can fire within milliseconds of each other; the server treats repeats
+  // as redundant status broadcasts. Coalescing in SocketEventQueue bounds
+  // the offline case — this bounds the connected case.
+  DateTime? _lastDriverOnlineEmitAt;
+  static const Duration _driverOnlineDebounce = Duration(seconds: 10);
+
   // Store driverId to use in dispose without accessing context
   String? _driverId;
 
@@ -610,7 +617,17 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     super.dispose();
   }
 
-  void _emitDriverOnline() {
+  void _emitDriverOnline({bool force = false}) {
+    final now = DateTime.now();
+    if (!force &&
+        _lastDriverOnlineEmitAt != null &&
+        now.difference(_lastDriverOnlineEmitAt!) < _driverOnlineDebounce) {
+      debugPrint(
+        '⏭️ [DriverHomeScreen] Skipping duplicate driver:goOnline (debounced)',
+      );
+      return;
+    }
+    _lastDriverOnlineEmitAt = now;
     final user = Provider.of<AuthProvider>(context, listen: false).user;
     debugPrint(
       '🔍 [DriverHomeScreen] User Object: $user',
@@ -2063,7 +2080,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           );
 
           if (isGoingOnline) {
-            _emitDriverOnline();
+            _emitDriverOnline(force: true);
             _startLocationUpdates();
             _fetchScheduledPool();
           } else {
