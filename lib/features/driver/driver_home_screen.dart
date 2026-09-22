@@ -11,6 +11,7 @@ import '../../core/widgets/platform_map.dart';
 import '../../core/widgets/route_map_helpers.dart';
 import 'driver_request_panel.dart';
 import 'driver_navigation_panel.dart';
+import '../../core/widgets/connection_banner.dart';
 import '../../core/widgets/custom_snackbar.dart';
 import '../../core/models/error_display_helper.dart';
 import '../../core/models/vehicle.dart';
@@ -2393,6 +2394,20 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       } else if (_status == 'in_progress') {
         // Complete Ride — silent guard picks the freshest known fix first,
         // always falls back to last known. Never blocks, never prompts.
+        //
+        // Offline (19-03): completion is REST-only (no socket contract for
+        // it), so the button stays enabled with queued-intent copy and no
+        // state change — never a fake success, never a double-fire.
+        if (!_socketService.isConnected) {
+          if (!mounted) return;
+          setState(() => _isLoading = false);
+          CustomSnackbar.show(
+            context,
+            message: 'Complete ride — $kQueuedIntentCopy',
+            type: SnackbarType.info,
+          );
+          return;
+        }
         final pos = await _bestEffortCompletionLocation();
         final response = await _apiService.completeRide(
           _currentRideId!,
@@ -2481,7 +2496,20 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           );
         }
       } else if (_status == 'awaiting_cash_confirmation') {
-        // Confirm Cash Collection
+        // Confirm Cash Collection.
+        //
+        // Offline (19-03): REST-only action — button stays enabled with
+        // queued-intent copy, no state change, no double-fire.
+        if (!_socketService.isConnected) {
+          if (!mounted) return;
+          setState(() => _isLoading = false);
+          CustomSnackbar.show(
+            context,
+            message: 'Confirm cash — $kQueuedIntentCopy',
+            type: SnackbarType.info,
+          );
+          return;
+        }
         final response = await _apiService.confirmCashCollection(
           _currentRideId!,
         );
@@ -3389,6 +3417,16 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             boxShadow: [
               BoxShadow(blurRadius: 20.0, color: Colors.black.withOpacity(0.1)),
             ],
+          ),
+          // Connection state (19-03): overlay pill above the map, top-center.
+          // Renders nothing when live (zero layout shift); never resizes map.
+          Positioned(
+            top: 56,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: ConnectionBanner(rideId: _currentRideId),
+            ),
           ),
         ],
       ),

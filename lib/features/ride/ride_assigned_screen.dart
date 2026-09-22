@@ -15,6 +15,7 @@ import '../../core/services/navigation_service.dart';
 import '../../core/services/places_service.dart';
 import '../../core/services/marker_interpolation_service.dart';
 import '../../core/models/error_display_helper.dart';
+import '../../core/widgets/connection_banner.dart';
 import '../../core/widgets/platform_map.dart';
 import '../../core/widgets/route_map_helpers.dart';
 import '../../core/models/vehicle.dart';
@@ -163,6 +164,10 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   // and can show e.g. 11min even as driver reaches pickup.
   DateTime? _lastSocketEtaAt;
   int _etaRequestSeq = 0;
+
+  // Last driver position update (19-03 stale rule): older than 30s renders
+  // the marker dimmed + timestamped, never animated as live.
+  DateTime? _lastDriverUpdateAt;
 
   // Cancellation state
   bool _isCancelling = false;
@@ -1262,6 +1267,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         if (data['location']?['coordinates'] != null) {
           final coords = data['location']['coordinates'];
           final newPosition = latlong2.LatLng(coords[1], coords[0]);
+          _lastDriverUpdateAt = DateTime.now();
 
           if (_markerInterpolation != null) {
             // Smooth interpolation to new position
@@ -2017,13 +2023,18 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
           driverMarkerColor = Colors.blue;
       }
 
+      // Stale rule (19-03): position older than 30s renders dimmed grey,
+      // never animated as live. Freshness is stamped on every
+      // driver:locationChanged event.
+      final driverStale = _driverLocation != null &&
+          isRideDataStale(_lastDriverUpdateAt);
       newMarkers.add(
         MapMarker(
           id: 'driver',
           lat: _driverLocation!.latitude,
           lng: _driverLocation!.longitude,
           title: driverTitle,
-          markerColor: driverMarkerColor,
+          markerColor: driverStale ? Colors.grey : driverMarkerColor,
         ),
       );
     }
@@ -2269,9 +2280,31 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     );
   }
 
-  /// Cancel the ride using the appropriate API endpoint
+  /// Cancel the ride using the appropriate API endpoint.
+  ///
+  /// Offline (19-03): the button stays enabled, queues via `emitReliable`
+  /// with queued-intent copy, and never double-fires while the same
+  /// rideId+action is pending.
   Future<void> _cancelRide() async {
     if (_isCancelling) return;
+
+    // Offline first: queue the intent, toast, no double-fire.
+    if (!_socketService.isConnected) {
+      if (_socketService.eventQueue
+          .hasPending('ride:cancel', widget.rideId)) {
+        return;
+      }
+      _socketService.emitReliable('ride:cancel', {'rideId': widget.rideId});
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cancel ride — $kQueuedIntentCopy'),
+          duration: Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
 
     setState(() => _isCancelling = true);
 
@@ -2595,6 +2628,10 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       return RideCompleteScreen(rideData: completedData);
     }
 
+    // Stale chip gate: only once a driver position exists (a null feed on
+    // a fresh searching screen is "waiting", not "stale").
+    final showStaleChip = _driverLocation != null &&
+        isRideDataStale(_lastDriverUpdateAt);
     return Scaffold(
       body: Stack(
         children: [
@@ -2605,6 +2642,27 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
             polylines: _polylines,
             interactive: true,
           ),
+
+          // Connection state (19-03): overlay pill above the map, top-center.
+          // Renders nothing when live (zero layout shift); never resizes map.
+          Positioned(
+            top: 56,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: ConnectionBanner(rideId: widget.rideId),
+            ),
+          ),
+
+          if (showStaleChip)
+            Positioned(
+              top: 104,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: StaleDataChip(lastUpdated: _lastDriverUpdateAt),
+              ),
+            ),
 
           // Status Panel
           Positioned(bottom: 0, left: 0, right: 0, child: _buildStatusPanel()),
@@ -2993,20 +3051,42 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                                 : Colors.orange,
                           ),
                         ),
-                        // Show ETA with real traffic data when driver is coming
+                        // Show ETA with real traffic data when driver is coming.
+                        // Stale rule (19-03): ETA older than 30s renders dimmed
+                        // + timestamped via StaleDataChip, never as live.
                         if (_rideStatus == 'accepted') ...[
                           const SizedBox(height: 4),
-                          Text(
-                            _etaMinutes > 0
-                                ? '$_etaMinutes mins away · $_etaText'
-                                : _navigationState != null
-                                ? '${_navigationState!.distanceText} away · ${_navigationState!.etaText}'
-                                : 'Calculating ETA...',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.orange[700],
-                              fontWeight: FontWeight.w500,
-                            ),
+                          Builder(
+                            builder: (context) {
+                              final etaStale =
+                                  _driverLocation != null &&
+                                      isRideDataStale(_lastDriverUpdateAt);
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _etaMinutes > 0
+                                        ? '$_etaMinutes mins away · $_etaText'
+                                        : _navigationState != null
+                                            ? '${_navigationState!.distanceText} away · ${_navigationState!.etaText}'
+                                            : 'Calculating ETA...',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: etaStale
+                                          ? Colors.grey
+                                          : Colors.orange[700],
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  if (etaStale) ...[
+                                    const SizedBox(height: 4),
+                                    StaleDataChip(
+                                      lastUpdated: _lastDriverUpdateAt,
+                                    ),
+                                  ],
+                                ],
+                              );
+                            },
                           ),
                         ],
                       ],

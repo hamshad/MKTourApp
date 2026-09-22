@@ -171,6 +171,24 @@ class SocketEventQueue {
   /// Current number of pending events
   int get pendingCount => _queue.length;
 
+  /// True when [event] for [rideId] already has a queued intent.
+  /// Screens use this to keep offline action buttons from double-firing
+  /// while the same rideId+action is still pending (19-03).
+  bool hasPending(String event, String rideId) {
+    if (rideId.isEmpty) return false;
+    return _queue.any((e) {
+      if (e.event != event) return false;
+      final data = e.data;
+      if (data is Map) {
+        for (final key in ['rideId', 'ride_id', 'bookingId', 'id']) {
+          final value = data[key];
+          if (value != null && value.toString() == rideId) return true;
+        }
+      }
+      return false;
+    });
+  }
+
   /// Add an event to the queue.
   ///
   /// If the event is a deduplicated type (like location updates),

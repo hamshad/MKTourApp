@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/platform_map.dart';
+import '../../core/widgets/connection_banner.dart';
 import '../../core/widgets/route_map_helpers.dart';
 import '../../core/widgets/ride_searching_overlay.dart';
 import '../../core/services/socket_service.dart';
@@ -521,7 +522,24 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
 
   /// Cancel is blocked once the trip is underway — friendly copy instead of
   /// a dead button or a backend 400.
+  ///
+  /// Offline (19-03): the tap still queues safely via `emitReliable` with the
+  /// queued-intent toast and no double-fire while the same intent is pending.
   void _handleCancelAttempt() {
+    if (!_socketService.isConnected) {
+      final rideId = widget.rideId ?? '';
+      if (_socketService.eventQueue.hasPending('ride:cancel', rideId)) return;
+      _socketService.emitReliable('ride:cancel', {'rideId': rideId});
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cancel — $kQueuedIntentCopy'),
+          duration: Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -542,6 +560,9 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Stale rule (19-03): driver position older than 30s renders dimmed +
+    // timestamped, never animated as live.
+    final driverStale = isRideDataStale(_lastLocationUpdateTime);
     return Scaffold(
       body: Stack(
         children: [
@@ -556,7 +577,10 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
                 id: 'driver',
                 lat: _driverLocation.latitude,
                 lng: _driverLocation.longitude,
-                child: const Icon(Icons.directions_car, color: AppTheme.primaryColor, size: 40),
+                child: Opacity(
+                  opacity: driverStale ? 0.45 : 1.0,
+                  child: const Icon(Icons.directions_car, color: AppTheme.primaryColor, size: 40),
+                ),
                 title: 'Driver',
               ),
               MapMarker(
@@ -594,6 +618,30 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
               ),
             ),
           ),
+
+          // Connection state (19-03): overlay pill above the map, top-center,
+          // safe-area aware. Renders nothing when live (zero layout shift,
+          // healthy-network UI pixel-identical). Never resizes the map.
+          Positioned(
+            top: 56,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: ConnectionBanner(rideId: widget.rideId),
+            ),
+          ),
+
+          // Stale position chip (19-03): dimmed + timestamped when the
+          // driver feed is older than 30s. Never animates stale as live.
+          if (driverStale)
+            Positioned(
+              top: 104,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: StaleDataChip(lastUpdated: _lastLocationUpdateTime),
+              ),
+            ),
 
           // Status Panel
           Positioned(
