@@ -933,7 +933,7 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            isScheduled
+                            _isScheduled
                                 ? 'Free cancel up to 60 min before pickup · 15% fee after · 15 min grace after booking'
                                 : 'Free cancel within 2 min · 10% fee after grace · free after driver accepts',
                             style: TextStyle(
