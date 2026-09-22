@@ -1803,20 +1803,28 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         type: SnackbarType.info,
       );
     } else {
-      // Busy (on a ride, collecting cash, ...): park the request instead of
-      // dropping it. Dropping meant "notification sound plays but no card" —
-      // FCM rings unconditionally while this branch discarded the payload.
-      // The parked request surfaces via _promoteParkedRequests() as soon as
-      // the driver returns to online. Active-ride state (_currentRideId /
-      // _rideData / _status) is deliberately untouched so cash collection and
-      // navigation keep working. Offline drivers stay a hard drop (backend
-      // should not dispatch to them at all).
+      // Busy (on a ride, collecting cash, ...): drop the request.
+      // Backend now suppresses ride:newRequest + FCM for active drivers
+      // (getBusyDriverIds check). If a request still arrives (race, bug,
+      // legacy path), we silently ignore it — no parking, no snackbar.
+      // This matches the suppression intent and prevents queue pollution.
       if (_status == 'offline') {
         debugPrint(
           '⚠️ [DriverHomeScreen] Received request but status is $_status',
         );
         return;
       }
+      // Active ride guard: _currentRideId is set for all busy states
+      // (pickup, arrived, driver_arrived, in_progress, at_stop,
+      // awaiting_payment, awaiting_cash_confirmation).
+      if (_currentRideId != null) {
+        debugPrint(
+          '🔔 [DriverHomeScreen] Dropping request $rideId — driver has active ride ($_currentRideId, status=$_status)',
+        );
+        return;
+      }
+      // No active ride but not online/request (should not happen).
+      // Park as fallback for any unforeseen intermediate state.
       if (_requestQueue.length >= _maxQueuedRequests) {
         debugPrint(
           '⚠️ [DriverHomeScreen] Parked queue full ($_maxQueuedRequests) — dropping $rideId',
@@ -1824,10 +1832,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         return;
       }
       debugPrint(
-        '🔔 [DriverHomeScreen] Parking request $rideId while $_status — promotes on online',
+        '🔔 [DriverHomeScreen] Parking request $rideId while $_status (no active ride) — promotes on online',
       );
       setState(() {
-        // Newest parks first so promotion surfaces the freshest offer.
         _requestQueue.insert(0, normalised);
         _requestIndex = 0;
       });
@@ -1839,9 +1846,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     }
   }
 
-  /// Surface a request parked during a busy state now that the driver is
-  /// free. No-op unless genuinely back to online with no active ride and a
+  /// Surface a parked request now that the driver is free.
+  /// No-op unless genuinely back to online with no active ride and a
   /// non-empty park queue. Call after every reset-to-online.
+  /// Note: Since backend suppression (getBusyDriverIds), requests during
+  /// active rides are dropped in _handleNewRideRequest, not parked. This
+  /// promotes only requests parked in unforeseen intermediate states.
   void _promoteParkedRequests() {
     if (!mounted ||
         _status != 'online' ||
