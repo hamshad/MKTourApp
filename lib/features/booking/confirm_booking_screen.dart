@@ -934,8 +934,8 @@ class _ConfirmBookingScreenState extends State<ConfirmBookingScreen> {
                         Expanded(
                           child: Text(
                             _isScheduled
-                                ? 'Free cancel up to 60 min before pickup · 15% fee after · 15 min grace after booking'
-                                : 'Free cancel within 2 min · 10% fee after grace · free after driver accepts',
+                                ? 'A cancellation fee of 15% will apply if you cancel less than 60 min before pickup.'
+                                : 'Free cancel within 2 min. After that, a 10% fee applies. Free cancel after driver accepts.',
                             style: TextStyle(
                               fontSize: 11,
                               color: Colors.grey[600],
