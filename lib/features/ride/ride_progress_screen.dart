@@ -652,18 +652,6 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
             ),
           ),
 
-          // Stale position chip (19-03): dimmed + timestamped when the
-          // driver feed is older than 30s. Never animates stale as live.
-          if (driverStale)
-            Positioned(
-              top: 104,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: StaleDataChip(lastUpdated: _lastLocationUpdateTime),
-              ),
-            ),
-
           // Status Panel
           Positioned(
             bottom: 0,
