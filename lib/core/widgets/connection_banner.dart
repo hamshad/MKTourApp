@@ -164,14 +164,25 @@ class _ConnectionBannerState extends State<ConnectionBanner> {
     super.dispose();
   }
 
-  Future<void> _defaultRetry() async {
-    // Debounce: second tap within 2s ignored (no double-fire on reconnect).
+  /// Retry tap with a 2s debounce: a second tap within the window is
+  /// ignored so reconnects never double-fire (covers both the default
+  /// socket retry and injected test handlers).
+  void _onRetryTap() {
     final now = DateTime.now();
     if (_retryLastTap != null &&
         now.difference(_retryLastTap!) < const Duration(seconds: 2)) {
       return;
     }
     _retryLastTap = now;
+    final handler = widget.onRetry;
+    if (handler != null) {
+      handler();
+    } else {
+      unawaited(_defaultRetry());
+    }
+  }
+
+  Future<void> _defaultRetry() async {
     final socket = SocketService();
     await socket.initSocket(forceReconnect: true);
     try {
@@ -291,7 +302,7 @@ class _ConnectionBannerState extends State<ConnectionBanner> {
             if (!isReconnecting && widget.showRetry) ...[
               const SizedBox(width: 8),
               TextButton(
-                onPressed: widget.onRetry ?? _defaultRetry,
+                onPressed: _onRetryTap,
                 style: TextButton.styleFrom(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
