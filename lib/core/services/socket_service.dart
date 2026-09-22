@@ -774,10 +774,20 @@ class SocketService with WidgetsBindingObserver {
     }
   }
 
-  void off(String event) {
+  /// Remove listener(s) for [event]. With [handler], only that exact
+  /// closure is removed (pass the same instance given to [on]); without it,
+  /// ALL handlers for the event are removed. Prefer the scoped form —
+  /// screens share the singleton socket, and a global off in one screen's
+  /// dispose/re-register silently deafens other mounted screens (e.g. an
+  /// open settlement sheet losing `payment:succeeded` on home reconnect).
+  void off(String event, [Function(dynamic)? handler]) {
     if (_socket != null) {
-      _socket!.off(event);
-      debugPrint('\u{1f507} [SocketService] Stopped listening for: $event');
+      if (handler != null) {
+        _socket!.off(event, handler);
+      } else {
+        _socket!.off(event);
+      }
+      debugPrint('🔇 [SocketService] Stopped listening for: $event');
     }
   }
 

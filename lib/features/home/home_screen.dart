@@ -1244,13 +1244,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   /// Registers balance socket listeners. Called from both initial setup
   /// and reconnect-restore (force-reconnect disposes the socket object,
-  /// dropping handlers).
+  /// dropping handlers). Listeners are stored so re-register uses scoped
+  /// off — a global off here would wipe other mounted screens' handlers
+  /// (e.g. an open settlement sheet's `payment:succeeded`).
+  void Function(dynamic)? _balanceDueListener;
+  void Function(dynamic)? _balanceSucceededListener;
+
   void _registerBalanceSocketListeners() {
-    _socketService.offPaymentBalanceDue();
-    _socketService.offPaymentSucceeded();
     // Outstanding balance (payment-flow.md §1 Outcome B, §3): persist the
     /// rideId and raise the banner. FCM reminder duplicates this — one banner.
-    _socketService.onPaymentBalanceDue((data) {
+    _balanceDueListener ??= (data) {
       debugPrint('💰 [HomeScreen] Balance due: $data');
       if (!mounted) return;
       final map = data is Map<String, dynamic>
@@ -1276,13 +1279,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           duration: const Duration(seconds: 6),
         );
       }
-    });
+    };
 
     // Balance cleared → drop the banner, but only after an authoritative
     // re-fetch shows the balance cleared (data null or status succeeded).
     // `payment:succeeded` also fires for unrelated mid-trip captures, which
     // must not clear a different balance.
-    _socketService.onPaymentSucceeded((data) async {
+    _balanceSucceededListener ??= (data) async {
       debugPrint('✅ [HomeScreen] Payment succeeded: $data');
       if (!mounted) return;
       try {
@@ -1317,7 +1320,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       } catch (_) {
         await _checkPendingBalance();
       }
-    });
+    };
+    // Scoped off-then-on: re-register is idempotent across reconnects and
+    // never removes other screens' handlers for these events.
+    _socketService.off('payment:balanceDue', _balanceDueListener);
+    _socketService.off('payment:succeeded', _balanceSucceededListener);
+    _socketService.onPaymentBalanceDue(_balanceDueListener!);
+    _socketService.onPaymentSucceeded(_balanceSucceededListener!);
   }
 
   Future<void> _openPendingBalance() async {

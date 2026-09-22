@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import '../../core/api_service.dart';
 import '../../core/models/outstanding_balance.dart';
 import '../../core/models/error_display_helper.dart';
@@ -53,34 +54,76 @@ class _ExcessSettlementSheetState extends State<ExcessSettlementSheet> {
   bool _isBusy = false;
   bool _isRefreshing = false;
   bool _settled = false;
+  StreamSubscription<bool>? _connectionSub;
+  // Stored listener identities — scoped off() removes ONLY these (the
+  // singleton socket is shared; a global off from another screen's
+  // dispose/re-register would otherwise deafen this open sheet).
+  late final void Function(dynamic) _succeededListener = _onPaymentSucceeded;
+  late final void Function(dynamic) _confirmedListener =
+      _onExcessCashConfirmed;
 
   @override
   void initState() {
     super.initState();
     _balance = widget.balance;
-    _socketService.on('payment:succeeded', _onPaymentSucceeded);
-    _socketService.onExcessCashConfirmed(_onExcessCashConfirmed);
+    _registerSocketListeners();
+    // Reconnect survival: a force-reconnect replaces the socket object
+    // (dropping all handlers) and home's reconnect-restore wipes foreign
+    // handlers — re-register ours on every (re)connect, scoped-off first so
+    // a non-destructive reconnect can't double-register.
+    _connectionSub = _socketService.connectionStatus.listen((isConnected) {
+      if (isConnected && mounted && !_settled) {
+        debugPrint(
+          '🔄 [ExcessSettlementSheet] Reconnected — re-registering socket listeners',
+        );
+        _registerSocketListeners();
+      }
+    });
+  }
+
+  void _registerSocketListeners() {
+    _socketService.off('payment:succeeded', _succeededListener);
+    _socketService.off('payment:excessCashConfirmed', _confirmedListener);
+    _socketService.on('payment:succeeded', _succeededListener);
+    _socketService.onExcessCashConfirmed(_confirmedListener);
   }
 
   @override
   void dispose() {
-    _socketService.off('payment:succeeded');
-    _socketService.offExcessCashConfirmed();
+    _connectionSub?.cancel();
+    _socketService.off('payment:succeeded', _succeededListener);
+    _socketService.off('payment:excessCashConfirmed', _confirmedListener);
     super.dispose();
   }
 
   void _onPaymentSucceeded(dynamic data) {
     final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
     final id = (map['rideId'] ?? map['bookingId'] ?? map['_id'])?.toString();
-    if (id != null && id != widget.rideId) return;
+    debugPrint(
+      '💰 [ExcessSettlementSheet] payment:succeeded eventRide=$id sheetRide=${widget.rideId} step=$_step settled=$_settled',
+    );
+    if (id != null && id != widget.rideId) {
+      debugPrint(
+        '⏭️ [ExcessSettlementSheet] Ignoring succeeded for other ride',
+      );
+      return;
+    }
     if (!RideEventDedupe.shouldHandleEvent(
       source: 'socket',
       type: 'payment_succeeded_settlement',
       data: map,
     )) {
+      debugPrint(
+        '🔁 [ExcessSettlementSheet] Duplicate succeeded swallowed by dedupe',
+      );
       return;
     }
-    if (!mounted || _settled) return;
+    if (!mounted || _settled) {
+      debugPrint(
+        '⏭️ [ExcessSettlementSheet] Skipping succeeded (mounted=$mounted settled=$_settled)',
+      );
+      return;
+    }
     // Never pop on the event alone — a succeeded event can also fire for a
     // mid-trip base-fare capture (different amount). Re-fetch authoritatively;
     // pop only when the balance is really gone.
@@ -164,6 +207,10 @@ class _ExcessSettlementSheetState extends State<ExcessSettlementSheet> {
       final status = res['data'] is Map
           ? (res['data'] as Map)['status']?.toString()
           : null;
+      final hasParsed = res['success'] == true;
+      debugPrint(
+        '💰 [ExcessSettlementSheet] refresh res success=${res['success']} status=$status parsed=$hasParsed fallback=$cashSettledFallback event=$fromEvent',
+      );
       if (res['success'] == true && status == 'succeeded') {
         CustomSnackbar.show(
           context,
@@ -192,6 +239,9 @@ class _ExcessSettlementSheetState extends State<ExcessSettlementSheet> {
         }
         // Event-driven check found the balance still owed — stay open with
         // the fresh amount (e.g. a mid-trip base capture, not our payment).
+        debugPrint(
+          '⏳ [ExcessSettlementSheet] Balance still owed, staying open',
+        );
         setState(() => _balance = parsed);
       } else if (fromEvent) {
         // Event said settled + API has nothing owed → genuinely cleared.
