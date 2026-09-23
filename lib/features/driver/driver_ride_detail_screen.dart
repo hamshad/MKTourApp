@@ -241,10 +241,10 @@ class _DriverRideDetailScreenState extends State<DriverRideDetailScreen> {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.blue.withOpacity(0.1),
+                            color: Colors.blue.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
-                              color: Colors.blue.withOpacity(0.3),
+                              color: Colors.blue.withValues(alpha: 0.3),
                             ),
                           ),
                           child: Row(
@@ -276,10 +276,10 @@ class _DriverRideDetailScreenState extends State<DriverRideDetailScreen> {
                           vertical: 6,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF22C55E).withOpacity(0.1),
+                          color: const Color(0xFF22C55E).withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
-                            color: const Color(0xFF22C55E).withOpacity(0.3),
+                            color: const Color(0xFF22C55E).withValues(alpha: 0.3),
                           ),
                         ),
                         child: Row(
@@ -583,7 +583,7 @@ class _DriverRideDetailScreenState extends State<DriverRideDetailScreen> {
     if (isoString == null) return '--:--';
     try {
       final date = DateTime.parse(isoString).toLocal();
-      return "${date.hour}:${date.minute.toString().padLeft(2, '0')}";
+      return '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
     } catch (e) {
       return '--:--';
     }
