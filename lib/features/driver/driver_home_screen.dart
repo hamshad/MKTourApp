@@ -85,6 +85,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   // Lets the completeRide path wait for the server's promotion event
   // instead of resetting to idle while Trip B is already live.
   Completer<void>? _b2bPromotionWaiter;
+  // Trip B activation parked while the driver still owes cash for Trip A.
+  Map<String, dynamic>? _deferredNextTrip;
 
   final ApiService _apiService = ApiService();
   bool _isLoading = false;
@@ -2701,10 +2703,31 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     final nextId = _canonicalRideId(next);
     final queuedId =
         _queuedTrip == null ? null : _canonicalRideId(_queuedTrip!);
+    if (nextId == null || nextId.isEmpty) return;
+    // Cash duty for Trip A outranks Trip B: the backend promotes on
+    // completion, so the event lands while the driver still has to collect
+    // cash. Park it and replay on confirm — skipping this step loses rider
+    // A's fare.
+    if (shouldDeferPromotionForCash(
+      status: _status,
+      hasQueuedTrip: _queuedTrip != null,
+    )) {
+      _deferredNextTrip = next;
+      debugPrint(
+        '🔄 [DriverHomeScreen][B2B] Parked promotion for $nextId until cash confirmed',
+      );
+      if (mounted) {
+        CustomSnackbar.show(
+          context,
+          message: 'Next trip ready — confirm cash to start it',
+          type: SnackbarType.info,
+        );
+      }
+      return;
+    }
     // Event for an unknown ride: ignore — EXCEPT when the driver has no
     // active ride (late/lost event after local state was cleared). The
     // event payload is authoritative then: promote straight from it.
-    if (nextId == null || nextId.isEmpty) return;
     if (queuedId != nextId) {
       if (_currentRideId == nextId) return;
       final driverFree = _currentRideId == null &&
@@ -3389,8 +3412,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             }
           } else if (completingPaymentMethod == 'cash') {
           // B2B: promotion defers until cash is confirmed (20-02).
-          _queuedPromotionPending =
-              action == B2bCompletionAction.awaitCashThenPromote;
+          // B2B: a cash ride always hands off after confirmation. The
+          // response rarely carries promotion flags (the server promotes at
+          // completion), so the parked activation event is the primary
+          // trigger and the docked queue is the fallback.
+          _queuedPromotionPending = _queuedTrip != null;
+          _releaseB2bWaiter();
           setState(() {
             _status = 'awaiting_cash_confirmation';
           });
@@ -3504,10 +3531,23 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             message: 'Cash collected. Ride finalized.',
             type: SnackbarType.success,
           );
-          // B2B: deferred promotion fires after cash confirmation (20-02).
-          if (_queuedPromotionPending && _queuedTrip != null) {
+          // B2B: Trip B starts now that Trip A's cash is settled — the
+          // parked activation event first, then the docked queue.
+          final nextToActivate =
+              _deferredNextTrip ??
+              (_queuedPromotionPending ? _queuedTrip : null);
+          if (nextToActivate != null) {
+            _deferredNextTrip = null;
             _queuedPromotionPending = false;
-            _promoteQueuedTrip(_queuedTrip!);
+            // Retire Trip A first so the promotion guard sees a free driver.
+            setState(() {
+              _status = 'online';
+              _currentRideId = null;
+              _rideData = null;
+              _clearNavigationUi();
+              _clearActiveRideStorage();
+            });
+            _promoteQueuedTrip(nextToActivate);
             _fetchRideHistory();
             return;
           }

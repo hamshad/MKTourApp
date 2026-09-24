@@ -713,6 +713,20 @@ B2bCompletionAction decideB2bCompletion({
   return B2bCompletionAction.finalize;
 }
 
+/// Whether the queued trip stays parked while the driver still owes cash for
+/// the trip that just finished.
+///
+/// The backend promotes Trip B server-side the moment Trip A completes, so
+/// `ride:nextTripActivated` arrives while the driver is on the cash-confirm
+/// step. Letting it through skipped that step entirely (rider A's cash was
+/// never collected). The event is parked instead and replayed on confirm.
+bool shouldDeferPromotionForCash({
+  required String status,
+  required bool hasQueuedTrip,
+}) {
+  return status == 'awaiting_cash_confirmation' && hasQueuedTrip;
+}
+
 /// Driver statuses during which an active trip owns the screen.
 const List<String> kB2bBusyStatuses = [
   'pickup',

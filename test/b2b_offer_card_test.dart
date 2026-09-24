@@ -181,6 +181,36 @@ void main() {
     });
   });
 
+  group('shouldDeferPromotionForCash', () {
+    test('cash duty outranks the queued trip', () {
+      expect(
+        shouldDeferPromotionForCash(
+          status: 'awaiting_cash_confirmation',
+          hasQueuedTrip: true,
+        ),
+        isTrue,
+        reason: 'cash confirm must not be skipped by the promotion event',
+      );
+    });
+
+    test('online and active trips promote immediately', () {
+      expect(
+        shouldDeferPromotionForCash(
+          status: 'in_progress',
+          hasQueuedTrip: true,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldDeferPromotionForCash(
+          status: 'awaiting_cash_confirmation',
+          hasQueuedTrip: false,
+        ),
+        isFalse,
+      );
+    });
+  });
+
   group('decideB2bCompletion', () {
     test('promotion landing mid-request means Trip A is superseded', () {
       expect(
