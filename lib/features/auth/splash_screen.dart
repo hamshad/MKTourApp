@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:mktours/features/auth/role_selection_screen.dart';
+import 'package:mktours/features/auth/widgets/app_update_screen.dart';
 import 'package:provider/provider.dart';
 import '../../core/auth_provider.dart';
+import '../../core/models/app_version.dart';
+import '../../core/services/app_version_service.dart';
 import 'dart:async';
 
 import 'package:lottie/lottie.dart';
@@ -14,7 +17,10 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen>
-  with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
+  final AppVersionService _versionService = AppVersionService();
+  AppVersionResult? _blockingResult;
+  bool _maintenanceRetrying = false;
   late final AnimationController _mainController;
   late final AnimationController _pulseController;
 
@@ -29,6 +35,7 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     _mainController = AnimationController(
       vsync: this,
@@ -90,9 +97,41 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _mainController.dispose();
     _pulseController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Re-run version check when user resumes from the store (spec §4.1.2).
+    if (state == AppLifecycleState.resumed && _blockingResult != null) {
+      _recheckVersion();
+    }
+  }
+
+  Future<void> _recheckVersion() async {
+    final result = await _versionService.checkForUpdate();
+    if (!mounted) return;
+    if (result.isBlocking || !result.canContinue) {
+      setState(() {
+        _blockingResult = result;
+        _maintenanceRetrying = false;
+      });
+      return;
+    }
+    setState(() => _blockingResult = null);
+    if (result.updateType == AppUpdateType.soft) {
+      await showSoftUpdateDialog(context, result);
+      if (!mounted) return;
+    }
+    await _proceedToAuth();
+  }
+
+  Future<void> _retryMaintenance() async {
+    setState(() => _maintenanceRetrying = true);
+    await _recheckVersion();
   }
 
   Future<void> _checkAuth() async {
@@ -100,6 +139,26 @@ class _SplashScreenState extends State<SplashScreen>
     await Future.delayed(const Duration(milliseconds: 2000));
 
     if (!mounted) return;
+
+    // Version gate runs before tokens / navigation (spec §4.1.1).
+    // Fail-open: offline or server error proceeds to normal auth flow.
+    final versionResult = await _versionService.checkForUpdate();
+    if (!mounted) return;
+
+    if (versionResult.isBlocking || !versionResult.canContinue) {
+      setState(() => _blockingResult = versionResult);
+      return;
+    }
+
+    if (versionResult.updateType == AppUpdateType.soft) {
+      await showSoftUpdateDialog(context, versionResult);
+      if (!mounted) return;
+    }
+
+    await _proceedToAuth();
+  }
+
+  Future<void> _proceedToAuth() async {
 
     final authProvider = context.read<AuthProvider>();
     final isLoggedIn = await authProvider.tryAutoLogin();
@@ -130,6 +189,18 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
+    final blocking = _blockingResult;
+    if (blocking != null) {
+      if (blocking.updateType == AppUpdateType.maintenance) {
+        return MaintenanceScreen(
+          result: blocking,
+          isRetrying: _maintenanceRetrying,
+          onRetry: _retryMaintenance,
+        );
+      }
+      return ForceUpdateScreen(result: blocking);
+    }
+
     final width = MediaQuery.of(context).size.width;
 
     return Scaffold(

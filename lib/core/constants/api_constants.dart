@@ -1,6 +1,6 @@
 class ApiConstants {
   // Local development socket URL (commented when using live API)
-  static const String socketUrl = 'http://192.168.1.14:5001';
+  static const String socketUrl = 'http://192.168.1.7:5001';
   // Live API socket URL
   // static const String socketUrl = 'https://api.mktours.co.uk';
   static const String baseUrl = '$socketUrl/api/v1';
@@ -124,6 +124,9 @@ class ApiConstants {
   /// account suspended, open the balance screen immediately; 200 + data
   /// null → clear. Call on login / home mount.
   static const String paymentBalanceGlobal = '$baseUrl/payments/balance';
+
+  // App Version Control & Force Update
+  static const String checkVersion = '$baseUrl/app/check-version';
 
   // Maps API Endpoints (proxied through backend for security)
   static const String mapsBaseUrl = '$baseUrl/maps';

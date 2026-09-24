@@ -46,6 +46,7 @@ dependencies:
   google_maps_flutter: ^2.5.0
   image_picker: ^1.0.7
   url_launcher: ^6.2.5
+  package_info_plus: ^8.1.0
   socket_io_client: ^2.0.3+1
   file_picker: ^8.0.0
   syncfusion_flutter_pdfviewer: ^32.1.21
