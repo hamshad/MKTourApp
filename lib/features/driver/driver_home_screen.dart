@@ -3254,24 +3254,54 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           return;
         }
         final pos = await _bestEffortCompletionLocation();
+        // Snapshot the ride being completed BEFORE the await. The server
+        // promotes Trip B and emits ride:nextTripActivated while this call
+        // is in flight, which swaps _rideData/_currentRideId underneath us —
+        // reading them afterwards made Trip A take Trip B's payment branch
+        // and paint 'Confirm Cash Collected' over the live Trip B screen.
+        final completingRideId = _currentRideId;
+        final completingRide = _rideData == null
+            ? null
+            : Map<String, dynamic>.from(_rideData!);
+        final completingPaymentMethod = completingRide?['paymentMethod'];
         final response = await _apiService.completeRide(
-          _currentRideId!,
+          completingRideId!,
           pos.latitude,
           pos.longitude,
         );
         if (response['success'] == true) {
-          final paymentMethod = _rideData?['paymentMethod'];
           final rideResult = response['data'] as Map<String, dynamic>? ?? {};
-          // B2B: complete response carries the queued promotion (§2.1C).
-          // Fires immediately except on cash trips, where confirmation
-          // still has to happen first (20-02 Task 3).
-          final promoteQueued = _hasQueuedPromotion(rideResult);
+          debugPrint(
+            '[B2B-STATE] complete $completingRideId method=$completingPaymentMethod '
+            'flags=${rideResult['hasQueuedRidePromoted']} next=${rideResult['nextRideId']} '
+            'activeNow=$_currentRideId status=$_status',
+          );
+          final action = decideB2bCompletion(
+            completingRideId: completingRideId,
+            activeRideId: _currentRideId,
+            responseSaysPromoted: _hasQueuedPromotion(rideResult),
+            hasQueuedTrip: _queuedTrip != null,
+            isCash: completingPaymentMethod == 'cash',
+          );
           final summary = FareSummary.fromJson({
-            ...?_rideData,
+            ...?completingRide,
             ...rideResult,
           });
+          // Trip A is gone and Trip B already owns the screen: summarize
+          // only. Never mutate status/ride state for a superseded ride —
+          // this is what painted 'Confirm Cash Collected' over Trip B.
+          if (action == B2bCompletionAction.superseded) {
+            _fetchRideHistory();
+            if (!mounted) return;
+            _showFareSummary(
+              summary: summary,
+              headline: 'Ride completed — next trip ready',
+              subline: 'Your next trip is ready. Head to the pickup location.',
+            );
+            return;
+          }
           setState(() {
-            _rideData = {...?_rideData, ...rideResult};
+            _rideData = {...?completingRide, ...rideResult};
           });
           final bool isPromoFreeRide =
               rideResult['isPromoRide'] == true &&
@@ -3280,14 +3310,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
                       : 0.0) ==
                   0.0;
 
-          if (paymentMethod == 'cash' && isPromoFreeRide) {
+          if (completingPaymentMethod == 'cash' && isPromoFreeRide) {
             // Fully discounted promo ride — no cash to collect, auto-finalize
             final confirmResponse = await _apiService.confirmCashCollection(
-              _currentRideId!,
+              completingRideId,
             );
             if (confirmResponse['success'] == true) {
               // B2B: Trip B takes over instead of going online (20-02).
-              if (promoteQueued && _queuedTrip != null) {
+              if (action == B2bCompletionAction.promote && _queuedTrip != null) {
                 _promoteQueuedTrip(_queuedTrip!);
                 _fetchRideHistory();
                 if (!mounted) return;
@@ -3320,9 +3350,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
                 errors: confirmResponse['errors'],
               );
             }
-          } else if (paymentMethod == 'cash') {
+          } else if (completingPaymentMethod == 'cash') {
           // B2B: promotion defers until cash is confirmed (20-02).
-          _queuedPromotionPending = promoteQueued;
+          _queuedPromotionPending =
+              action == B2bCompletionAction.awaitCashThenPromote;
           setState(() {
             _status = 'awaiting_cash_confirmation';
           });
@@ -3335,7 +3366,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           );
           } else {
             // B2B: Trip B takes over instead of going online (20-02).
-            if (promoteQueued && _queuedTrip != null) {
+            if (action == B2bCompletionAction.promote && _queuedTrip != null) {
               _promoteQueuedTrip(_queuedTrip!);
               _fetchRideHistory();
               if (!mounted) return;
@@ -3419,8 +3450,16 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           );
           return;
         }
+        // Snapshot the ride being cash-confirmed: Trip B may be promoted
+        // (event) while this call is in flight, and the reset below must
+        // never wipe it.
+        final confirmingRideId = _currentRideId;
+        if (confirmingRideId == null) {
+          setState(() => _isLoading = false);
+          return;
+        }
         final response = await _apiService.confirmCashCollection(
-          _currentRideId!,
+          confirmingRideId,
         );
         if (response['success'] == true) {
           CustomSnackbar.show(
@@ -3436,6 +3475,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             return;
           }
           _queuedPromotionPending = false;
+          // Already superseded by Trip B — summarize, never reset.
+          if (confirmingRideId != _currentRideId) {
+            _fetchRideHistory();
+            return;
+          }
           // Reset to online
           setState(() {
             _status = 'online';
@@ -4149,10 +4193,13 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     if (_currentRideId == null) {
       return {'ok': false, 'message': 'No active ride.'};
     }
+    // Snapshot: promotion can swap the active ride while this is in flight.
+    final endingRideId = _currentRideId!;
+    final endingPaymentMethod = _rideData?['paymentMethod'];
 
     try {
       final response = await _apiService.endRideEarly(
-        _currentRideId!,
+        endingRideId,
         latitude: _currentLocation.latitude,
         longitude: _currentLocation.longitude,
         reason: reason,
@@ -4182,7 +4229,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         'actualDistance': asDouble(
           data['actualDistance'] ?? ride['actualDistance'],
         ),
-        'paymentMethod': _rideData?['paymentMethod'],
+        'paymentMethod':
+            endingPaymentMethod ?? data['paymentMethod'] ?? ride['paymentMethod'],
+        'rideId': endingRideId,
       };
     } catch (e) {
       debugPrint('Error ending ride early: $e');
@@ -4197,7 +4246,18 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     final actualDistance =
         (outcome['actualDistance'] as num?)?.toDouble() ?? 0.0;
     final paymentMethod = outcome['paymentMethod'];
+    final endingRideId = outcome['rideId']?.toString();
     if (!mounted) return;
+
+    // A promoted Trip B already owns the screen — summarize only.
+    if (endingRideId != null && endingRideId != _currentRideId) {
+      _showEndEarlySummary(
+        adjustedFare: adjustedFare,
+        actualDistance: actualDistance,
+        subline: 'Your next trip is ready. Head to the pickup location.',
+      );
+      return;
+    }
 
     if (paymentMethod == 'cash') {
       setState(() {

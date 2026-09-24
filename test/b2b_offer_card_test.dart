@@ -81,6 +81,100 @@ void main() {
     });
   });
 
+  group('decideB2bCompletion', () {
+    test('promotion landing mid-request means Trip A is superseded', () {
+      expect(
+        decideB2bCompletion(
+          completingRideId: 'rideA',
+          activeRideId: 'rideB',
+          responseSaysPromoted: false,
+          hasQueuedTrip: false,
+          isCash: false,
+        ),
+        B2bCompletionAction.superseded,
+        reason: 'Trip A must never touch state owned by Trip B',
+      );
+    });
+
+    test('superseded wins even when flags or cash are present', () {
+      expect(
+        decideB2bCompletion(
+          completingRideId: 'rideA',
+          activeRideId: 'rideB',
+          responseSaysPromoted: true,
+          hasQueuedTrip: false,
+          isCash: true,
+        ),
+        B2bCompletionAction.superseded,
+        reason:
+            'Trip A reading Trip B cash state is what painted '
+            "'Confirm Cash Collected' over Trip B",
+      );
+    });
+
+    test('online ride with flags promotes immediately', () {
+      expect(
+        decideB2bCompletion(
+          completingRideId: 'rideA',
+          activeRideId: 'rideA',
+          responseSaysPromoted: true,
+          hasQueuedTrip: true,
+          isCash: false,
+        ),
+        B2bCompletionAction.promote,
+      );
+    });
+
+    test('online ride without flags waits for the event', () {
+      expect(
+        decideB2bCompletion(
+          completingRideId: 'rideA',
+          activeRideId: 'rideA',
+          responseSaysPromoted: false,
+          hasQueuedTrip: true,
+          isCash: false,
+        ),
+        B2bCompletionAction.waitForPromotion,
+      );
+    });
+
+    test('cash ride collects first, promotion deferred', () {
+      expect(
+        decideB2bCompletion(
+          completingRideId: 'rideA',
+          activeRideId: 'rideA',
+          responseSaysPromoted: true,
+          hasQueuedTrip: true,
+          isCash: true,
+        ),
+        B2bCompletionAction.awaitCashThenPromote,
+      );
+      expect(
+        decideB2bCompletion(
+          completingRideId: 'rideA',
+          activeRideId: 'rideA',
+          responseSaysPromoted: false,
+          hasQueuedTrip: true,
+          isCash: true,
+        ),
+        B2bCompletionAction.awaitCash,
+      );
+    });
+
+    test('plain completion finalizes', () {
+      expect(
+        decideB2bCompletion(
+          completingRideId: 'rideA',
+          activeRideId: 'rideA',
+          responseSaysPromoted: false,
+          hasQueuedTrip: false,
+          isCash: false,
+        ),
+        B2bCompletionAction.finalize,
+      );
+    });
+  });
+
   group('B2bOfferData address/coord extraction', () {
     test('nested socket payload resolves both addresses and coords', () {
       final data = B2bOfferData.fromMap({

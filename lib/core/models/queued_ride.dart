@@ -661,6 +661,58 @@ Map<String, dynamic> mergeB2bOfferData(
   return merged;
 }
 
+/// What a completed ride's handler is allowed to do with local state.
+enum B2bCompletionAction {
+  /// Trip B already owns the screen (promotion landed mid-request):
+  /// summarize Trip A, never touch status or the active ride.
+  superseded,
+
+  /// Flags in hand and no cash gate: promote immediately.
+  promote,
+
+  /// No flags yet: wait for `ride:nextTripActivated`, then trust state.
+  waitForPromotion,
+
+  /// Cash ride: collect cash first, promotion waits for confirmation.
+  awaitCash,
+
+  /// Cash ride with promotion flags: defer promotion to confirmation.
+  awaitCashThenPromote,
+
+  /// Plain completion: back to idle.
+  finalize,
+}
+
+/// Decision table for the completion response.
+///
+/// The server promotes Trip B and emits the activation event while the
+/// `completeRide` request is still in flight, so every branch here is
+/// decided from a snapshot of Trip A taken before the await — never from
+/// `_rideData`/`_currentRideId` read afterwards.
+B2bCompletionAction decideB2bCompletion({
+  required String? completingRideId,
+  required String? activeRideId,
+  required bool responseSaysPromoted,
+  required bool hasQueuedTrip,
+  required bool isCash,
+}) {
+  if (completingRideId != null && completingRideId != activeRideId) {
+    return B2bCompletionAction.superseded;
+  }
+  if (isCash) {
+    return responseSaysPromoted
+        ? B2bCompletionAction.awaitCashThenPromote
+        : B2bCompletionAction.awaitCash;
+  }
+  if (responseSaysPromoted && hasQueuedTrip) {
+    return B2bCompletionAction.promote;
+  }
+  if (hasQueuedTrip) {
+    return B2bCompletionAction.waitForPromotion;
+  }
+  return B2bCompletionAction.finalize;
+}
+
 /// Driver statuses during which an active trip owns the screen.
 const List<String> kB2bBusyStatuses = [
   'pickup',
