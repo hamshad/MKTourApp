@@ -4578,16 +4578,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
               ),
               child: const Text('Cancel'),
             ),
-            IconButton(
-              onPressed: _dismissB2bBanner,
-              visualDensity: VisualDensity.compact,
-              tooltip: 'Swipe up to move to trip panel',
-              icon: const Icon(
-                Icons.keyboard_arrow_down,
-                size: 20,
-                color: AppTheme.textSecondary,
-              ),
-            ),
           ],
         ),
       ),

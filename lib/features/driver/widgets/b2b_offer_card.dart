@@ -199,9 +199,10 @@ class B2bOfferData {
 
 /// Queued-trip banner the driver can swipe away.
 ///
-/// Swipe up (or tap the chevron) to hand the queued trip to the bottom-sheet
-/// row — exactly one surface shows it at a time. Keyed by ride id so a new
-/// queued trip always gets a fresh, un-dismissed banner.
+/// Swipe up to hand the queued trip to the bottom-sheet row — exactly one
+/// surface shows it at a time. Keyed by ride id so a new queued trip always
+/// gets a fresh, un-dismissed banner. No affordance chrome: the drag is the
+/// interaction, revealed only while swiping.
 class B2bDismissibleBanner extends StatelessWidget {
   final String rideId;
   final Widget child;
@@ -223,31 +224,9 @@ class B2bDismissibleBanner extends StatelessWidget {
       onDismissed: (_) => onDismissed(),
       background: Container(
         alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
         decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.04),
+          color: Colors.black.withValues(alpha: 0.03),
           borderRadius: BorderRadius.circular(20),
-        ),
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.keyboard_arrow_down,
-                size: 18,
-                color: AppTheme.textSecondary,
-              ),
-              const SizedBox(width: 6),
-              const Text(
-                'Move to trip panel',
-                style: TextStyle(
-                  fontSize: 12.5,
-                  color: AppTheme.textSecondary,
-                ),
-              ),
-            ],
-          ),
         ),
       ),
       child: child,
