@@ -19,7 +19,7 @@
 | 17 | Backend payment_link only for scheduled | Planned | 0 | — |
 | 18 | Enforce payment_method constraints for scheduled | Planned | 0 | PAYCONST-01..06 |
 | 19 | 3/3 | Complete   | 2026-09-22 | RES-01..06 |
-| 20 | 2/3 | In Progress|  | B2B-01..08 |
+| 20 | 3/3 | In Progress|  | B2B-01..08 |
 
 ---
 
@@ -432,11 +432,11 @@ Plans:
 - **B2B-07**: FCM data types ride_request B2B / queued_ride_cancelled / ride_accepted / ride_driver_en_route land correctly
 - **B2B-08**: No regressions — instant + scheduled + payment + restore flows identical when network healthy
 
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans executed
 
 Plans:
 - [x] `20-01-PLAN.md` — Contract + transport: QueuedRide parsers, 6 socket passthroughs, error copy, contract tests (wave 1)
-- [ ] `20-02-PLAN.md` — Driver B2B: queuedTrip state, docked pill, promotion auto-transition (wave 2, needs 20-01)
+- [x] `20-02-PLAN.md` — Driver B2B: queuedTrip state, docked pill, promotion auto-transition (wave 2, needs 20-01)
 - [x] `20-03-PLAN.md` — Rider B2B: assigned tracking, FCM types, regression sweep (wave 2, needs 20-01)
 
 **Success Criteria:**
