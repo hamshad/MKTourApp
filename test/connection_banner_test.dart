@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mktours/core/services/socket_service.dart';
 import 'package:mktours/core/widgets/connection_banner.dart';
+import 'package:mktours/core/widgets/active_ride_back_guard.dart';
 
 // Widget tests pinning the connection UX contract:
 // live renders nothing (pixel-identical healthy UI), reconnecting renders
@@ -131,6 +132,111 @@ void main() {
       );
 
       expect(find.textContaining('Last updated'), findsOneWidget);
+    });
+  });
+
+  group('active ride back guard', () {
+    const message =
+        'Your ride is still active. Stay here to track your driver.';
+
+    testWidgets('system back stays on active ride and explains why', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const ActiveRideBackGuard(
+                      message:
+                          'Your ride is still active. Stay here to track your driver.',
+                      child: Scaffold(body: Center(child: Text('tracking'))),
+                    ),
+                  ),
+                ),
+                child: const Text('booking'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('booking'));
+      await tester.pumpAndSettle();
+      expect(find.text('tracking'), findsOneWidget);
+
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+
+      expect(find.text('tracking'), findsOneWidget);
+      expect(find.text(message), findsOneWidget);
+      expect(find.text('booking'), findsNothing);
+    });
+
+    testWidgets('disabled guard allows terminal route to pop', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const ActiveRideBackGuard(
+                      enabled: false,
+                      child: Scaffold(body: Center(child: Text('receipt'))),
+                    ),
+                  ),
+                ),
+                child: const Text('booking'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('booking'));
+      await tester.pumpAndSettle();
+      Navigator.of(tester.element(find.text('receipt'))).pop();
+      await tester.pumpAndSettle();
+
+      expect(find.text('booking'), findsOneWidget);
+      expect(find.text('receipt'), findsNothing);
+    });
+
+    testWidgets('active guard allows terminal pushReplacement', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const ActiveRideBackGuard(
+                      child: Scaffold(body: Center(child: Text('tracking'))),
+                    ),
+                  ),
+                ),
+                child: const Text('booking'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('booking'));
+      await tester.pumpAndSettle();
+      final trackingContext = tester.element(find.text('tracking'));
+      Navigator.of(trackingContext).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => const Scaffold(body: Center(child: Text('receipt'))),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('receipt'), findsOneWidget);
+      expect(find.text('tracking'), findsNothing);
     });
   });
 }

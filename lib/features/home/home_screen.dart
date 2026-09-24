@@ -30,6 +30,62 @@ import 'airport_selection_screen.dart';
 import '../promo/promo_status_screen.dart';
 import '../../core/widgets/custom_snackbar.dart';
 
+/// Build the rider tracking screen from the authoritative restored ride map.
+///
+/// Restore and live navigation must feed the same state surface. In
+/// particular, keep the reconciled status instead of letting a valid driver
+/// default the screen back to `accepted` during its first frame.
+RideAssignedScreen restoredRideAssignedScreen({
+  required String rideId,
+  required Map<String, dynamic> ride,
+}) {
+  final rawDriver = ride['driver'];
+  final rawStops = ride['stops'];
+  final fareValue = ride['fare'];
+  final fare = fareValue is num
+      ? fareValue.toDouble()
+      : double.tryParse(fareValue?.toString() ?? '') ?? 0.0;
+  final stops = rawStops is List
+      ? rawStops
+            .whereType<Map>()
+            .map((stop) => Map<String, dynamic>.from(stop))
+            .toList()
+      : null;
+
+  return RideAssignedScreen(
+    rideId: rideId,
+    pickup: _restoredMap(ride['pickupLocation'] ?? ride['pickup']),
+    dropoff: _restoredMap(ride['dropoffLocation'] ?? ride['dropoff']),
+    fare: fare,
+    driver: _restoredMap(rawDriver),
+    paymentTiming: ride['paymentTiming']?.toString(),
+    clientSecret: ride['clientSecret']?.toString(),
+    paymentMethod: ride['paymentMethod']?.toString(),
+    paymentUrl: ride['paymentUrl']?.toString(),
+    isScheduled: ride['isScheduled'] == true,
+    initialStatus: snapshotStatusForRider(ride['status']?.toString() ?? ''),
+    stops: stops,
+  );
+}
+
+Map<String, dynamic>? _restoredMap(dynamic value) =>
+    value is Map ? Map<String, dynamic>.from(value) : null;
+
+/// Consume the shared start dedupe only when Home still owns global routing.
+///
+/// Live arrival uses `push`, so Home remains mounted beneath assigned. The
+/// owner check must happen before [consumeDedupe]; otherwise Home consumes
+/// the event and the assigned screen incorrectly treats its own delivery as
+/// a duplicate.
+bool shouldHandleGlobalRideStart({
+  required String rideId,
+  String? liveTrackingRideId,
+  required bool Function() consumeDedupe,
+}) {
+  if (liveTrackingRideId == rideId) return false;
+  return consumeDedupe();
+}
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -548,16 +604,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         '';
     if (rideId.isEmpty || !mounted || !context.mounted) return;
 
-    if (!RideEventDedupe.shouldHandleEvent(
-      source: 'socket',
-      type: 'ride_started',
-      data: data,
-    )) {
-      return;
-    }
-
     // Live screen already owns this ride — it handles start in place.
-    if (_lastArrivalNavRideId == rideId) return;
+    // The helper checks ownership before consuming shared dedupe, so Home
+    // cannot starve the assigned screen while remaining mounted underneath.
+    final shouldHandle = shouldHandleGlobalRideStart(
+      rideId: rideId,
+      liveTrackingRideId: _lastArrivalNavRideId,
+      consumeDedupe: () => RideEventDedupe.shouldHandleEvent(
+        source: 'socket',
+        type: 'ride_started',
+        data: data,
+      ),
+    );
+    if (!shouldHandle) return;
 
     await ActiveRideStorage.save(
       rideId: rideId,
@@ -1517,22 +1576,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         } else {
           // New flow: no ride code anywhere — driver map passes through
           // untouched (auth code paths are separate and unchanged).
-          final Map<String, dynamic> driverMap = Map<String, dynamic>.from(
-            (ride['driver'] is Map) ? ride['driver'] as Map : {},
-          );
-
+          // `restoreActiveRide` reconciled the authoritative server status;
+          // preserve it in the assigned screen's initial state. Without this,
+          // a valid driver makes the screen default back to `accepted` even
+          // when the server says `driver_arrived`.
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(
-              builder: (context) => RideAssignedScreen(
-                rideId: id,
-                pickup: ride['pickupLocation'] ?? ride['pickup'],
-                dropoff: ride['dropoffLocation'] ?? ride['dropoff'],
-                fare: (ride['fare'] ?? 0.0).toDouble(),
-                driver: driverMap,
-                paymentTiming: ride['paymentTiming'],
-                clientSecret: ride['clientSecret'],
-                isScheduled: ride['isScheduled'] == true,
-              ),
+              builder: (context) =>
+                  restoredRideAssignedScreen(rideId: id, ride: ride),
             ),
           );
         }

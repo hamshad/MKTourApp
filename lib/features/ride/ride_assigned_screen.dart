@@ -20,6 +20,7 @@ import '../../core/services/places_service.dart';
 import '../../core/services/marker_interpolation_service.dart';
 import '../../core/models/error_display_helper.dart';
 import '../../core/widgets/connection_banner.dart';
+import '../../core/widgets/active_ride_back_guard.dart';
 import '../../core/widgets/platform_map.dart';
 import '../../core/widgets/route_map_helpers.dart';
 import '../../core/models/vehicle.dart';
@@ -1914,7 +1915,11 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
               TextButton(
                 onPressed: () {
                   Navigator.pop(context); // Close dialog
-                  Navigator.pop(context); // Go back
+                  Navigator.pushNamedAndRemoveUntil(
+                    context,
+                    '/home',
+                    (route) => false,
+                  );
                 },
                 child: const Text('OK'),
               ),
@@ -2116,9 +2121,11 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
               TextButton(
                 onPressed: () {
                   Navigator.pop(context); // Close dialog
-                  Navigator.pop(
+                  Navigator.pushNamedAndRemoveUntil(
                     context,
-                  ); // Go back to previous screen (likely home)
+                    '/home',
+                    (route) => false,
+                  );
                 },
                 child: const Text('OK'),
               ),
@@ -2908,7 +2915,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       };
       return RideCompleteScreen(rideData: completedData);
     }
-    return Scaffold(
+    final screen = Scaffold(
       body: Stack(
         children: [
           PlatformMap(
@@ -2936,6 +2943,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         ],
       ),
     );
+    return ActiveRideBackGuard(child: screen);
   }
 
   Future<void> _handlePayLaterCompletion({

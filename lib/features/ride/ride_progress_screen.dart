@@ -4,6 +4,7 @@ import 'package:latlong2/latlong.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/platform_map.dart';
 import '../../core/widgets/connection_banner.dart';
+import '../../core/widgets/active_ride_back_guard.dart';
 import '../../core/widgets/route_map_helpers.dart';
 import '../../core/widgets/ride_searching_overlay.dart';
 import '../../core/services/socket_service.dart';
@@ -584,7 +585,7 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
     // Stale rule (19-03): driver position older than 30s renders dimmed +
     // timestamped, never animated as live.
     final driverStale = isRideDataStale(_lastLocationUpdateTime);
-    return Scaffold(
+    final screen = Scaffold(
       body: Stack(
         children: [
           // Map
@@ -1050,6 +1051,7 @@ class _RideProgressScreenState extends State<RideProgressScreen> {
         ],
       ),
     );
+    return ActiveRideBackGuard(child: screen);
   }
 
   /// Status timeline: accepted → arrived → in_progress → at_stop → completed.
