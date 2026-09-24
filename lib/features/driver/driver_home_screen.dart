@@ -11,6 +11,7 @@ import '../../core/widgets/platform_map.dart';
 import '../../core/widgets/route_map_helpers.dart';
 import 'driver_request_panel.dart';
 import 'driver_navigation_panel.dart';
+import 'widgets/b2b_offer_card.dart';
 import '../../core/widgets/connection_banner.dart';
 import '../../core/widgets/custom_snackbar.dart';
 import '../../core/models/error_display_helper.dart';
@@ -2327,6 +2328,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     debugPrint(
       '🔄 [DriverHomeScreen][B2B] Docked offer ${_canonicalRideId(offer)} (fare=${offer['fare']})',
     );
+    debugPrint(
+      '🔄 [DriverHomeScreen][B2B] Offer payload pickup=${offer['pickupLocation']} dropoff=${offer['dropoffLocation']} flatPickup=${offer['pickupAddress']} flatDropoff=${offer['dropoffAddress']}',
+    );
     CustomSnackbar.show(
       context,
       message: 'New ride near your dropoff — tap to queue it',
@@ -4228,165 +4232,125 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   }
 
   static String _b2bPickupLabel(Map<String, dynamic> trip) {
-    final pickup = trip['pickupLocation'];
-    final address =
-        pickup is Map ? pickup['address']?.toString() : null;
-    return (address == null || address.isEmpty) ? 'pickup' : address;
-  }
-
-  static String _b2bDropoffLabel(Map<String, dynamic> trip) {
-    final dropoff = trip['dropoffLocation'];
-    final address =
-        dropoff is Map ? dropoff['address']?.toString() : null;
-    return (address == null || address.isEmpty) ? 'dropoff' : address;
-  }
-
-  static String _b2bDistanceLabel(Map<String, dynamic> trip) {
-    final distance = double.tryParse(trip['distance']?.toString() ?? '');
-    return distance == null ? '' : '${distance.toStringAsFixed(1)} mi trip';
+    return B2bOfferData.fromMap(trip).pickupLabel;
   }
 
   Widget _buildB2bOfferCard() {
-    final offer = _b2bOffer!;
-    final fareLabel = _b2bFareLabel(offer);
-    return Card(
-      elevation: 6,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.repeat, color: Colors.teal, size: 20),
-                const SizedBox(width: 8),
-                const Expanded(
-                  child: Text(
-                    'New ride near your dropoff',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                  ),
-                ),
-                if (fareLabel.isNotEmpty)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primaryColor.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      fareLabel,
-                      style: const TextStyle(
-                        color: AppTheme.primaryColor,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Pickup: ${_b2bPickupLabel(offer)}',
-              style: TextStyle(color: Colors.grey[700], fontSize: 13),
-            ),
-            Text(
-              'Dropoff: ${_b2bDropoffLabel(offer)}'
-              '${_b2bDistanceLabel(offer).isEmpty ? '' : ' • ${_b2bDistanceLabel(offer)}'}',
-              style: TextStyle(color: Colors.grey[700], fontSize: 13),
-            ),
-            if (_b2bOfferError != null) ...[
-              const SizedBox(height: 6),
-              Text(
-                _b2bOfferError!,
-                style: const TextStyle(color: Colors.red, fontSize: 12),
-              ),
-            ],
-            const SizedBox(height: 10),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  onPressed: _b2bAccepting ? null : _declineB2bOffer,
-                  child: const Text('Dismiss'),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: _b2bAccepting ? null : _acceptB2bOffer,
-                  child: _b2bAccepting
-                      ? const SizedBox(
-                          height: 18,
-                          width: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Queue Trip'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
+    return B2bOfferCard(
+      data: B2bOfferData.fromMap(_b2bOffer ?? const {}),
+      busy: _b2bAccepting,
+      error: _b2bOfferError,
+      driverLat: _currentLocation.latitude,
+      driverLng: _currentLocation.longitude,
+      onQueue: _acceptB2bOffer,
+      onSkip: _declineB2bOffer,
     );
   }
 
   Widget _buildQueuedPill() {
     final queued = _queuedTrip!;
-    final fareLabel = _b2bFareLabel(queued);
-    return Card(
-      elevation: 6,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    final data = B2bOfferData.fromMap(queued);
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.14),
+            blurRadius: 22,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.upcoming, color: AppTheme.primaryColor, size: 20),
-            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor.withValues(alpha: 0.10),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.check_rounded,
+                size: 16,
+                color: AppTheme.primaryColor,
+              ),
+            ),
+            const SizedBox(width: 10),
             Expanded(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Next trip queued',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                    ),
+                  Row(
+                    children: [
+                      const Text(
+                        'Next trip queued',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13.5,
+                          color: AppTheme.textPrimary,
+                        ),
+                      ),
+                      if (data.distanceLabel.isNotEmpty) ...[
+                        const Text(
+                          '  ·  ',
+                          style: TextStyle(color: Colors.black26, fontSize: 12),
+                        ),
+                        Text(
+                          data.distanceLabel,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppTheme.textSecondary,
+                            fontFeatures: [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                  Text(
-                    'Next: Pickup at ${_b2bPickupLabel(queued)}',
-                    style: TextStyle(color: Colors.grey[700], fontSize: 12),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  const SizedBox(height: 3),
+                  _QueuedRouteLine(
+                    icon: const Icon(
+                      Icons.circle,
+                      size: 8,
+                      color: AppTheme.primaryColor,
+                    ),
+                    text: data.pickupLabel,
+                  ),
+                  const SizedBox(height: 2),
+                  _QueuedRouteLine(
+                    icon: const Icon(
+                      Icons.flag_rounded,
+                      size: 12,
+                      color: Color(0xFFE23D3D),
+                    ),
+                    text: data.dropoffLabel,
                   ),
                 ],
               ),
             ),
-            if (fareLabel.isNotEmpty)
-              Container(
-                margin: const EdgeInsets.only(right: 8),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
+            if (data.hasFare)
+              Padding(
+                padding: const EdgeInsets.only(top: 2, right: 6),
                 child: Text(
-                  fareLabel,
+                  data.fareLabel,
                   style: const TextStyle(
-                    color: AppTheme.primaryColor,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.textPrimary,
+                    fontFeatures: [FontFeature.tabularFigures()],
                   ),
                 ),
               ),
             TextButton(
               onPressed: _showQueuedCancelDialog,
-              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.red,
+                visualDensity: VisualDensity.compact,
+              ),
               child: const Text('Cancel'),
             ),
           ],
@@ -5371,6 +5335,35 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           ),
         ],
       ),
+    );
+  }
+}
+
+/// One route line (pickup or dropoff) inside the queued-trip strip.
+class _QueuedRouteLine extends StatelessWidget {
+  final Widget icon;
+  final String text;
+  const _QueuedRouteLine({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(width: 14, height: 14, child: Center(child: icon)),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 12,
+              color: AppTheme.textSecondary,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

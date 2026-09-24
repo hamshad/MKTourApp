@@ -1,0 +1,190 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:mktours/features/driver/widgets/b2b_offer_card.dart';
+
+void main() {
+  group('B2bOfferData address/coord extraction', () {
+    test('nested socket payload resolves both addresses and coords', () {
+      final data = B2bOfferData.fromMap({
+        'rideId': 'r1',
+        'fare': 18.5,
+        'distance': 2.4,
+        'user': {'name': 'Sarah Connor'},
+        'pickupLocation': {
+          'address': '45 Piccadilly, London W1J 0ER',
+          'coordinates': [-0.1388, 51.5074],
+        },
+        'dropoffLocation': {
+          'address': 'Baker Street Station, London NW1 6XE',
+          'coordinates': [-0.1569, 51.5237],
+        },
+      });
+      expect(data.pickupAddress, contains('Piccadilly'));
+      expect(data.dropoffAddress, contains('Baker Street'));
+      expect(data.pickupLat, 51.5074);
+      expect(data.pickupLng, -0.1388);
+      expect(data.dropoffLat, 51.5237);
+      expect(data.hasBothPoints, isTrue);
+      expect(data.fareLabel, '£18.50');
+      expect(data.distanceLabel, '2.4 mi');
+      expect(data.riderName, 'Sarah Connor');
+    });
+
+    test('flat FCM payload resolves addresses and coords', () {
+      final data = B2bOfferData.fromMap({
+        'rideId': 'r1',
+        'pickupAddress': 'Flat pickup',
+        'pickupLat': '51.5',
+        'pickupLon': '-0.1',
+        'dropoffAddress': 'Flat dropoff',
+        'dropoffLat': 51.6,
+        'dropoffLon': -0.2,
+      });
+      expect(data.pickupLabel, 'Flat pickup');
+      expect(data.dropoffLabel, 'Flat dropoff');
+      expect(data.pickupLat, 51.5);
+      expect(data.dropoffLng, -0.2);
+      expect(data.hasBothPoints, isTrue);
+    });
+
+    test('GeoJSON point without address falls back to coordinates label', () {
+      final data = B2bOfferData.fromMap({
+        'pickupLocation': {
+          'type': 'Point',
+          'coordinates': [-0.1388, 51.5074],
+        },
+        'dropoffLocation': {
+          'type': 'Point',
+          'coordinates': [-0.1569, 51.5237],
+        },
+      });
+      expect(data.pickupAddress, isEmpty);
+      expect(data.pickupLabel, contains('51.5074'));
+      expect(data.dropoffLabel, contains('51.5237'));
+      expect(data.hasBothPoints, isTrue);
+    });
+
+    test('partial payload keeps whatever exists, never throws', () {
+      final data = B2bOfferData.fromMap({'fare': '9.99'});
+      expect(data.pickupLabel, 'Pickup');
+      expect(data.dropoffLabel, 'Dropoff');
+      expect(data.hasBothPoints, isFalse);
+      expect(data.fareLabel, '£9.99');
+      expect(B2bOfferData.fromMap(const {}).distanceLabel, isEmpty);
+    });
+  });
+
+  group('B2bOfferCard', () {
+    Widget wrap(B2bOfferData data, {VoidCallback? onQueue, VoidCallback? onSkip}) {
+      return MaterialApp(
+        home: Scaffold(
+          body: B2bOfferCard(
+            data: data,
+            onQueue: onQueue ?? () {},
+            onSkip: onSkip ?? () {},
+          ),
+        ),
+      );
+    }
+
+    final sample = B2bOfferData.fromMap({
+      'fare': 18.5,
+      'distance': 2.4,
+      'vehicleCategorySlug': 'saloon',
+      'user': {'name': 'Sarah Connor'},
+      'pickupLocation': {
+        'address': '45 Piccadilly, London W1J 0ER',
+        'coordinates': [-0.1388, 51.5074],
+      },
+      'dropoffLocation': {
+        'address': 'Baker Street Station, London NW1 6XE',
+        'coordinates': [-0.1569, 51.5237],
+      },
+    });
+
+    testWidgets('shows pickup, dropoff, fare, distance and rider', (
+      tester,
+    ) async {
+      await tester.pumpWidget(wrap(sample));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Piccadilly'), findsOneWidget);
+      expect(find.textContaining('Baker Street'), findsOneWidget);
+      expect(find.text('£18.50'), findsOneWidget);
+      expect(find.text('2.4 mi'), findsOneWidget);
+      expect(find.text('Sarah Connor'), findsOneWidget);
+    });
+
+    testWidgets('renders without coords and hides preview map', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(const B2bOfferData(pickupAddress: 'A', dropoffAddress: 'B')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Route preview unavailable'), findsOneWidget);
+      expect(find.text('A'), findsOneWidget);
+      expect(find.text('B'), findsOneWidget);
+    });
+
+    testWidgets('queue and skip fire their callbacks', (tester) async {
+      var queued = 0;
+      var skipped = 0;
+      await tester.pumpWidget(
+        wrap(sample, onQueue: () => queued++, onSkip: () => skipped++),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Queue trip'));
+      await tester.tap(find.text('Skip'));
+      expect(queued, 1);
+      expect(skipped, 1);
+    });
+
+    testWidgets('busy state blocks actions and shows spinner', (tester) async {
+      var queued = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: B2bOfferCard(
+              data: sample,
+              busy: true,
+              onQueue: () => queued++,
+              onSkip: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      // Busy swaps the CTA label for a spinner, so the action is asserted
+      // through the disabled InkWell instead of a text tap.
+      final inkWell = tester.widget<InkWell>(
+        find.descendant(
+          of: find.byType(Material).last,
+          matching: find.byType(InkWell),
+        ),
+      );
+      expect(inkWell.onTap, isNull);
+      expect(queued, 0);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    });
+
+    testWidgets('inline accept error is visible', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: B2bOfferCard(
+              data: sample,
+              error: 'You already have a queued next trip.',
+              onQueue: () {},
+              onSkip: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.text('You already have a queued next trip.'),
+        findsOneWidget,
+      );
+    });
+  });
+}
