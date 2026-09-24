@@ -850,7 +850,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         : 'Driver is heading to your pickup location';
     if (!mounted) return;
     setState(() => _b2bEnRouteMessage = message);
-    debugPrint('🚗 [RideAssignedScreen] Driver en route: $message');
+    debugPrint('🚗 [RideAssignedScreen][B2B] Driver en route: $message');
   }
 
   /// FCM `ride_driver_en_route` tap/foreground while this screen is live:
@@ -1462,7 +1462,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     _socketService.offDriverEnRoute();
     _socketService.offEtaUpdate();
     _driverEnRouteListener ??= (data) {
-      debugPrint('🚗 [RideAssignedScreen] Driver en route: $data');
+      debugPrint('🚗 [RideAssignedScreen][B2B] Driver en route event: $data');
       if (!mounted || !context.mounted) return;
       final map = data is Map<String, dynamic>
           ? data
@@ -1483,7 +1483,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       });
     };
     _etaUpdateListener ??= (data) {
-      debugPrint('🕐 [RideAssignedScreen] ETA update: $data');
+      debugPrint('🕐 [RideAssignedScreen][B2B] ETA update event: $data');
       if (!mounted || !context.mounted) return;
       final map = data is Map<String, dynamic>
           ? data

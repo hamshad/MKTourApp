@@ -197,7 +197,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       } else if (data.type == NotificationType.queuedRideCancelled) {
         // B2B: rider cancelled the queued trip while the app was away —
         // clear the pill, Trip A untouched (20-02).
-        debugPrint('🔄 [DriverHomeScreen] Queued ride cancelled via FCM tap');
+        debugPrint('🔄 [DriverHomeScreen][B2B] Queued ride cancelled via FCM tap');
         if (mounted && _queuedTrip != null) {
           setState(() => _queuedTrip = null);
           CustomSnackbar.show(
@@ -251,7 +251,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         }
       } else if (data.type == NotificationType.queuedRideCancelled) {
         // B2B foreground: queued trip cancelled — clear pill only (20-02).
-        debugPrint('🔄 [DriverHomeScreen] Queued ride cancelled via FCM');
+        debugPrint('🔄 [DriverHomeScreen][B2B] Queued ride cancelled via FCM');
         if (mounted && _queuedTrip != null) {
           setState(() => _queuedTrip = null);
           CustomSnackbar.show(
@@ -1773,6 +1773,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             _queuedTrip != null &&
             _canonicalRideId(_queuedTrip!) == cancelledId) {
           setState(() => _queuedTrip = null);
+          debugPrint(
+            '🔄 [DriverHomeScreen][B2B] Queued trip $cancelledId cancelled by rider (socket)',
+          );
           CustomSnackbar.show(
             context,
             message: 'Your queued ride was cancelled by the passenger.',
@@ -1788,6 +1791,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             _b2bOffer = null;
             _b2bOfferError = null;
           });
+          debugPrint(
+            '🔄 [DriverHomeScreen][B2B] Pending offer $cancelledId evaporated (socket)',
+          );
           AudioService.instance.stop();
           CustomSnackbar.show(
             context,
@@ -1962,7 +1968,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     // and this event race; the guard inside _promoteQueuedTrip no-ops the
     // second. Scoped listener, off in dispose.
     _nextTripListener = (data) {
-      debugPrint('🔄 [DriverHomeScreen] Next trip activated: $data');
+      debugPrint('🔄 [DriverHomeScreen][B2B] Next trip activated: $data');
       if (!mounted) return;
       final map = data is Map<String, dynamic>
           ? data
@@ -2277,7 +2283,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     // Single queue: one queued trip at a time (backend enforces too).
     if (_queuedTrip != null) {
       debugPrint(
-        '🔄 [DriverHomeScreen] B2B offer dropped — queued trip already held',
+        '🔄 [DriverHomeScreen][B2B] Second offer dropped — queued trip already held',
       );
       return;
     }
@@ -2293,7 +2299,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     if (_currentRideId == null || !busy.contains(_status)) {
       // Idle (or unforeseen state without an active ride): normal card flow.
       debugPrint(
-        '🔄 [DriverHomeScreen] B2B flag on idle driver — normal card flow',
+        '🔄 [DriverHomeScreen][B2B] Flag on idle driver — normal card flow',
       );
       _handleIdleB2bOffer(offer, quiet: quiet);
       return;
@@ -2304,6 +2310,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       _b2bOffer = offer;
       _b2bOfferError = null;
     });
+    debugPrint(
+      '🔄 [DriverHomeScreen][B2B] Docked offer ${_canonicalRideId(offer)} (fare=${offer['fare']})',
+    );
     CustomSnackbar.show(
       context,
       message: 'New ride near your dropoff — tap to queue it',
@@ -2342,7 +2351,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       });
     } else {
       debugPrint(
-        '⚠️ [DriverHomeScreen] B2B offer dropped while $_status (no active ride)',
+        '⚠️ [DriverHomeScreen][B2B] Offer dropped while $_status (no active ride)',
       );
     }
   }
@@ -2378,6 +2387,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             _queuedTrip = {...offer, ...newData};
             _b2bOffer = null;
           });
+          debugPrint(
+            '🔄 [DriverHomeScreen][B2B] Queued trip $offerId accepted (isQueued:true)',
+          );
           CustomSnackbar.show(
             context,
             message: 'Next trip queued!',
@@ -2528,6 +2540,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
                       }
                       Navigator.pop(context);
                       setState(() => _queuedTrip = null);
+                      debugPrint(
+                        '🔄 [DriverHomeScreen][B2B] Queued trip cancelled by driver',
+                      );
                       CustomSnackbar.show(
                         context,
                         message: 'Queued trip cancelled.',
@@ -2561,7 +2576,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       // trigger) or a stray event. Never touch Trip A on a stray.
       if (_currentRideId == nextId) return;
       debugPrint(
-        '🔄 [DriverHomeScreen] Ignoring promotion for unknown ride $nextId',
+        '🔄 [DriverHomeScreen][B2B] Ignoring promotion for unknown ride $nextId',
       );
       return;
     }
@@ -2574,6 +2589,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       _b2bOffer = null;
       _b2bOfferError = null;
     });
+    debugPrint(
+      '🔄 [DriverHomeScreen][B2B] Promoted queued trip $nextId to active',
+    );
     _persistActiveRide();
     _fetchNavigationRoute();
     CustomSnackbar.show(
