@@ -1,11 +1,12 @@
 # MK Tours - Project State
 
 ## Current Position
-- **Phase:** 20-driver-back-to-back — In Progress (1/3 plans, 20-01 complete 2026-09-24; B2B parsers + socket passthroughs + 17 contract tests)
-- **Next:** 20-02 driver queued-trip UI + 20-03 rider en-route UI (both build on 20-01 contract)
+- **Phase:** 20-driver-back-to-back — In Progress (2/3 plans, 20-01 + 20-03 complete 2026-09-24; rider B2B tracking + FCM types + 174-test suite green)
+- **Next:** 20-02 driver queued-trip UI (docked pill + promotion auto-transition)
 
 ## Completed Plans
 - 20-01: B2B contract + transport foundation — QueuedRide/AcceptedRide parsers, 6 socket passthrough pairs, queued-ride error copy, 17 contract tests (`8a6fe43`, `44868e2`, `246d220`)
+- 20-03: Rider B2B experience — trackDriver-once, shared ETA setter, en-route trigger, reason cancel, FCM B2B types + tap resync, 174-test suite green (`e9ebaa3`, `4013214`)
 - 02-01: Ride-flow API layer — no-OTP startRide, stopArrive/stopResume, stops-aware fare/create, reason cancel, fixed end-early (`c0c7d26`, `0e95c3b`)
 - 02-02: Domain + error infra (parallel agent — see 02-02-SUMMARY.md)
 - 03-01: Rider booking → searching → assigned — stops editor + fare cards, overlay states, OTP-free assigned (`bdf0aaa`, `396af2c`)
