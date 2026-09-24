@@ -19,6 +19,7 @@
 | 17 | Backend payment_link only for scheduled | Planned | 0 | — |
 | 18 | Enforce payment_method constraints for scheduled | Planned | 0 | PAYCONST-01..06 |
 | 19 | 3/3 | Complete   | 2026-09-22 | RES-01..06 |
+| 20 | Driver Back-to-Back Dispatch | Planned | 3 | B2B-01..08 |
 
 ---
 
@@ -416,3 +417,29 @@ Plans:
 - Kill app mid-trip (rider + driver) → reopen restores exact screen with live updates resumed
 - Airplane-mode 60s → reconnect reconciles missed status without duplicate actions
 - `flutter analyze` clean; contract/unit tests green; human kill-restart pass on both roles
+
+## Phase 20: Driver Back-to-Back Dispatch
+
+**Goal:** Drivers chain rides without idle gap — mid-trip B2B offer → docked queued pill → complete promotes next trip with auto-navigation; riders see a standard assigned experience with honest ETAs. Full backend contract in `driver-multirequest.md`.
+
+**Requirements:**
+- **B2B-01**: Driver accepts queued ride (POST accept → status accepted + isQueued true); second-queue blocked with friendly copy
+- **B2B-02**: Queued trip docked as Next-trip pill (pickup + fare + driver-cancel) while Trip A keeps map and all action buttons
+- **B2B-03**: Complete promotes queued ride (hasQueuedRidePromoted/nextRideId) + ride:nextTripActivated auto-switches navigation exactly once
+- **B2B-04**: Socket ride:newRequest (isBackToBack) + ride:cancelled clear queued with feedback, Trip A untouched
+- **B2B-05**: Rider B sees standard assigned UI (driver card, no negative phrasing) + cancel-while-queued with reason
+- **B2B-06**: Rider live tracking (trackDriver emit, driver:locationChanged, etaUpdate) + driverEnRoute status trigger
+- **B2B-07**: FCM data types ride_request B2B / queued_ride_cancelled / ride_accepted / ride_driver_en_route land correctly
+- **B2B-08**: No regressions — instant + scheduled + payment + restore flows identical when network healthy
+
+**Plans:** 3 plans in 2 waves
+
+Plans:
+- [ ] `20-01-PLAN.md` — Contract + transport: QueuedRide parsers, 6 socket passthroughs, error copy, contract tests (wave 1)
+- [ ] `20-02-PLAN.md` — Driver B2B: queuedTrip state, docked pill, promotion auto-transition (wave 2, needs 20-01)
+- [ ] `20-03-PLAN.md` — Rider B2B: assigned tracking, FCM types, regression sweep (wave 2, needs 20-01)
+
+**Success Criteria:**
+- Mid-trip B2B accept → pill visible → complete A → auto-navigate to B pickup, exactly once
+- Rider B sees driver card + live marker + honest ETA, never queue language
+- `flutter analyze` clean; contract + full test suite green; human two-device B2B pass
