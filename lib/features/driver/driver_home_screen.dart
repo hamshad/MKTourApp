@@ -73,11 +73,15 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   Map<String, dynamic>? _b2bOffer;
   Map<String, dynamic>? _queuedTrip;
   bool _b2bAccepting = false;
+  bool _b2bEnriching = false;
   String? _b2bOfferError;
   void Function(dynamic)? _nextTripListener;
   // Deferred promotion: Trip A was cash, so the queued promotion fires
   // after cash confirmation instead of at completion (20-02).
   bool _queuedPromotionPending = false;
+  // Lets the completeRide path wait for the server's promotion event
+  // instead of resetting to idle while Trip B is already live.
+  Completer<void>? _b2bPromotionWaiter;
 
   final ApiService _apiService = ApiService();
   bool _isLoading = false;
@@ -1715,6 +1719,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             _b2bOfferError = null;
             _queuedTrip = null;
             _queuedPromotionPending = false;
+            _releaseB2bWaiter();
           });
           _promoteParkedRequests();
         }
@@ -1824,6 +1829,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           _b2bOfferError = null;
           _queuedTrip = null;
           _queuedPromotionPending = false;
+          _releaseB2bWaiter();
           _clearNavigationUi();
           _clearActiveRideStorage();
         });
@@ -1875,6 +1881,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           _b2bOfferError = null;
           _queuedTrip = null;
           _queuedPromotionPending = false;
+          _releaseB2bWaiter();
           _clearNavigationUi();
           _clearActiveRideStorage();
         });
@@ -1899,6 +1906,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           setState(() {
             _b2bOffer = null;
             _b2bOfferError = null;
+            _releaseB2bWaiter();
           });
           AudioService.instance.stop();
           return;
@@ -1924,6 +1932,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           _b2bOfferError = null;
           _queuedTrip = null;
           _queuedPromotionPending = false;
+          _releaseB2bWaiter();
           _clearNavigationUi();
           _clearActiveRideStorage();
         });
@@ -2320,17 +2329,21 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       return;
     }
     // Mid-trip: dock the offer, keep Trip A navigation untouched.
+    // Merge first: FCM carries a thin payload (no locations) and must never
+    // overwrite the rich socket one.
+    final merged = mergeB2bOfferData(_b2bOffer, offer);
     if (!quiet) AudioService.instance.playNotification();
     setState(() {
-      _b2bOffer = offer;
+      _b2bOffer = merged;
       _b2bOfferError = null;
     });
     debugPrint(
-      '🔄 [DriverHomeScreen][B2B] Docked offer ${_canonicalRideId(offer)} (fare=${offer['fare']})',
+      '🔄 [DriverHomeScreen][B2B] Docked offer ${_canonicalRideId(merged)} (fare=${merged['fare']})',
     );
     debugPrint(
-      '🔄 [DriverHomeScreen][B2B] Offer payload pickup=${offer['pickupLocation']} dropoff=${offer['dropoffLocation']} flatPickup=${offer['pickupAddress']} flatDropoff=${offer['dropoffAddress']}',
+      '🔄 [DriverHomeScreen][B2B] Offer payload pickup=${merged['pickupLocation']} dropoff=${merged['dropoffLocation']} flatPickup=${merged['pickupAddress']} flatDropoff=${merged['dropoffAddress']}',
     );
+    _enrichB2bTrip(merged);
     CustomSnackbar.show(
       context,
       message: 'New ride near your dropoff — tap to queue it',
@@ -2377,6 +2390,69 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   /// Accept the docked B2B offer. Trip A stays active; on success with
   /// isQueued:true the trip docks into `_queuedTrip`. A non-queued success
   /// (Trip A ended mid-accept) falls back to normal adoption.
+  /// Fills missing pickup/dropoff details from the server.
+  ///
+  /// FCM `ride_request` carries only `rideId`/`fare`/`isBackToBack`, so a
+  /// push-first offer has no addresses and no coordinates. The authoritative
+  /// ride details always do, so fetch once and merge.
+  Future<void> _enrichB2bTrip(Map<String, dynamic> trip) async {
+    final view = B2bOfferData.fromMap(trip);
+    final missingSomething =
+        view.pickupAddress.isEmpty ||
+        view.dropoffAddress.isEmpty ||
+        !view.hasBothPoints;
+    if (!missingSomething) return;
+    final rideId = _canonicalRideId(trip);
+    if (rideId == null) return;
+    if (!mounted) return;
+    setState(() => _b2bEnriching = true);
+    try {
+      final response = await _apiService.getRideDetails(rideId);
+      if (!mounted) return;
+      final data = response['data'];
+      if (data is Map) {
+        final server = Map<String, dynamic>.from(data);
+        final merged = mergeB2bOfferData(trip, server);
+        if (_queuedTrip != null &&
+            _canonicalRideId(_queuedTrip!) == rideId) {
+          setState(() => _queuedTrip = merged);
+        } else if (_b2bOffer != null &&
+            _canonicalRideId(_b2bOffer!) == rideId) {
+          setState(() => _b2bOffer = merged);
+        }
+        debugPrint(
+          '🔄 [DriverHomeScreen][B2B] Enriched $rideId pickup=${merged['pickupLocation']} dropoff=${merged['dropoffLocation']}',
+        );
+      }
+    } catch (e) {
+      debugPrint('🔄 [DriverHomeScreen][B2B] Enrichment failed for $rideId: $e');
+    } finally {
+      if (mounted) setState(() => _b2bEnriching = false);
+    }
+  }
+
+  /// Releases any in-flight promotion wait so a pending completeRide never
+  /// hangs when the queued trip disappears (cancel, expiry, trip death).
+  void _releaseB2bWaiter() {
+    final waiter = _b2bPromotionWaiter;
+    _b2bPromotionWaiter = null;
+    if (waiter != null && !waiter.isCompleted) waiter.complete();
+  }
+
+  /// Waits for the queued promotion (event-driven) instead of assuming the
+  /// completion response carries the flags. Returns true when Trip B is live.
+  Future<bool> _awaitB2bPromotion(Duration timeout) async {
+    final queuedId = _canonicalRideId(_queuedTrip ?? {});
+    if (queuedId == null) return _currentRideId != null;
+    final waiter = _b2bPromotionWaiter;
+    if (waiter != null && !waiter.isCompleted) {
+      await waiter.future.timeout(timeout, onTimeout: () {});
+    }
+    // Authoritative check: the event path promotes before the REST response
+    // returns, so state is the source of truth, not the flags.
+    return _currentRideId == queuedId;
+  }
+
   Future<void> _acceptB2bOffer() async {
     final offer = _b2bOffer;
     if (offer == null || _b2bAccepting) return;
@@ -2404,10 +2480,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           setState(() {
             _queuedTrip = {...offer, ...newData};
             _b2bOffer = null;
+            _b2bPromotionWaiter = Completer<void>();
           });
           debugPrint(
             '🔄 [DriverHomeScreen][B2B] Queued trip $offerId accepted (isQueued:true)',
           );
+          _enrichB2bTrip(_queuedTrip ?? const {});
           CustomSnackbar.show(
             context,
             message: 'Next trip queued!',
@@ -2618,6 +2696,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     debugPrint(
       '🔄 [DriverHomeScreen][B2B] Promoted queued trip $nextId to active',
     );
+    final waiter = _b2bPromotionWaiter;
+    _b2bPromotionWaiter = null;
+    if (waiter != null && !waiter.isCompleted) waiter.complete();
     _persistActiveRide();
     _fetchNavigationRoute();
     CustomSnackbar.show(
@@ -3265,16 +3346,46 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
               );
               return;
             }
+            // No promotion flags in the response, but the server promotes at
+            // completion and emits ride:nextTripActivated — which can land
+            // while this REST call is still in flight. Never reset to idle
+            // over a live Trip B: wait briefly for the event, then trust
+            // state. Without this the navigation sheet flashed and vanished
+            // back to home the moment the summary was dismissed.
+            if (_queuedTrip != null) {
+              final promoted = await _awaitB2bPromotion(
+                const Duration(seconds: 4),
+              );
+              _fetchRideHistory();
+              if (!mounted) return;
+              _showFareSummary(
+                summary: summary,
+                headline: promoted
+                    ? 'Ride completed — next trip ready'
+                    : 'Ride completed successfully',
+                subline: promoted
+                    ? 'Your next trip is ready. Head to the pickup location.'
+                    : null,
+              );
+              if (promoted) return;
+              if (_currentRideId == null) {
+                setState(() {
+                  _status = 'online';
+                  _rideData = null;
+                  _clearNavigationUi();
+                });
+                // Queue survived: keep the pill, reconcile with the server.
+                _scheduleQueuedRecovery();
+                _promoteParkedRequests();
+              }
+              return;
+            }
             setState(() {
               _status = 'online';
               _currentRideId = null;
               _rideData = null;
               _clearNavigationUi();
             });
-            // Promotion flags absent: keep the pill and reconcile with the
-            // server — the promotion event may still be in flight, or the
-            // local queue may be stale (20-02 recovery).
-            if (_queuedTrip != null) _scheduleQueuedRecovery();
             _promoteParkedRequests();
             _fetchRideHistory();
             if (!mounted) return;
@@ -4239,6 +4350,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     return B2bOfferCard(
       data: B2bOfferData.fromMap(_b2bOffer ?? const {}),
       busy: _b2bAccepting,
+      enriching: _b2bEnriching,
       error: _b2bOfferError,
       driverLat: _currentLocation.latitude,
       driverLng: _currentLocation.longitude,

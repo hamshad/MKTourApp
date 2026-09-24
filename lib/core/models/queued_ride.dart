@@ -626,6 +626,41 @@ class QueuedCancellation {
   }
 }
 
+/// Merges a newer B2B payload into the one already held, never letting a
+/// thinner payload erase richer data.
+///
+/// The same offer arrives over two transports with different richness: the
+/// socket `ride:newRequest` carries nested pickup/dropoff, while the FCM
+/// data message carries only `rideId`/`fare`/`isBackToBack`. Last-write-wins
+/// would blank the addresses; this keeps whichever side has real values.
+Map<String, dynamic> mergeB2bOfferData(
+  Map<String, dynamic>? current,
+  Map<String, dynamic> incoming,
+) {
+  if (current == null) return Map<String, dynamic>.from(incoming);
+  final merged = Map<String, dynamic>.from(current);
+  incoming.forEach((key, value) {
+    if (value == null) return;
+    final existing = merged[key];
+    final existingEmpty =
+        existing == null ||
+        existing == '' ||
+        (existing is Map && existing.isEmpty) ||
+        (existing is List && existing.isEmpty);
+    if (existingEmpty) {
+      merged[key] = value;
+      return;
+    }
+    if (existing is Map && value is Map) {
+      merged[key] = {
+        ...existing,
+        ...value.map((k, v) => MapEntry(k.toString(), v)),
+      };
+    }
+  });
+  return merged;
+}
+
 /// Driver statuses during which an active trip owns the screen.
 const List<String> kB2bBusyStatuses = [
   'pickup',

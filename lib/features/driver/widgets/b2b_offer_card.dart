@@ -338,6 +338,7 @@ class _RoutePreviewPainter extends CustomPainter {
 class B2bOfferCard extends StatefulWidget {
   final B2bOfferData data;
   final bool busy;
+  final bool enriching;
   final String? error;
   final double? driverLat;
   final double? driverLng;
@@ -350,6 +351,7 @@ class B2bOfferCard extends StatefulWidget {
     required this.onQueue,
     required this.onSkip,
     this.busy = false,
+    this.enriching = false,
     this.error,
     this.driverLat,
     this.driverLng,
@@ -484,6 +486,27 @@ class _B2bOfferCardState extends State<B2bOfferCard>
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
               child: _RouteTimeline(data: data),
             ),
+            if (widget.enriching)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+                child: Row(
+                  children: [
+                    const SizedBox(
+                      height: 12,
+                      width: 12,
+                      child: CircularProgressIndicator(strokeWidth: 1.6),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Loading pickup details…',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             if (widget.error != null)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),

@@ -1,8 +1,86 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mktours/core/models/queued_ride.dart';
 import 'package:mktours/features/driver/widgets/b2b_offer_card.dart';
 
 void main() {
+  group('mergeB2bOfferData', () {
+    test('thin FCM payload never erases rich socket locations', () {
+      final rich = {
+        'rideId': 'r1',
+        'fare': '18.50',
+        'isBackToBack': true,
+        'pickupLocation': {
+          'address': '45 Piccadilly',
+          'coordinates': [-0.1388, 51.5074],
+        },
+        'dropoffLocation': {
+          'address': 'Baker Street',
+          'coordinates': [-0.1569, 51.5237],
+        },
+      };
+      final thin = {
+        'rideId': 'r1',
+        'fare': '18.50',
+        'isBackToBack': 'true',
+      };
+      final merged = mergeB2bOfferData(rich, thin);
+      final data = B2bOfferData.fromMap(merged);
+      expect(data.pickupLabel, '45 Piccadilly');
+      expect(data.dropoffLabel, 'Baker Street');
+      expect(data.hasBothPoints, isTrue);
+    });
+
+    test('server details fill gaps in a thin first payload', () {
+      final thin = {'rideId': 'r1', 'fare': '18.50'};
+      final details = {
+        'rideId': 'r1',
+        'pickupLocation': {
+          'address': '45 Piccadilly',
+          'coordinates': [-0.1388, 51.5074],
+        },
+        'dropoffLocation': {
+          'address': 'Baker Street',
+          'coordinates': [-0.1569, 51.5237],
+        },
+      };
+      final data = B2bOfferData.fromMap(mergeB2bOfferData(thin, details));
+      expect(data.pickupLabel, '45 Piccadilly');
+      expect(data.dropoffLabel, 'Baker Street');
+      expect(data.hasBothPoints, isTrue);
+    });
+
+    test('nested maps merge key-wise instead of replacing wholesale', () {
+      final current = {
+        'rideId': 'r1',
+        'pickupLocation': {'address': 'Piccadilly'},
+      };
+      final incoming = {
+        'rideId': 'r1',
+        'pickupLocation': {'coordinates': [-0.1388, 51.5074]},
+      };
+      final merged = mergeB2bOfferData(current, incoming);
+      final pickup = merged['pickupLocation'] as Map;
+      expect(pickup['address'], 'Piccadilly');
+      expect(pickup['coordinates'], [-0.1388, 51.5074]);
+    });
+
+    test('null incoming values never overwrite good data', () {
+      final current = {
+        'rideId': 'r1',
+        'pickupLocation': {'address': 'Piccadilly'},
+      };
+      final merged = mergeB2bOfferData(current, {
+        'rideId': 'r1',
+        'pickupLocation': null,
+      });
+      expect(
+        (merged['pickupLocation'] as Map)['address'],
+        'Piccadilly',
+      );
+    });
+  });
+
   group('B2bOfferData address/coord extraction', () {
     test('nested socket payload resolves both addresses and coords', () {
       final data = B2bOfferData.fromMap({
@@ -185,6 +263,24 @@ void main() {
         find.text('You already have a queued next trip.'),
         findsOneWidget,
       );
+    });
+
+    testWidgets('enriching state shows the loading hint', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: B2bOfferCard(
+              data: const B2bOfferData(),
+              enriching: true,
+              onQueue: () {},
+              onSkip: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(find.text('Loading pickup details…'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsWidgets);
     });
   });
 }
