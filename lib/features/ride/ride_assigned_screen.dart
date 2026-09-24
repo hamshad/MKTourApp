@@ -5,6 +5,8 @@ import 'dart:io' show Platform;
 import 'package:provider/provider.dart';
 import 'package:latlong2/latlong.dart' as latlong2;
 import '../../core/services/audio_service.dart';
+import '../../core/services/fcm_service.dart';
+import '../../core/models/queued_ride.dart';
 import '../../core/auth_provider.dart';
 import '../../core/theme.dart';
 import '../../core/services/socket_service.dart';
@@ -170,6 +172,22 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   // Last driver position update (19-03 stale rule): older than 30s renders
   // the marker dimmed + timestamped, never animated as live.
   DateTime? _lastDriverUpdateAt;
+
+  // Back-to-back dispatch (driver-multirequest.md §3.2, §5.2): rider B gets
+  // the standard assigned experience and never perceives the queue — no
+  // "finishing another trip" copy anywhere (audited: none exists).
+  // `ride:driverEnRoute` flips the status line to the en-route message;
+  // `ride:etaUpdate` feeds the same single ETA setter as the socket
+  // location path so both sources render one honest ETA.
+  String? _b2bEnRouteMessage;
+  // trackDriver is idempotent-safe but emitted once per ride+driver so a
+  // B2B accept (driver finishing trip A) never re-emits blindly on every
+  // rebuild / reconnect / duplicate accepted event.
+  String? _trackingKey;
+  StreamSubscription<FcmNotificationData>? _b2bFcmForegroundSub;
+  StreamSubscription<FcmNotificationData>? _b2bFcmTapSub;
+  void Function(dynamic)? _driverEnRouteListener;
+  void Function(dynamic)? _etaUpdateListener;
 
   // Cancellation state
   bool _isCancelling = false;
@@ -548,6 +566,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     _setupInitialState();
     _setupSocketListeners();
     _setupConnectionListener();
+    // B2B push path: ride_driver_en_route foreground/tap while live (20-03).
+    _listenB2bFcm();
     _fetchDetailedAddresses();
     _setupNavigationListener();
     // Reopen gap (§4 Error 2): cold start / reopen on an accepted unpaid
@@ -789,6 +809,99 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     await ActiveRideStorage.clear();
   }
 
+  /// Join the driver room + emit `ride:trackDriver` exactly once per
+  /// ride+driver. Guards the initial-state path, the live `ride:accepted`
+  /// path, and reconnect/push resyncs against blind re-emits.
+  void _trackDriverOnce(String driverId) {
+    if (driverId.isEmpty) return;
+    final key = '${widget.rideId}:$driverId';
+    if (_trackingKey == key) return;
+    _trackingKey = key;
+    _socketService.joinDriverRoom(driverId);
+    _socketService.startTrackingDriver(driverId);
+    debugPrint(
+      '🚗 [RideAssignedScreen] Tracking driver (once): $driverId for ${widget.rideId}',
+    );
+  }
+
+  /// Single ETA setter for every realtime source: `driver:locationChanged`
+  /// embeds and `ride:etaUpdate` events both feed this, so the status panel
+  /// renders one honest ETA during trip-A wind-down. The 30s HTTP fallback
+  /// never calls this (it keeps its own stale-guard path in `_calculateETA`).
+  void _applyEta(String durationText, int minutes) {
+    _lastSocketEtaAt = DateTime.now();
+    if (!mounted) return;
+    setState(() {
+      _etaText = durationText;
+      _etaMinutes = minutes;
+    });
+    debugPrint(
+      '🕐 [RideAssignedScreen] ETA applied: $_etaText ($_etaMinutes mins)',
+    );
+  }
+
+  /// B2B en-route trigger (§5.2): driver finished trip A and heads to rider
+  /// B. Gentle status update only — no alarm (arrival owns the ringtone).
+  void _applyB2bEnRoute(DriverEnRoute signal) {
+    if (signal.rideId.isNotEmpty && signal.rideId != widget.rideId) return;
+    if (_rideStatus != 'accepted') return;
+    final message = signal.message.isNotEmpty
+        ? signal.message
+        : 'Driver is heading to your pickup location';
+    if (!mounted) return;
+    setState(() => _b2bEnRouteMessage = message);
+    debugPrint('🚗 [RideAssignedScreen] Driver en route: $message');
+  }
+
+  /// FCM `ride_driver_en_route` tap/foreground while this screen is live:
+  /// authoritative resync (never navigation) + rejoin driver tracking so
+  /// missed socket events reconcile from server state. Socket-vs-FCM
+  /// double-delivery is already collapsed by the shared 5s type+rideId
+  /// dedupe window (first transport wins) before these streams emit.
+  void _listenB2bFcm() {
+    _b2bFcmForegroundSub ??= FcmService
+        .instance
+        .onForegroundNotification
+        .listen((data) {
+          if (data.type != NotificationType.rideDriverEnRoute) return;
+          if (!_isB2bFcmForThisRide(data)) return;
+          _applyB2bEnRoute(
+            DriverEnRoute(
+              rideId: widget.rideId,
+              status: 'accepted',
+              message: 'Driver is heading to your pickup location',
+            ),
+          );
+          _resyncB2bFromPush();
+        });
+    _b2bFcmTapSub ??= FcmService.instance.onNotificationTap.listen((data) {
+      if (data.type != NotificationType.rideDriverEnRoute &&
+          data.type != NotificationType.rideAccepted) {
+        return;
+      }
+      if (!_isB2bFcmForThisRide(data)) return;
+      _resyncB2bFromPush();
+    });
+  }
+
+  bool _isB2bFcmForThisRide(FcmNotificationData data) {
+    final rideId = data.rideId;
+    return rideId == null || rideId.isEmpty || rideId == widget.rideId;
+  }
+
+  Future<void> _resyncB2bFromPush() async {
+    final ride = await resyncActiveRide(
+      api: _apiService,
+      socket: _socketService,
+      rideId: widget.rideId,
+    );
+    if (ride == null || !mounted) return;
+    final driverId = driverIdFromRide(ride);
+    if (driverId != null && driverId.isNotEmpty) {
+      _trackDriverOnce(driverId);
+    }
+  }
+
   void _setupInitialState() {
     debugPrint('🚀 [RideAssignedScreen] Setting up initial state...');
     debugPrint('🚀 [RideAssignedScreen] widget.driver: ${widget.driver}');    // Initialise scheduled flag from widget param
@@ -834,13 +947,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       _currentDriverId =
           _driver['_id']?.toString() ?? _driver['id']?.toString();
       if (_currentDriverId != null) {
-        _socketService.joinDriverRoom(_currentDriverId!);
-        debugPrint(
-          '🚗 [RideAssignedScreen] Joined driver room: driver:$_currentDriverId',
-        );
-
-        // Start tracking driver location in real-time
-        _socketService.startTrackingDriver(_currentDriverId!);
+        // B2B-safe: emits trackDriver once per ride+driver (20-03).
+        _trackDriverOnce(_currentDriverId!);
       }
 
       if (_driver['location'] != null) {
@@ -1228,10 +1336,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
           _currentDriverId =
               _driver['_id']?.toString() ?? _driver['id']?.toString();
           if (_currentDriverId != null) {
-            _socketService.joinDriverRoom(_currentDriverId!);
-            debugPrint(
-              '🚗 [RideAssignedScreen] Joined driver room: driver:$_currentDriverId',
-            );
+            // B2B-safe: duplicate accepted events never re-emit (20-03).
+            _trackDriverOnce(_currentDriverId!);
           } else {
             debugPrint(
               '⚠️ [RideAssignedScreen] Could not extract driver ID from: $_driver',
@@ -1249,9 +1355,9 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
             // Fetch navigation route from driver to pickup
             _fetchNavigationRoute();
 
-            // Start tracking driver location in real-time
+            // Start tracking driver location in real-time (once per ride+driver)
             if (_currentDriverId != null) {
-              _socketService.startTrackingDriver(_currentDriverId!);
+              _trackDriverOnce(_currentDriverId!);
               // Start periodic ETA updates with real traffic data
               _startETAUpdates();
             }
@@ -1335,16 +1441,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
             if (duration != null && isGoingToPickup) {
               // Full duration string may be "1 hour 11 mins" - parse all parts.
               final minutes = _parseEtaMinutes(duration);
-
-              _lastSocketEtaAt = DateTime.now();
-              setState(() {
-                _etaText = duration;
-                _etaMinutes = minutes;
-              });
-
-              debugPrint(
-                '🕐 [RideAssignedScreen] ETA from socket: $_etaText ($_etaMinutes mins)',
-              );
+              // Single ETA setter shared with ride:etaUpdate (B2B, 20-03).
+              _applyEta(duration, minutes);
             }
           }
 
@@ -1357,6 +1455,61 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         }
       }
     });
+
+    // Back-to-back dispatch (driver-multirequest.md §3.2, 20-01 passthroughs).
+    // Scoped on/off next to the existing location/accepted subscriptions;
+    // reconnect re-registers via the listener registry with no double-fire.
+    _socketService.offDriverEnRoute();
+    _socketService.offEtaUpdate();
+    _driverEnRouteListener ??= (data) {
+      debugPrint('🚗 [RideAssignedScreen] Driver en route: $data');
+      if (!mounted || !context.mounted) return;
+      final map = data is Map<String, dynamic>
+          ? data
+          : data is Map
+          ? Map<String, dynamic>.from(data)
+          : <String, dynamic>{};
+      // Socket vs FCM double-delivery collapses here: first transport wins.
+      if (!RideEventDedupe.shouldHandleEvent(
+        source: 'socket',
+        type: 'ride_driver_en_route',
+        data: map,
+      )) {
+        return;
+      }
+      scheduleMicrotask(() {
+        if (!mounted || !context.mounted) return;
+        _applyB2bEnRoute(DriverEnRoute.fromMap(map));
+      });
+    };
+    _etaUpdateListener ??= (data) {
+      debugPrint('🕐 [RideAssignedScreen] ETA update: $data');
+      if (!mounted || !context.mounted) return;
+      final map = data is Map<String, dynamic>
+          ? data
+          : data is Map
+          ? Map<String, dynamic>.from(data)
+          : <String, dynamic>{};
+      if (!RideEventDedupe.shouldHandleEvent(
+        source: 'socket',
+        type: 'ride_eta_update',
+        data: map,
+      )) {
+        return;
+      }
+      scheduleMicrotask(() {
+        if (!mounted || !context.mounted) return;
+        if (_rideStatus != 'accepted') return;
+        final update = EtaUpdate.fromMap(map);
+        if (update.rideId.isNotEmpty && update.rideId != widget.rideId) {
+          return;
+        }
+        if (update.duration.isEmpty) return;
+        _applyEta(update.duration, _parseEtaMinutes(update.duration));
+      });
+    };
+    _socketService.onDriverEnRoute(_driverEnRouteListener!);
+    _socketService.onEtaUpdate(_etaUpdateListener!);
 
     _socketService.on('ride:started', (data) {
       debugPrint('═══════════════════════════════════════════════════════');
@@ -2299,35 +2452,99 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     debugPrint('⏱️ [RideAssignedScreen] Stopped ETA updates');
   }
 
-  /// Show cancellation confirmation dialog
+  /// Show cancellation confirmation dialog with a reason picker.
+  ///
+  /// The user-cancel endpoint (§2.2) takes a `reason`; the sheet always
+  /// passes one (default preselected) so cancel-while-queued works for B2B
+  /// rides exactly like standard assigned rides.
   void _showCancellationConfirmation() {
     // Determine if ride has been accepted (driver assigned)
     final bool hasDriverAssigned =
         _rideStatus == 'accepted' || _rideStatus == 'driver_arrived';
 
+    const reasons = [
+      'Wait time too long',
+      'Driver taking too long',
+      'Change of plans',
+      'Booked by mistake',
+    ];
+    String selectedReason = reasons.first;
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Cancel Ride?'),
-        content: Text(
-          hasDriverAssigned
-              ? 'Are you sure you want to cancel this ride?\n\n'
-                    'Note: A cancellation fee may apply if cancelled after the grace period (2 minutes after driver acceptance).'
-              : 'Are you sure you want to cancel your ride request?',
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Cancel Ride?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                hasDriverAssigned
+                    ? 'Are you sure you want to cancel this ride?\n\n'
+                          'Note: A cancellation fee may apply if cancelled after the grace period (2 minutes after driver acceptance).'
+                    : 'Are you sure you want to cancel your ride request?',
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Reason:',
+                style: TextStyle(fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  for (final reason in reasons)
+                    GestureDetector(
+                      onTap: () =>
+                          setDialogState(() => selectedReason = reason),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: selectedReason == reason
+                              ? AppTheme.primaryColor.withValues(alpha: 0.1)
+                              : Colors.grey[100],
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: selectedReason == reason
+                                ? AppTheme.primaryColor
+                                : Colors.grey[300]!,
+                          ),
+                        ),
+                        child: Text(
+                          reason,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: selectedReason == reason
+                                ? AppTheme.primaryColor
+                                : Colors.grey[700],
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('No, Keep Ride'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _cancelRide(reason: selectedReason);
+              },
+              child: Text('Yes, Cancel', style: TextStyle(color: Colors.red)),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('No, Keep Ride'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _cancelRide();
-            },
-            child: Text('Yes, Cancel', style: TextStyle(color: Colors.red)),
-          ),
-        ],
       ),
     );
   }
@@ -2337,7 +2554,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   /// Offline (19-03): the button stays enabled, queues via `emitReliable`
   /// with queued-intent copy, and never double-fires while the same
   /// rideId+action is pending.
-  Future<void> _cancelRide() async {
+  Future<void> _cancelRide({String? reason}) async {
     if (_isCancelling) return;
 
     // Offline first: queue the intent, toast, no double-fire.
@@ -2361,8 +2578,12 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     setState(() => _isCancelling = true);
 
     try {
-      // Use the new cancelRideByUser endpoint for proper cancellation handling
-      final response = await _apiService.cancelRideByUser(widget.rideId);
+      // Use the new cancelRideByUser endpoint for proper cancellation handling.
+      // The reason sheet always passes a reason (§2.2 cancel-while-queued).
+      final response = await _apiService.cancelRideByUser(
+        widget.rideId,
+        reason: reason,
+      );
 
       if (!mounted) return;
 
@@ -2477,6 +2698,10 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     // Clean up connection listener
     _connectionSubscription?.cancel();
 
+    // B2B push subscriptions (20-03)
+    _b2bFcmForegroundSub?.cancel();
+    _b2bFcmTapSub?.cancel();
+
     // Stop tracking and leave driver room if we were tracking one
     if (_currentDriverId != null) {
       _socketService.stopTrackingDriver(_currentDriverId!);
@@ -2485,6 +2710,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
 
     // Clean up socket listeners
     _socketService.off('driver:locationChanged');
+    _socketService.offDriverEnRoute();
+    _socketService.offEtaUpdate();
     _socketService.off('ride:started');
     _socketService.off('ride:completed');
     _socketService.off('ride:driverArrived');
@@ -3080,7 +3307,10 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                               ? 'Driver has arrived!'
                               : _rideStatus == 'in_progress'
                               ? 'Trip in progress'
-                              : 'Driver is on the way',
+                              // B2B en-route trigger flips this to
+                              // "Driver is heading to your pickup location"
+                              // once the driver finishes trip A (§5.2).
+                              : _b2bEnRouteMessage ?? 'Driver is on the way',
                           style: TextStyle(
                             fontWeight: FontWeight.w600,
                             fontSize: 16,
