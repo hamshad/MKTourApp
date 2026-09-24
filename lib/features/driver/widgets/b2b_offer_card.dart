@@ -137,18 +137,55 @@ class B2bOfferData {
     if (address.isEmpty) address = (map[addressKey] ?? '').toString();
     lat ??= _num(map[latKey]);
     lng ??= _num(map[lngKey]) ?? _num(map[lngAltKey]);
+    // Last resort: some payloads only ship a flat coordinate pair.
+    if (lat == null || lng == null) {
+      final pair = _coords(map[latKey.replaceAll('Lat', 'Coordinates')]);
+      if (pair != null) {
+        lat ??= pair.$1;
+        lng ??= pair.$2;
+      }
+    }
     return (address, lat, lng);
   }
 
-  /// Extracts (lat, lng) from a list pair or GeoJSON Point nesting.
+  /// Extracts (lat, lng) from every shape seen in the wild: list pair,
+  /// GeoJSON Point nesting, `{lat, lng}` objects, and string pairs
+  /// (`"-0.1388,51.5074"` or `"51.5074,-0.1388"`).
   static (double, double)? _coords(dynamic raw) {
     dynamic coords;
-    if (raw is Map) coords = raw['coordinates'];
+    if (raw is Map) {
+      coords = raw['coordinates'];
+      if (coords == null) {
+        final lat = _num(raw['lat'] ?? raw['latitude']);
+        final lng = _num(raw['lng'] ?? raw['lon'] ?? raw['longitude']);
+        if (lat != null && lng != null) return (lat, lng);
+      }
+    }
     if (coords is Map) coords = coords['coordinates'];
     if (coords is List && coords.length >= 2) {
       final lng = (coords[0] as num?)?.toDouble();
       final lat = (coords[1] as num?)?.toDouble();
       if (lat != null && lng != null) return (lat, lng);
+    }
+    if (coords is String) {
+      final parts = coords
+          .replaceAll('[', '')
+          .replaceAll(']', '')
+          .replaceAll('(', '')
+          .replaceAll(')', '')
+          .split(',')
+          .map((p) => p.trim())
+          .where((p) => p.isNotEmpty)
+          .toList();
+      if (parts.length >= 2) {
+        final a = double.tryParse(parts[0]);
+        final b = double.tryParse(parts[1]);
+        if (a != null && b != null) {
+          // Strings follow GeoJSON order: [lng, lat]. A first value outside
+          // [-90, 90] can only be a longitude, which the same order honours.
+          return (b, a);
+        }
+      }
     }
     return null;
   }

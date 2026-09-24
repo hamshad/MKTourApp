@@ -2343,6 +2343,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     debugPrint(
       '🔄 [DriverHomeScreen][B2B] Offer payload pickup=${merged['pickupLocation']} dropoff=${merged['dropoffLocation']} flatPickup=${merged['pickupAddress']} flatDropoff=${merged['dropoffAddress']}',
     );
+    final view = B2bOfferData.fromMap(merged);
+    debugPrint(
+      '🔄 [DriverHomeScreen][B2B] Resolved pickup="${view.pickupLabel}" '
+      '(${view.pickupLat}, ${view.pickupLng}) dropoff="${view.dropoffLabel}" '
+      '(${view.dropoffLat}, ${view.dropoffLng}) points=${view.hasBothPoints}',
+    );
     _enrichB2bTrip(merged);
     CustomSnackbar.show(
       context,
@@ -2412,7 +2418,15 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       final data = response['data'];
       if (data is Map) {
         final server = Map<String, dynamic>.from(data);
-        final merged = mergeB2bOfferData(trip, server);
+        // Some detail endpoints nest the ride one level down.
+        final nested = server['ride'];
+        final merged = mergeB2bOfferData(
+          trip,
+          nested is Map
+              ? mergeB2bOfferData(server, Map<String, dynamic>.from(nested))
+              : server,
+        );
+        final view = B2bOfferData.fromMap(merged);
         if (_queuedTrip != null &&
             _canonicalRideId(_queuedTrip!) == rideId) {
           setState(() => _queuedTrip = merged);
@@ -2421,7 +2435,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           setState(() => _b2bOffer = merged);
         }
         debugPrint(
-          '🔄 [DriverHomeScreen][B2B] Enriched $rideId pickup=${merged['pickupLocation']} dropoff=${merged['dropoffLocation']}',
+          '🔄 [DriverHomeScreen][B2B] Enriched $rideId pickup="${view.pickupLabel}" '
+          '(${view.pickupLat}, ${view.pickupLng}) dropoff="${view.dropoffLabel}" '
+          '(${view.dropoffLat}, ${view.dropoffLng}) points=${view.hasBothPoints}',
         );
       }
     } catch (e) {

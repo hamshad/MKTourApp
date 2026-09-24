@@ -236,6 +236,26 @@ void main() {
       expect(data.hasBothPoints, isTrue);
     });
 
+    test('lat/lng object and string coordinate pairs both resolve', () {
+      final object = B2bOfferData.fromMap({
+        'pickupLocation': {'lat': 51.5074, 'lng': -0.1388},
+        'dropoffLocation': {'latitude': 51.5237, 'longitude': -0.1569},
+      });
+      expect(object.pickupLat, 51.5074);
+      expect(object.pickupLng, -0.1388);
+      expect(object.dropoffLat, 51.5237);
+
+      final geoJsonString = B2bOfferData.fromMap({
+        'pickupLocation': {'coordinates': '[-0.1388, 51.5074]'},
+        'dropoffLocation': {'coordinates': '[-0.1569, 51.5237]'},
+      });
+      expect(geoJsonString.pickupLat, 51.5074);
+      expect(geoJsonString.pickupLng, -0.1388);
+      expect(geoJsonString.dropoffLat, 51.5237);
+      expect(geoJsonString.dropoffLng, -0.1569);
+      expect(geoJsonString.hasBothPoints, isTrue);
+    });
+
     test('partial payload keeps whatever exists, never throws', () {
       final data = B2bOfferData.fromMap({'fare': '9.99'});
       expect(data.pickupLabel, 'Pickup');
