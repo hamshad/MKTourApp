@@ -28,6 +28,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../core/services/audio_service.dart';
 import '../../core/services/fcm_service.dart';
 import '../../core/services/payment_service.dart';
+import '../../core/models/queued_ride.dart';
 import 'driver_scheduled_rides_screen.dart';
 
 class DriverHomeScreen extends StatefulWidget {
@@ -60,6 +61,19 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   final List<Map<String, dynamic>> _requestQueue = [];
   int _requestIndex = 0;
   static const int _maxQueuedRequests = 5;
+
+  // Back-to-back dispatch (driver-multirequest.md §5.1, 20-02):
+  // `_b2bOffer` is a pending B2B offer received mid-trip; `_queuedTrip` is
+  // the accepted queued trip (status accepted, isQueued true) docked while
+  // Trip A (`_currentRideId`/`_rideData`) stays authoritative for the map
+  // and every action button. Both are memory-only: cold start never
+  // restores them (server promotion is authoritative; stale queued state
+  // must never strand the UI).
+  Map<String, dynamic>? _b2bOffer;
+  Map<String, dynamic>? _queuedTrip;
+  bool _b2bAccepting = false;
+  String? _b2bOfferError;
+  void Function(dynamic)? _nextTripListener;
 
   final ApiService _apiService = ApiService();
   bool _isLoading = false;
@@ -177,6 +191,18 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         if (mounted) {
           _handleExcessCashRequest(data.rawData, checkDedupe: false);
         }
+      } else if (data.type == NotificationType.queuedRideCancelled) {
+        // B2B: rider cancelled the queued trip while the app was away —
+        // clear the pill, Trip A untouched (20-02).
+        debugPrint('🔄 [DriverHomeScreen] Queued ride cancelled via FCM tap');
+        if (mounted && _queuedTrip != null) {
+          setState(() => _queuedTrip = null);
+          CustomSnackbar.show(
+            context,
+            message: 'Your queued ride was cancelled by the passenger.',
+            type: SnackbarType.info,
+          );
+        }
       } else if (data.type == NotificationType.excessCashCancelled) {
         if (mounted) _closeExcessCashDialogIfOpen();
       } else if (data.rideId != null && data.rideId!.isNotEmpty) {
@@ -219,6 +245,17 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         debugPrint('💰 [DriverHomeScreen] Excess cash via FCM foreground');
         if (mounted) {
           _handleExcessCashRequest(data.rawData, checkDedupe: false);
+        }
+      } else if (data.type == NotificationType.queuedRideCancelled) {
+        // B2B foreground: queued trip cancelled — clear pill only (20-02).
+        debugPrint('🔄 [DriverHomeScreen] Queued ride cancelled via FCM');
+        if (mounted && _queuedTrip != null) {
+          setState(() => _queuedTrip = null);
+          CustomSnackbar.show(
+            context,
+            message: 'Your queued ride was cancelled by the passenger.',
+            type: SnackbarType.info,
+          );
         }
       } else if (data.type == NotificationType.excessCashCancelled) {
         if (mounted) _closeExcessCashDialogIfOpen();
@@ -644,6 +681,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     _socketService.offExcessCashRequested();
     _socketService.offExcessCashCancelled();
     _socketService.offExcessCashConfirmed();
+    _socketService.offNextTripActivated();
 
     // Stop and clean up notification playback if still playing
     AudioService.instance.stop();
@@ -1720,6 +1758,36 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     _socketService.on('ride:cancelled', (data) {
       debugPrint('❌ [DriverHomeScreen] Ride Cancelled: $data');
       if (mounted) {
+        final cancelledId = _socketRideId(data);
+        // B2B: queued trip cancelled by the rider — clear the pill only,
+        // Trip A keeps running (20-02).
+        if (cancelledId != null &&
+            _queuedTrip != null &&
+            _canonicalRideId(_queuedTrip!) == cancelledId) {
+          setState(() => _queuedTrip = null);
+          CustomSnackbar.show(
+            context,
+            message: 'Your queued ride was cancelled by the passenger.',
+            type: SnackbarType.info,
+          );
+          return;
+        }
+        // B2B: pending offer evaporated — clear the card, Trip A untouched.
+        if (cancelledId != null &&
+            _b2bOffer != null &&
+            _canonicalRideId(_b2bOffer!) == cancelledId) {
+          setState(() {
+            _b2bOffer = null;
+            _b2bOfferError = null;
+          });
+          AudioService.instance.stop();
+          CustomSnackbar.show(
+            context,
+            message: 'The back-to-back offer is no longer available.',
+            type: SnackbarType.info,
+          );
+          return;
+        }
         // Stacked request cancelled — evict just that card.
         if (_status == 'request') {
           final rideId = _socketRideId(data);
@@ -1798,6 +1866,18 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     _socketService.on('ride:expired', (data) {
       debugPrint('⏰ [DriverHomeScreen] Ride Expired: $data');
       if (mounted) {
+        // B2B offer expired — clear the card, Trip A untouched.
+        final expiredId = _socketRideId(data);
+        if (expiredId != null &&
+            _b2bOffer != null &&
+            _canonicalRideId(_b2bOffer!) == expiredId) {
+          setState(() {
+            _b2bOffer = null;
+            _b2bOfferError = null;
+          });
+          AudioService.instance.stop();
+          return;
+        }
         // Stacked request expired — evict just that card.
         if (_status == 'request') {
           final rideId = _socketRideId(data);
@@ -1828,9 +1908,22 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
 
     // Another driver took the ride — evict just that card. Toast only when
     // something was actually removed; audio stops only if the queue drained.
+    // B2B offers share the eviction: a taken offer clears the card silently.
     _socketService.on('ride:unavailable', (data) {
       debugPrint('🚫 [DriverHomeScreen] Ride Unavailable: $data');
-      if (mounted && _status == 'request') {
+      if (!mounted) return;
+      final unavailableId = _socketRideId(data);
+      if (unavailableId != null &&
+          _b2bOffer != null &&
+          _canonicalRideId(_b2bOffer!) == unavailableId) {
+        setState(() {
+          _b2bOffer = null;
+          _b2bOfferError = null;
+        });
+        AudioService.instance.stop();
+        return;
+      }
+      if (_status == 'request') {
         final rideId = _socketRideId(data);
         if (rideId != null) {
           _removeQueuedRequest(
@@ -1840,6 +1933,26 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         }
       }
     });
+
+    // Back-to-back promotion trigger (§3.1): Trip A completed and Trip B
+    // becomes active. First trigger wins — the completeRide response path
+    // and this event race; the guard inside _promoteQueuedTrip no-ops the
+    // second. Scoped listener, off in dispose.
+    _nextTripListener = (data) {
+      debugPrint('🔄 [DriverHomeScreen] Next trip activated: $data');
+      if (!mounted) return;
+      final map = data is Map<String, dynamic>
+          ? data
+          : data is Map
+              ? Map<String, dynamic>.from(data)
+              : <String, dynamic>{};
+      // Validate through the 20-01 parser (never throws); the raw payload
+      // stays the display source of truth.
+      NextTripActivation.fromMap(map);
+      _promoteQueuedTrip(map);
+    };
+    _socketService.offNextTripActivated();
+    _socketService.onNextTripActivated(_nextTripListener!);
   }
 
   double? _parseNum(dynamic v) {
@@ -1858,6 +1971,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     // Normalise booleans (FCM sends everything as strings)
     if (m['isScheduled'] is String) m['isScheduled'] = m['isScheduled'] == 'true';
     if (m['isPriority'] is String) m['isPriority'] = m['isPriority'] == 'true';
+    // B2B flag arrives as 'true' string on the FCM path (20-02).
+    if (m['isBackToBack'] is String) {
+      m['isBackToBack'] = m['isBackToBack'] == 'true';
+    }
 
     // Normalise numeric fields that FCM sends as strings
     if (m['fare'] is String) m['fare'] = double.tryParse(m['fare']) ?? m['fare'];
@@ -2016,6 +2133,15 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       return;
     }
 
+    // Back-to-back offer (driver-multirequest.md §3.1): the backend sends
+    // ride:newRequest with isBackToBack:true to busy drivers near the
+    // dropoff. It must NEVER enter the idle request queue (that would flip
+    // _status/_currentRideId away from Trip A) — it docks as a B2B offer.
+    if (normalised['isBackToBack'] == true) {
+      _handleB2bOffer(normalised, quiet: quiet);
+      return;
+    }
+
     // First request: today's behavior (status=request, ring unless scheduled).
     if (_status == 'online') {
       // Ringtone for instant requests only — scheduled pool entries notify
@@ -2116,6 +2242,331 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         type: SnackbarType.info,
       );
     }
+  }
+
+  /// Back-to-back offer entry (socket ride:newRequest + FCM ride_request
+  /// foreground/tap all funnel through `_handleNewRideRequest`, so this is
+  /// the single B2B intake). Busy drivers (active Trip A) get the offer
+  /// docked; idle drivers fall through to the normal card flow with the
+  /// flag riding along for the panel badge.
+  void _handleB2bOffer(Map<String, dynamic> offer, {bool quiet = false}) {
+    if (!mounted) return;
+    // Single queue: one queued trip at a time (backend enforces too).
+    if (_queuedTrip != null) {
+      debugPrint(
+        '🔄 [DriverHomeScreen] B2B offer dropped — queued trip already held',
+      );
+      return;
+    }
+    const busy = [
+      'pickup',
+      'arrived',
+      'driver_arrived',
+      'in_progress',
+      'at_stop',
+      'awaiting_cash_confirmation',
+      'awaiting_payment',
+    ];
+    if (_currentRideId == null || !busy.contains(_status)) {
+      // Idle (or unforeseen state without an active ride): normal card flow.
+      debugPrint(
+        '🔄 [DriverHomeScreen] B2B flag on idle driver — normal card flow',
+      );
+      _handleIdleB2bOffer(offer, quiet: quiet);
+      return;
+    }
+    // Mid-trip: dock the offer, keep Trip A navigation untouched.
+    if (!quiet) AudioService.instance.playNotification();
+    setState(() {
+      _b2bOffer = offer;
+      _b2bOfferError = null;
+    });
+    CustomSnackbar.show(
+      context,
+      message: 'New ride near your dropoff — tap to queue it',
+      type: SnackbarType.success,
+    );
+  }
+
+  /// Idle-path B2B intake: mirrors the first-request branch of
+  /// `_handleNewRideRequest` without duplicating its guards.
+  void _handleIdleB2bOffer(Map<String, dynamic> offer, {bool quiet = false}) {
+    if (_status == 'online') {
+      if (!quiet) AudioService.instance.playNotification();
+      final rideId = _canonicalRideId(offer);
+      setState(() {
+        _requestQueue.add(offer);
+        _requestIndex = 0;
+        _status = 'request';
+        _currentRideId = rideId;
+        _rideData = offer;
+        _acceptError = null;
+      });
+      CustomSnackbar.show(
+        context,
+        message: 'New Ride Request!',
+        type: SnackbarType.success,
+      );
+    } else if (_status == 'request') {
+      if (_requestQueue.length >= _maxQueuedRequests) return;
+      final rideId = _canonicalRideId(offer);
+      setState(() {
+        _requestQueue.insert(0, offer);
+        _requestIndex = 0;
+        _rideData = offer;
+        _currentRideId = rideId;
+        _acceptError = null;
+      });
+    } else {
+      debugPrint(
+        '⚠️ [DriverHomeScreen] B2B offer dropped while $_status (no active ride)',
+      );
+    }
+  }
+
+  /// Accept the docked B2B offer. Trip A stays active; on success with
+  /// isQueued:true the trip docks into `_queuedTrip`. A non-queued success
+  /// (Trip A ended mid-accept) falls back to normal adoption.
+  Future<void> _acceptB2bOffer() async {
+    final offer = _b2bOffer;
+    if (offer == null || _b2bAccepting) return;
+    final offerId = _canonicalRideId(offer);
+    if (offerId == null) return;
+    setState(() {
+      _b2bAccepting = true;
+      _b2bOfferError = null;
+    });
+    try {
+      if (!_socketService.isConnected) {
+        await _socketService.initSocket(forceReconnect: true);
+      }
+      _socketService.emitRideAccept(offerId);
+      final response = await _apiService.acceptRide(offerId);
+      if (!mounted) return;
+      if (response['success'] == true) {
+        final data = response['data'];
+        final newData = data is Map<String, dynamic> ? data : <String, dynamic>{};
+        // Validate through the 20-01 parser (never throws); the raw merged
+        // map stays the display source of truth.
+        QueuedRide.fromMap({...offer, ...newData});
+        AudioService.instance.stop();
+        if (newData['isQueued'] == true) {
+          setState(() {
+            _queuedTrip = {...offer, ...newData};
+            _b2bOffer = null;
+          });
+          CustomSnackbar.show(
+            context,
+            message: 'Next trip queued!',
+            type: SnackbarType.success,
+          );
+        } else {
+          // Trip A ended before accept landed — adopt normally.
+          setState(() {
+            _status = 'pickup';
+            _currentRideId = newData['_id']?.toString() ?? offerId;
+            _rideData = {...offer, ...newData};
+            _b2bOffer = null;
+          });
+          _persistActiveRide();
+          _fetchNavigationRoute();
+          CustomSnackbar.show(
+            context,
+            message: 'Ride Accepted!',
+            type: SnackbarType.success,
+          );
+        }
+      } else {
+        final message = response['message']?.toString() ?? 'Failed to accept ride';
+        final info = RideErrorMapper.map(message, response['errors']);
+        setState(() => _b2bOfferError = '${info.title}: ${info.copy}');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _b2bOfferError = 'Error: $e');
+    } finally {
+      if (mounted) setState(() => _b2bAccepting = false);
+    }
+  }
+
+  /// Dismiss the docked B2B offer locally (no endpoint: the backend
+  /// re-pools unaccepted offers on timeout, same as declined cards).
+  void _declineB2bOffer() {
+    AudioService.instance.stop();
+    setState(() {
+      _b2bOffer = null;
+      _b2bOfferError = null;
+    });
+  }
+
+  /// Cancel the accepted queued trip (§2.1B). Trip A is untouched.
+  Future<Map<String, dynamic>> _performQueuedCancel(String reason) async {
+    final queuedId = _canonicalRideId(_queuedTrip ?? {});
+    if (queuedId == null) {
+      return {'ok': false, 'message': 'No queued trip.'};
+    }
+    try {
+      final response = await _apiService.cancelRideByDriver(
+        queuedId,
+        reason: reason,
+      );
+      if (response['success'] != true) {
+        final info = RideErrorMapper.map(
+          response['message']?.toString() ?? 'Failed to cancel queued ride',
+          response['errors'],
+        );
+        return {'ok': false, 'message': '${info.title}: ${info.copy}'};
+      }
+      return {'ok': true};
+    } catch (e) {
+      return {
+        'ok': false,
+        'message':
+            'Error cancelling queued ride: ${e.toString().replaceAll('Exception: ', '')}',
+      };
+    }
+  }
+
+  /// Compact reason sheet for the queued pill's Cancel action. Reuses the
+  /// active-trip reason values; success clears the pill only.
+  void _showQueuedCancelDialog() {
+    String? selectedReason;
+    bool sheetLoading = false;
+    String? sheetError;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Cancel Next Trip'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Your current trip is unaffected.'),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _driverCancelReasons
+                    .map(
+                      (reason) => ChoiceChip(
+                        label: Text(reason['label']!),
+                        selected: selectedReason == reason['value'],
+                        onSelected: sheetLoading
+                            ? null
+                            : (selected) => setDialogState(() {
+                                  selectedReason =
+                                      selected ? reason['value'] : null;
+                                }),
+                      ),
+                    )
+                    .toList(),
+              ),
+              if (sheetError != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  sheetError!,
+                  style: const TextStyle(color: Colors.red, fontSize: 12),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed:
+                  sheetLoading ? null : () => Navigator.pop(context),
+              child: const Text('Back'),
+            ),
+            ElevatedButton(
+              onPressed: sheetLoading
+                  ? null
+                  : () async {
+                      if (selectedReason == null) {
+                        setDialogState(
+                          () => sheetError = 'Select a reason to continue.',
+                        );
+                        return;
+                      }
+                      setDialogState(() {
+                        sheetLoading = true;
+                        sheetError = null;
+                      });
+                      final outcome = await _performQueuedCancel(
+                        selectedReason!,
+                      );
+                      if (!mounted) return;
+                      if (!outcome['ok']) {
+                        setDialogState(() {
+                          sheetLoading = false;
+                          sheetError = outcome['message']?.toString();
+                        });
+                        return;
+                      }
+                      Navigator.pop(context);
+                      setState(() => _queuedTrip = null);
+                      CustomSnackbar.show(
+                        context,
+                        message: 'Queued trip cancelled.',
+                        type: SnackbarType.info,
+                      );
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Cancel Trip'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Promote the queued trip to the active trip (§5.1 transition).
+  /// First trigger wins: the completeRide response path and the
+  /// ride:nextTripActivated event race — whichever runs second finds
+  /// `_queuedTrip == null` (or an id mismatch) and no-ops.
+  void _promoteQueuedTrip(Map<String, dynamic> next) {
+    final nextId = _canonicalRideId(next);
+    final queuedId =
+        _queuedTrip == null ? null : _canonicalRideId(_queuedTrip!);
+    // Event for an unknown ride (or a duplicate after promotion): ignore.
+    if (nextId == null || nextId.isEmpty) return;
+    if (queuedId == null || queuedId != nextId) {
+      // No docked trip for this id — either already promoted (second
+      // trigger) or a stray event. Never touch Trip A on a stray.
+      if (_currentRideId == nextId) return;
+      debugPrint(
+        '🔄 [DriverHomeScreen] Ignoring promotion for unknown ride $nextId',
+      );
+      return;
+    }
+    AudioService.instance.stop();
+    setState(() {
+      _status = 'pickup';
+      _currentRideId = nextId;
+      _rideData = {...?_queuedTrip, ...next};
+      _queuedTrip = null;
+      _b2bOffer = null;
+      _b2bOfferError = null;
+    });
+    _persistActiveRide();
+    _fetchNavigationRoute();
+    CustomSnackbar.show(
+      context,
+      message: 'Your next ride is ready! Head to the pickup location.',
+      type: SnackbarType.success,
+    );
+  }
+
+  /// True when the completeRide response carries a queued promotion
+  /// (§2.1C: hasQueuedRidePromoted + nextRideId) matching the docked trip.
+  bool _hasQueuedPromotion(Map<String, dynamic> rideResult) {
+    if (_queuedTrip == null) return false;
+    final promo = CompletePromotion.fromMap(rideResult);
+    if (!promo.hasQueuedRidePromoted || promo.nextRideId.isEmpty) return false;
+    return _canonicalRideId(_queuedTrip!) == promo.nextRideId;
   }
 
   /// Surface a parked request now that the driver is free.
