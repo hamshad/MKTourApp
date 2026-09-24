@@ -625,3 +625,49 @@ class QueuedCancellation {
     );
   }
 }
+
+/// Driver statuses during which an active trip owns the screen.
+const List<String> kB2bBusyStatuses = [
+  'pickup',
+  'arrived',
+  'driver_arrived',
+  'in_progress',
+  'at_stop',
+  'awaiting_cash_confirmation',
+  'awaiting_payment',
+];
+
+/// Whether the back-to-back overlay (offer card / queued pill) renders.
+///
+/// Pure policy so the driver screen and tests share one decision:
+/// - A queued trip is ALWAYS visible, including after the previous trip
+///   ended (driver idle between trips) — hiding it stranded the driver with
+///   an invisible queue and blocked every new B2B offer.
+/// - A pending offer only shows while a trip is active; idle drivers get the
+///   normal request card instead.
+bool shouldShowB2bOverlay({
+  required bool hasQueuedTrip,
+  required bool hasOffer,
+  required String status,
+}) {
+  if (hasQueuedTrip) return true;
+  if (!hasOffer) return false;
+  return kB2bBusyStatuses.contains(status);
+}
+
+/// Whether an incoming B2B offer must be dropped because a queue is held.
+///
+/// A queued trip whose `previousRide` is not the current active ride is
+/// stale (its trip ended without promotion) — it must not block new offers
+/// forever; the caller recovers it from the server instead.
+bool shouldBlockB2bOffer({
+  required bool hasQueuedTrip,
+  String? queuedPreviousRideId,
+  String? currentRideId,
+}) {
+  if (!hasQueuedTrip) return false;
+  final previous = queuedPreviousRideId;
+  if (previous == null || previous.isEmpty) return true;
+  if (currentRideId == null || currentRideId.isEmpty) return false;
+  return previous == currentRideId;
+}

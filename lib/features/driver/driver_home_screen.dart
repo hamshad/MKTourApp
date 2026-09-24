@@ -2281,10 +2281,24 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   void _handleB2bOffer(Map<String, dynamic> offer, {bool quiet = false}) {
     if (!mounted) return;
     // Single queue: one queued trip at a time (backend enforces too).
-    if (_queuedTrip != null) {
+    // A queue whose previousRide is no longer the active ride is stale —
+    // recover it from the server instead of dropping every future offer.
+    if (shouldBlockB2bOffer(
+      hasQueuedTrip: _queuedTrip != null,
+      queuedPreviousRideId: _queuedTrip?['previousRide']?.toString(),
+      currentRideId: _currentRideId,
+    )) {
       debugPrint(
         '🔄 [DriverHomeScreen][B2B] Second offer dropped — queued trip already held',
       );
+      return;
+    }
+    if (_queuedTrip != null) {
+      final staleId = _canonicalRideId(_queuedTrip!);
+      debugPrint(
+        '🔄 [DriverHomeScreen][B2B] Stale queue $staleId — recovering from server',
+      );
+      if (staleId != null) _recoverQueuedTrip(staleId);
       return;
     }
     const busy = [
@@ -2569,16 +2583,24 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     final nextId = _canonicalRideId(next);
     final queuedId =
         _queuedTrip == null ? null : _canonicalRideId(_queuedTrip!);
-    // Event for an unknown ride (or a duplicate after promotion): ignore.
+    // Event for an unknown ride: ignore — EXCEPT when the driver has no
+    // active ride (late/lost event after local state was cleared). The
+    // event payload is authoritative then: promote straight from it.
     if (nextId == null || nextId.isEmpty) return;
-    if (queuedId == null || queuedId != nextId) {
-      // No docked trip for this id — either already promoted (second
-      // trigger) or a stray event. Never touch Trip A on a stray.
+    if (queuedId != nextId) {
       if (_currentRideId == nextId) return;
+      final driverFree = _currentRideId == null &&
+          const ['online', 'offline', 'complete', 'awaiting_cash_confirmation']
+              .contains(_status);
+      if (!driverFree) {
+        debugPrint(
+          '🔄 [DriverHomeScreen][B2B] Ignoring promotion for unknown ride $nextId',
+        );
+        return;
+      }
       debugPrint(
-        '🔄 [DriverHomeScreen][B2B] Ignoring promotion for unknown ride $nextId',
+        '🔄 [DriverHomeScreen][B2B] Late promotion event for $nextId — activating',
       );
-      return;
     }
     AudioService.instance.stop();
     setState(() {
@@ -2608,6 +2630,52 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     final promo = CompletePromotion.fromMap(rideResult);
     if (!promo.hasQueuedRidePromoted || promo.nextRideId.isEmpty) return false;
     return _canonicalRideId(_queuedTrip!) == promo.nextRideId;
+  }
+
+  /// Authoritative queued-trip reconciliation. Runs when the local belief
+  /// ("still queued") and the server disagree, or the promotion trigger was
+  /// lost: the pill must never strand the driver invisible-and-bricked.
+  ///
+  /// - Server says promoted (`isQueued:false` present and not true) → promote.
+  /// - Still queued → keep the docked pill visible and log for the trail.
+  Future<void> _recoverQueuedTrip(String queuedId) async {
+    if (_isLoading) return;
+    try {
+      final response = await _apiService.getRideDetails(queuedId);
+      if (!mounted) return;
+      if (_canonicalRideId(_queuedTrip ?? {}) != queuedId) return;
+      final data = response['data'];
+      if (data is Map) {
+        final ride = Map<String, dynamic>.from(data);
+        final serverQueued = ride['isQueued'];
+        if (serverQueued != null && serverQueued != true) {
+          debugPrint(
+            '🔄 [DriverHomeScreen][B2B] Server promoted $queuedId — activating',
+          );
+          _promoteQueuedTrip(ride);
+          return;
+        }
+        // Still queued on the server: refresh the pill payload (fresh fare,
+        // address) so the driver sees current truth.
+        setState(() => _queuedTrip = {..._queuedTrip!, ...ride});
+      }
+      debugPrint(
+        '🔄 [DriverHomeScreen][B2B] $queuedId still queued — pill stays visible',
+      );
+    } catch (e) {
+      debugPrint('🔄 [DriverHomeScreen][B2B] Recovery fetch failed: $e');
+    }
+  }
+
+  /// Schedule a reconciliation after a completion that carried no promotion
+  /// flags — the promotion event may still be in flight, and if it never
+  /// arrives the server check repairs local state.
+  void _scheduleQueuedRecovery() {
+    final queuedId = _canonicalRideId(_queuedTrip ?? {});
+    if (queuedId == null) return;
+    Future<void>.delayed(const Duration(seconds: 2), () {
+      if (mounted) _recoverQueuedTrip(queuedId);
+    });
   }
 
   /// Surface a parked request now that the driver is free.
@@ -3199,6 +3267,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
               _rideData = null;
               _clearNavigationUi();
             });
+            // Promotion flags absent: keep the pill and reconcile with the
+            // server — the promotion event may still be in flight, or the
+            // local queue may be stale (20-02 recovery).
+            if (_queuedTrip != null) _scheduleQueuedRecovery();
             _promoteParkedRequests();
             _fetchRideHistory();
             if (!mounted) return;
@@ -4141,18 +4213,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   /// statuses — the map polyline/destination and every action button stay
   /// bound to `_currentRideId` (Trip A). Single-queue: offer and pill never
   /// co-exist (new offers drop while `_queuedTrip` is held).
-  bool get _showB2bOverlay {
-    if (_b2bOffer == null && _queuedTrip == null) return false;
-    return const [
-      'pickup',
-      'arrived',
-      'driver_arrived',
-      'in_progress',
-      'at_stop',
-      'awaiting_cash_confirmation',
-      'awaiting_payment',
-    ].contains(_status);
-  }
+  bool get _showB2bOverlay => shouldShowB2bOverlay(
+    hasQueuedTrip: _queuedTrip != null,
+    hasOffer: _b2bOffer != null,
+    status: _status,
+  );
 
   static String _b2bFareLabel(Map<String, dynamic> trip) {
     final fare = trip['fare'];
@@ -4342,7 +4407,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             parallaxEnabled: true,
             parallaxOffset: 0.5,
             body: _buildMapBackground(),
-            panel: _buildPanelContent(),
+            panel: _buildPanelWithQueuedRow(),
             boxShadow: [
               BoxShadow(blurRadius: 20.0, color: Colors.black.withOpacity(0.1)),
             ],
@@ -4655,6 +4720,88 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     } else {
       return _buildOfflineOnlineContent();
     }
+  }
+
+  /// Bottom-sheet queued row: the persistent "Next ride queued ✓" strip
+  /// pinned at the top of the sliding panel. Renders in every status
+  /// (including idle between trips) so the queued trip is never invisible
+  /// after the previous trip ends.
+  Widget _buildQueuedPanelRow() {
+    final queued = _queuedTrip!;
+    final fareLabel = _b2bFareLabel(queued);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+      decoration: BoxDecoration(
+        color: AppTheme.primaryColor.withValues(alpha: 0.06),
+        border: Border(
+          bottom: BorderSide(
+            color: AppTheme.primaryColor.withValues(alpha: 0.15),
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.check_circle,
+            color: AppTheme.primaryColor,
+            size: 18,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Next ride queued',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+                Text(
+                  _b2bPickupLabel(queued),
+                  style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          if (fareLabel.isNotEmpty)
+            Text(
+              fareLabel,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.primaryColor,
+              ),
+            ),
+          TextButton(
+            onPressed: _showQueuedCancelDialog,
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.red,
+              visualDensity: VisualDensity.compact,
+            ),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPanelWithQueuedRow() {
+    final content = _buildPanelContent();
+    if (_queuedTrip == null) return content;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _buildQueuedPanelRow(),
+        Flexible(child: content),
+      ],
+    );
   }
 
   Widget _buildOfflineOnlineContent() {
