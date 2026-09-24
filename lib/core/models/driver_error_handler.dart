@@ -143,10 +143,17 @@ class DriverErrorHandler {
     BuildContext context,
     DriverException error,
   ) {
-    if (error.isError('not available')) {
+    if (error.isError('already has a queued ride') ||
+        error.isError('queued ride') ||
+        error.isError('queued next trip')) {
       ErrorDisplayHelper.showWarningSnackbar(
         context,
-        'This ride is no longer available.',
+        'You already have a queued next trip. Complete your current trip first.',
+      );
+    } else if (error.isError('not available')) {
+      ErrorDisplayHelper.showWarningSnackbar(
+        context,
+        'This ride was taken by another driver.',
       );
     } else if (error.isError('expired')) {
       ErrorDisplayHelper.showWarningSnackbar(

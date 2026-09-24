@@ -876,6 +876,76 @@ class SocketService with WidgetsBindingObserver {
     off('payment:excessCashConfirmed');
   }
 
+  // ── Back-to-back dispatch passthroughs (driver-multirequest.md §3) ────────
+  // Thin on()/off() pairs only — zero internal subscriptions, so reconnects
+  // re-attach via the listener registry with no double-handling. Screens that
+  // subscribe raw today (home_screen, ride_assigned_screen on 'ride:accepted')
+  // are untouched; these named helpers are additive.
+  //
+  // No existing named 'ride:accepted' passthrough exists (verified: only raw
+  // string subscriptions), so onRideAcceptedEvent/offRideAcceptedEvent is new.
+
+  /// Incoming B2B request near the driver's dropoff vicinity (§3.1).
+  /// Payload carries `isBackToBack: true` when queueable behind active trip.
+  void onB2bRequest(void Function(dynamic) handler) {
+    on('ride:newRequest', handler);
+  }
+
+  void offB2bRequest() {
+    off('ride:newRequest');
+  }
+
+  /// Queued trip promoted to active when trip A completes (§3.1).
+  /// Payload: full next-ride details + pickup location (see NextTripActivation).
+  void onNextTripActivated(void Function(dynamic) handler) {
+    on('ride:nextTripActivated', handler);
+  }
+
+  void offNextTripActivated() {
+    off('ride:nextTripActivated');
+  }
+
+  /// Queued ride cancelled by rider B while driver is on trip A (§3.1).
+  /// Payload: {rideId, cancelledBy}.
+  void onQueuedCancelled(void Function(dynamic) handler) {
+    on('ride:cancelled', handler);
+  }
+
+  void offQueuedCancelled() {
+    off('ride:cancelled');
+  }
+
+  /// Driver finished trip A and heads to rider B (§3.2).
+  /// Payload: {rideId, status, message}.
+  void onDriverEnRoute(void Function(dynamic) handler) {
+    on('ride:driverEnRoute', handler);
+  }
+
+  void offDriverEnRoute() {
+    off('ride:driverEnRoute');
+  }
+
+  /// Real-time ETA updates (§3.2).
+  /// Payload: {rideId, duration, distance}.
+  void onEtaUpdate(void Function(dynamic) handler) {
+    on('ride:etaUpdate', handler);
+  }
+
+  void offEtaUpdate() {
+    off('ride:etaUpdate');
+  }
+
+  /// Driver-accepted assignment (§3.2, full driver profile + vehicle).
+  /// Additive helper only — existing raw 'ride:accepted' subscribers keep
+  /// working; nothing here subscribes internally.
+  void onRideAcceptedEvent(void Function(dynamic) handler) {
+    on('ride:accepted', handler);
+  }
+
+  void offRideAcceptedEvent() {
+    off('ride:accepted');
+  }
+
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   void disconnect() {
