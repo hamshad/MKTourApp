@@ -74,6 +74,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   bool _b2bAccepting = false;
   String? _b2bOfferError;
   void Function(dynamic)? _nextTripListener;
+  // Deferred promotion: Trip A was cash, so the queued promotion fires
+  // after cash confirmation instead of at completion (20-02).
+  bool _queuedPromotionPending = false;
 
   final ApiService _apiService = ApiService();
   bool _isLoading = false;
@@ -1706,6 +1709,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             _status = 'online';
             _currentRideId = null;
             _rideData = null;
+            // Scheduled trip cancelled — B2B state dies with it.
+            _b2bOffer = null;
+            _b2bOfferError = null;
+            _queuedTrip = null;
+            _queuedPromotionPending = false;
           });
           _promoteParkedRequests();
         }
@@ -1804,6 +1812,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           _status = 'online';
           _currentRideId = null;
           _rideData = null;
+          // Active trip externally cancelled — B2B state dies with it.
+          _b2bOffer = null;
+          _b2bOfferError = null;
+          _queuedTrip = null;
+          _queuedPromotionPending = false;
           _clearNavigationUi();
           _clearActiveRideStorage();
         });
@@ -1850,6 +1863,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           _status = 'online';
           _currentRideId = null;
           _rideData = null;
+          // Active trip externally cancelled — B2B state dies with it.
+          _b2bOffer = null;
+          _b2bOfferError = null;
+          _queuedTrip = null;
+          _queuedPromotionPending = false;
           _clearNavigationUi();
           _clearActiveRideStorage();
         });
@@ -1894,6 +1912,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           _status = 'online';
           _currentRideId = null;
           _rideData = null;
+          // Active trip expired — B2B state dies with it.
+          _b2bOffer = null;
+          _b2bOfferError = null;
+          _queuedTrip = null;
+          _queuedPromotionPending = false;
           _clearNavigationUi();
           _clearActiveRideStorage();
         });
@@ -3068,6 +3091,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         if (response['success'] == true) {
           final paymentMethod = _rideData?['paymentMethod'];
           final rideResult = response['data'] as Map<String, dynamic>? ?? {};
+          // B2B: complete response carries the queued promotion (§2.1C).
+          // Fires immediately except on cash trips, where confirmation
+          // still has to happen first (20-02 Task 3).
+          final promoteQueued = _hasQueuedPromotion(rideResult);
           final summary = FareSummary.fromJson({
             ...?_rideData,
             ...rideResult,
@@ -3088,6 +3115,18 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
               _currentRideId!,
             );
             if (confirmResponse['success'] == true) {
+              // B2B: Trip B takes over instead of going online (20-02).
+              if (promoteQueued && _queuedTrip != null) {
+                _promoteQueuedTrip(_queuedTrip!);
+                _fetchRideHistory();
+                if (!mounted) return;
+                _showFareSummary(
+                  summary: summary,
+                  headline: 'Promotional ride complete',
+                  subline: 'No cash to collect.',
+                );
+                return;
+              }
               setState(() {
                 _status = 'online';
                 _currentRideId = null;
@@ -3111,6 +3150,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
               );
             }
           } else if (paymentMethod == 'cash') {
+          // B2B: promotion defers until cash is confirmed (20-02).
+          _queuedPromotionPending = promoteQueued;
           setState(() {
             _status = 'awaiting_cash_confirmation';
           });
@@ -3122,6 +3163,18 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             subline: 'Collect cash from the passenger.',
           );
           } else {
+            // B2B: Trip B takes over instead of going online (20-02).
+            if (promoteQueued && _queuedTrip != null) {
+              _promoteQueuedTrip(_queuedTrip!);
+              _fetchRideHistory();
+              if (!mounted) return;
+              _showFareSummary(
+                summary: summary,
+                headline: 'Ride completed successfully',
+                subline: null,
+              );
+              return;
+            }
             setState(() {
               _status = 'online';
               _currentRideId = null;
@@ -3170,6 +3223,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             message: 'Cash collected. Ride finalized.',
             type: SnackbarType.success,
           );
+          // B2B: deferred promotion fires after cash confirmation (20-02).
+          if (_queuedPromotionPending && _queuedTrip != null) {
+            _queuedPromotionPending = false;
+            _promoteQueuedTrip(_queuedTrip!);
+            _fetchRideHistory();
+            return;
+          }
+          _queuedPromotionPending = false;
           // Reset to online
           setState(() {
             _status = 'online';
@@ -3719,6 +3780,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       _status = 'online';
       _currentRideId = null;
       _rideData = null;
+      // Trip A is gone — any B2B offer/queue dies with it (20-02).
+      _b2bOffer = null;
+      _b2bOfferError = null;
+      _queuedTrip = null;
+      _queuedPromotionPending = false;
       _clearNavigationUi();
       _clearActiveRideStorage();
     });
