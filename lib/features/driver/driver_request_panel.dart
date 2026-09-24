@@ -419,6 +419,34 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                     ),
                   ],
                 ),
+              // Back-to-back offer: queued behind an active trip (20-02).
+              // Stacked-only conditional — single-request layout untouched.
+              if (widget.rideData?['isBackToBack'] == true)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.teal,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.repeat, color: Colors.white, size: 14),
+                      SizedBox(width: 4),
+                      Text(
+                        'NEAR DROPOFF',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 ],
               ),
             ],

@@ -4052,6 +4052,183 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   }
 
   @override
+  /// Back-to-back overlay (§5.1 UI rules): pending offer card or docked
+  /// next-trip pill, top-anchored above the map. Renders only during busy
+  /// statuses — the map polyline/destination and every action button stay
+  /// bound to `_currentRideId` (Trip A). Single-queue: offer and pill never
+  /// co-exist (new offers drop while `_queuedTrip` is held).
+  bool get _showB2bOverlay {
+    if (_b2bOffer == null && _queuedTrip == null) return false;
+    return const [
+      'pickup',
+      'arrived',
+      'driver_arrived',
+      'in_progress',
+      'at_stop',
+      'awaiting_cash_confirmation',
+      'awaiting_payment',
+    ].contains(_status);
+  }
+
+  static String _b2bFareLabel(Map<String, dynamic> trip) {
+    final fare = trip['fare'];
+    final amount = fare is num
+        ? fare.toDouble()
+        : double.tryParse(fare?.toString() ?? '');
+    return amount == null ? '' : '£${amount.toStringAsFixed(2)}';
+  }
+
+  static String _b2bPickupLabel(Map<String, dynamic> trip) {
+    final pickup = trip['pickupLocation'];
+    final address =
+        pickup is Map ? pickup['address']?.toString() : null;
+    return (address == null || address.isEmpty) ? 'pickup' : address;
+  }
+
+  Widget _buildB2bOfferCard() {
+    final offer = _b2bOffer!;
+    final fareLabel = _b2bFareLabel(offer);
+    return Card(
+      elevation: 6,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.repeat, color: Colors.teal, size: 20),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'New ride near your dropoff',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                  ),
+                ),
+                if (fareLabel.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      fareLabel,
+                      style: const TextStyle(
+                        color: AppTheme.primaryColor,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Pickup: ${_b2bPickupLabel(offer)}',
+              style: TextStyle(color: Colors.grey[700], fontSize: 13),
+            ),
+            if (_b2bOfferError != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                _b2bOfferError!,
+                style: const TextStyle(color: Colors.red, fontSize: 12),
+              ),
+            ],
+            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: _b2bAccepting ? null : _declineB2bOffer,
+                  child: const Text('Dismiss'),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: _b2bAccepting ? null : _acceptB2bOffer,
+                  child: _b2bAccepting
+                      ? const SizedBox(
+                          height: 18,
+                          width: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Queue Trip'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQueuedPill() {
+    final queued = _queuedTrip!;
+    final fareLabel = _b2bFareLabel(queued);
+    return Card(
+      elevation: 6,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        child: Row(
+          children: [
+            const Icon(Icons.upcoming, color: AppTheme.primaryColor, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Next trip queued',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                  Text(
+                    'Next: Pickup at ${_b2bPickupLabel(queued)}',
+                    style: TextStyle(color: Colors.grey[700], fontSize: 12),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            if (fareLabel.isNotEmpty)
+              Container(
+                margin: const EdgeInsets.only(right: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  fareLabel,
+                  style: const TextStyle(
+                    color: AppTheme.primaryColor,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            TextButton(
+              onPressed: _showQueuedCancelDialog,
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Cancel'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget build(BuildContext context) {
     return Scaffold(
       body: Stack(
@@ -4079,6 +4256,18 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
               child: ConnectionBanner(rideId: _currentRideId),
             ),
           ),
+          // Back-to-back dispatch (20-02): pending offer card or docked
+          // next-trip pill. Top-anchored below the connection banner so
+          // the sliding panel never fights it; renders nothing when idle.
+          if (_showB2bOverlay)
+            Positioned(
+              top: 104,
+              left: 12,
+              right: 12,
+              child: _b2bOffer != null
+                  ? _buildB2bOfferCard()
+                  : _buildQueuedPill(),
+            ),
         ],
       ),
     );
