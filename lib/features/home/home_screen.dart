@@ -1283,6 +1283,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (rideId == null || rideId.isEmpty) return;
       switch (data.type) {
         case NotificationType.rideAccepted:
+        case NotificationType.rideDriverEnRoute: // B2B: driver finished trip A, heading over (20-03)
         case NotificationType.driverArrived:
         case NotificationType.rideStarted:
         case NotificationType.rideCompleted:

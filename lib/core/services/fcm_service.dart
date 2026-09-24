@@ -60,6 +60,15 @@ class NotificationType {
   static const String rideReminder = 'ride_reminder';
   static const String scheduledRideCancelledByUser = 'scheduled_ride_cancelled_by_user';
 
+  // Back-to-back dispatch (driver-multirequest.md §4, 20-03):
+  // - `ride_driver_en_route` (rider): driver finished trip A, heading to
+  //   rider B pickup. Surfaces the 'Driver On The Way' tray notification;
+  //   the live assigned screen refreshes via the foreground/tap streams.
+  // - `ride_request` + isBackToBack and `queued_ride_cancelled` are
+  //   driver-side only — the rider app intentionally ignores them.
+  static const String rideDriverEnRoute = 'ride_driver_en_route';
+  static const String queuedRideCancelled = 'queued_ride_cancelled';
+
   // Stage 2 excess-cash (driver Collect-Cash modal). Backend sends FCM type
   // `excess_cash_requested` alongside the `payment:excessCashRequested`
   // socket event so the modal appears even with notifications off.
@@ -602,6 +611,7 @@ class FcmService {
       // Instant-only sounds — suppressed for scheduled rides.
       case NotificationType.rideRequest:
       case NotificationType.rideAccepted:
+      case NotificationType.rideDriverEnRoute:
       case NotificationType.driverArrived:
       case NotificationType.rideStarted:
       case NotificationType.rideCompleted:
