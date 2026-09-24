@@ -724,22 +724,34 @@ const List<String> kB2bBusyStatuses = [
   'awaiting_payment',
 ];
 
-/// Whether the back-to-back overlay (offer card / queued pill) renders.
+/// Whether the back-to-back overlay (offer card / queued banner) renders.
 ///
 /// Pure policy so the driver screen and tests share one decision:
-/// - A queued trip is ALWAYS visible, including after the previous trip
-///   ended (driver idle between trips) — hiding it stranded the driver with
-///   an invisible queue and blocked every new B2B offer.
+/// - A queued trip is visible by default in every status, including after
+///   the previous trip ended (driver idle between trips) — hiding it
+///   stranded the driver with an invisible queue.
+/// - A dismissed banner hands visibility to the bottom-sheet row, so exactly
+///   one surface shows the queued trip at a time.
 /// - A pending offer only shows while a trip is active; idle drivers get the
 ///   normal request card instead.
 bool shouldShowB2bOverlay({
   required bool hasQueuedTrip,
   required bool hasOffer,
   required String status,
+  bool bannerDismissed = false,
 }) {
-  if (hasQueuedTrip) return true;
+  if (hasQueuedTrip) return !bannerDismissed;
   if (!hasOffer) return false;
   return kB2bBusyStatuses.contains(status);
+}
+
+/// Whether the queued trip is currently pinned to the bottom sheet — true
+/// only when a queued trip exists and its banner was swiped away.
+bool shouldShowB2bSheetRow({
+  required bool hasQueuedTrip,
+  required bool bannerDismissed,
+}) {
+  return hasQueuedTrip && bannerDismissed;
 }
 
 /// Whether an incoming B2B offer must be dropped because a queue is held.

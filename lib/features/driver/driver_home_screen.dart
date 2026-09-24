@@ -74,6 +74,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   Map<String, dynamic>? _queuedTrip;
   bool _b2bAccepting = false;
   bool _b2bEnriching = false;
+  // Banner swiped away: the queued trip moves to the bottom-sheet row so
+  // only one surface ever shows it (20-02 single-surface rule).
+  bool _b2bBannerDismissed = false;
   String? _b2bOfferError;
   void Function(dynamic)? _nextTripListener;
   // Deferred promotion: Trip A was cash, so the queued promotion fires
@@ -204,7 +207,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         // clear the pill, Trip A untouched (20-02).
         debugPrint('🔄 [DriverHomeScreen][B2B] Queued ride cancelled via FCM tap');
         if (mounted && _queuedTrip != null) {
-          setState(() => _queuedTrip = null);
+          setState(() {
+            _queuedTrip = null;
+            _b2bBannerDismissed = false;
+          });
           CustomSnackbar.show(
             context,
             message: 'Your queued ride was cancelled by the passenger.',
@@ -258,7 +264,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         // B2B foreground: queued trip cancelled — clear pill only (20-02).
         debugPrint('🔄 [DriverHomeScreen][B2B] Queued ride cancelled via FCM');
         if (mounted && _queuedTrip != null) {
-          setState(() => _queuedTrip = null);
+          setState(() {
+            _queuedTrip = null;
+            _b2bBannerDismissed = false;
+          });
           CustomSnackbar.show(
             context,
             message: 'Your queued ride was cancelled by the passenger.',
@@ -1718,6 +1727,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             _b2bOffer = null;
             _b2bOfferError = null;
             _queuedTrip = null;
+            _b2bBannerDismissed = false;
             _queuedPromotionPending = false;
             _releaseB2bWaiter();
           });
@@ -1778,7 +1788,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
         if (cancelledId != null &&
             _queuedTrip != null &&
             _canonicalRideId(_queuedTrip!) == cancelledId) {
-          setState(() => _queuedTrip = null);
+          setState(() {
+            _queuedTrip = null;
+            _b2bBannerDismissed = false;
+          });
           debugPrint(
             '🔄 [DriverHomeScreen][B2B] Queued trip $cancelledId cancelled by rider (socket)',
           );
@@ -1828,6 +1841,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           _b2bOffer = null;
           _b2bOfferError = null;
           _queuedTrip = null;
+          _b2bBannerDismissed = false;
           _queuedPromotionPending = false;
           _releaseB2bWaiter();
           _clearNavigationUi();
@@ -1880,6 +1894,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           _b2bOffer = null;
           _b2bOfferError = null;
           _queuedTrip = null;
+          _b2bBannerDismissed = false;
           _queuedPromotionPending = false;
           _releaseB2bWaiter();
           _clearNavigationUi();
@@ -1931,6 +1946,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           _b2bOffer = null;
           _b2bOfferError = null;
           _queuedTrip = null;
+          _b2bBannerDismissed = false;
           _queuedPromotionPending = false;
           _releaseB2bWaiter();
           _clearNavigationUi();
@@ -2496,6 +2512,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
           setState(() {
             _queuedTrip = {...offer, ...newData};
             _b2bOffer = null;
+            _b2bBannerDismissed = false;
             _b2bPromotionWaiter = Completer<void>();
           });
           debugPrint(
@@ -2651,7 +2668,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
                         return;
                       }
                       Navigator.pop(context);
-                      setState(() => _queuedTrip = null);
+                      setState(() {
+                        _queuedTrip = null;
+                        _b2bBannerDismissed = false;
+                      });
                       debugPrint(
                         '🔄 [DriverHomeScreen][B2B] Queued trip cancelled by driver',
                       );
@@ -2708,6 +2728,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       _queuedTrip = null;
       _b2bOffer = null;
       _b2bOfferError = null;
+      _b2bBannerDismissed = false;
     });
     debugPrint(
       '🔄 [DriverHomeScreen][B2B] Promoted queued trip $nextId to active',
@@ -4408,7 +4429,23 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     hasQueuedTrip: _queuedTrip != null,
     hasOffer: _b2bOffer != null,
     status: _status,
+    bannerDismissed: _b2bBannerDismissed,
   );
+
+  /// Queued trip currently pinned to the bottom sheet (banner swiped away).
+  bool get _showB2bSheetRow => shouldShowB2bSheetRow(
+    hasQueuedTrip: _queuedTrip != null,
+    bannerDismissed: _b2bBannerDismissed,
+  );
+
+  /// Banner swiped away: hide it and let the sheet row take over.
+  void _dismissB2bBanner() {
+    if (!mounted || _queuedTrip == null) return;
+    setState(() => _b2bBannerDismissed = true);
+    debugPrint(
+      '🔄 [DriverHomeScreen][B2B] Banner dismissed — queued trip moved to trip panel',
+    );
+  }
 
   static String _b2bFareLabel(Map<String, dynamic> trip) {
     final fare = trip['fare'];
@@ -4541,6 +4578,16 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
               ),
               child: const Text('Cancel'),
             ),
+            IconButton(
+              onPressed: _dismissB2bBanner,
+              visualDensity: VisualDensity.compact,
+              tooltip: 'Swipe up to move to trip panel',
+              icon: const Icon(
+                Icons.keyboard_arrow_down,
+                size: 20,
+                color: AppTheme.textSecondary,
+              ),
+            ),
           ],
         ),
       ),
@@ -4584,7 +4631,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
               right: 12,
               child: _b2bOffer != null
                   ? _buildB2bOfferCard()
-                  : _buildQueuedPill(),
+                  : B2bDismissibleBanner(
+                      rideId: _canonicalRideId(_queuedTrip ?? {}) ?? '',
+                      onDismissed: _dismissB2bBanner,
+                      child: _buildQueuedPill(),
+                    ),
             ),
         ],
       ),
@@ -4592,20 +4643,22 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   }
 
   double _getPanelMinHeight() {
+    // Queued-trip row pinned in the panel (banner swiped away) needs room.
+    final queuedRowHeight = _showB2bSheetRow ? 62.0 : 0.0;
     switch (_status) {
       case 'offline':
       case 'online':
-        return 160;
+        return 160 + queuedRowHeight;
       case 'request':
-        return 320; // Increased to accommodate message banner and prevent overflow
+        return 320 + queuedRowHeight; // Increased to accommodate message banner and prevent overflow
       case 'pickup':
       case 'arrived':
       case 'in_progress':
-        return 200;
+        return 200 + queuedRowHeight;
       case 'complete':
         return 0; // Hidden, overlay takes over
       default:
-        return 160;
+        return 160 + queuedRowHeight;
     }
   }
 
@@ -4946,7 +4999,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
 
   Widget _buildPanelWithQueuedRow() {
     final content = _buildPanelContent();
-    if (_queuedTrip == null) return content;
+    if (!_showB2bSheetRow) return content;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [

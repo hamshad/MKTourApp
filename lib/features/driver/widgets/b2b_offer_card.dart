@@ -197,6 +197,64 @@ class B2bOfferData {
   }
 }
 
+/// Queued-trip banner the driver can swipe away.
+///
+/// Swipe up (or tap the chevron) to hand the queued trip to the bottom-sheet
+/// row — exactly one surface shows it at a time. Keyed by ride id so a new
+/// queued trip always gets a fresh, un-dismissed banner.
+class B2bDismissibleBanner extends StatelessWidget {
+  final String rideId;
+  final Widget child;
+  final VoidCallback onDismissed;
+
+  const B2bDismissibleBanner({
+    super.key,
+    required this.rideId,
+    required this.child,
+    required this.onDismissed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Dismissible(
+      key: ValueKey('b2b-banner-$rideId'),
+      direction: DismissDirection.up,
+      dismissThresholds: const {DismissDirection.up: 0.35},
+      onDismissed: (_) => onDismissed(),
+      background: Container(
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.04),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.keyboard_arrow_down,
+                size: 18,
+                color: AppTheme.textSecondary,
+              ),
+              const SizedBox(width: 6),
+              const Text(
+                'Move to trip panel',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  color: AppTheme.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      child: child,
+    );
+  }
+}
+
 /// Uber/Bolt-style mini route preview: pickup → dropoff with the driver's
 /// current position when known. Painted locally (no map tiles, no second
 /// platform view) so it stays cheap, deterministic and never blank on iOS.

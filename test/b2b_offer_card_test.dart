@@ -4,6 +4,106 @@ import 'package:mktours/core/models/queued_ride.dart';
 import 'package:mktours/features/driver/widgets/b2b_offer_card.dart';
 
 void main() {
+  group('queued trip shows on exactly one surface', () {
+    test('banner shows and sheet row hides while not dismissed', () {
+      expect(
+        shouldShowB2bOverlay(
+          hasQueuedTrip: true,
+          hasOffer: false,
+          status: 'in_progress',
+        ),
+        isTrue,
+      );
+      expect(
+        shouldShowB2bSheetRow(hasQueuedTrip: true, bannerDismissed: false),
+        isFalse,
+      );
+    });
+
+    test('swiping the banner hands it to the sheet row, never both', () {
+      expect(
+        shouldShowB2bOverlay(
+          hasQueuedTrip: true,
+          hasOffer: false,
+          status: 'in_progress',
+          bannerDismissed: true,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldShowB2bSheetRow(hasQueuedTrip: true, bannerDismissed: true),
+        isTrue,
+      );
+    });
+
+    test('dismissal still respects the offer card independently', () {
+      expect(
+        shouldShowB2bOverlay(
+          hasQueuedTrip: false,
+          hasOffer: true,
+          status: 'in_progress',
+          bannerDismissed: true,
+        ),
+        isTrue,
+        reason: 'a pending offer is not the dismissed banner',
+      );
+    });
+
+    test('no queued trip means neither surface', () {
+      expect(
+        shouldShowB2bSheetRow(hasQueuedTrip: false, bannerDismissed: true),
+        isFalse,
+      );
+    });
+  });
+
+  group('B2bDismissibleBanner', () {
+    testWidgets('swipe up dismisses exactly once', (tester) async {
+      var dismissed = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: B2bDismissibleBanner(
+              rideId: 'rideB',
+              onDismissed: () => dismissed++,
+              child: const SizedBox(height: 80, child: Text('Next trip queued')),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.drag(
+        find.text('Next trip queued'),
+        const Offset(0, -220),
+      );
+      await tester.pumpAndSettle();
+      expect(dismissed, 1);
+    });
+
+    testWidgets('small drag keeps the banner', (tester) async {
+      var dismissed = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: B2bDismissibleBanner(
+              rideId: 'rideB',
+              onDismissed: () => dismissed++,
+              child: const SizedBox(height: 80, child: Text('Next trip queued')),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.drag(
+        find.text('Next trip queued'),
+        const Offset(0, -6),
+      );
+      await tester.pumpAndSettle();
+      expect(dismissed, 0);
+      expect(find.text('Next trip queued'), findsOneWidget);
+    });
+  });
+
   group('mergeB2bOfferData', () {
     test('thin FCM payload never erases rich socket locations', () {
       final rich = {
