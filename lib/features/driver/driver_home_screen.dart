@@ -4169,6 +4169,18 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     return (address == null || address.isEmpty) ? 'pickup' : address;
   }
 
+  static String _b2bDropoffLabel(Map<String, dynamic> trip) {
+    final dropoff = trip['dropoffLocation'];
+    final address =
+        dropoff is Map ? dropoff['address']?.toString() : null;
+    return (address == null || address.isEmpty) ? 'dropoff' : address;
+  }
+
+  static String _b2bDistanceLabel(Map<String, dynamic> trip) {
+    final distance = double.tryParse(trip['distance']?.toString() ?? '');
+    return distance == null ? '' : '${distance.toStringAsFixed(1)} mi trip';
+  }
+
   Widget _buildB2bOfferCard() {
     final offer = _b2bOffer!;
     final fareLabel = _b2bFareLabel(offer);
@@ -4214,6 +4226,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             const SizedBox(height: 6),
             Text(
               'Pickup: ${_b2bPickupLabel(offer)}',
+              style: TextStyle(color: Colors.grey[700], fontSize: 13),
+            ),
+            Text(
+              'Dropoff: ${_b2bDropoffLabel(offer)}'
+              '${_b2bDistanceLabel(offer).isEmpty ? '' : ' • ${_b2bDistanceLabel(offer)}'}',
               style: TextStyle(color: Colors.grey[700], fontSize: 13),
             ),
             if (_b2bOfferError != null) ...[
