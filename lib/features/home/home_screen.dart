@@ -1561,7 +1561,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     runAfterFrame((_) {
         if (!mounted || !context.mounted) return;
         if (status == 'in_progress' || status == 'at_stop') {
-          Navigator.of(context).pushReplacementNamed('/ride-progress');
+          // Rider side collapses at_stop → in_progress (snapshotStatusForRider);
+          // RideAssignedScreen is the canonical tracking screen — feed it the
+          // reconciled ride map instead of the arg-less '/ride-progress' route
+          // (which rendered a null-data screen full of demo fallbacks).
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) =>
+                  restoredRideAssignedScreen(rideId: id, ride: ride),
+            ),
+          );
         } else if (status == 'requested' ||
             status == 'searching' ||
             status == 'reassigning') {

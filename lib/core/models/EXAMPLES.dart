@@ -340,7 +340,7 @@ import 'models/api_error.dart';
 ///     final response = await _apiService.startRide(_rideId, _otpCode);
 ///     if (response['success']) {
 ///       // Navigate to ride in progress screen
-///       Navigator.pushReplacementNamed(context, '/ride-progress');
+///       // (driver stays on DriverHomeScreen — execution panel renders trip)
 ///     }
 ///   } on DriverException catch (e) {
 ///     // Special handling for OTP and ride start errors

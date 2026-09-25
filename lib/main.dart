@@ -25,7 +25,6 @@ import 'features/booking/scheduled_rides_screen.dart';
 import 'features/ride/driver_assigned_screen.dart';
 import 'features/ride/ride_complete_screen.dart';
 import 'features/driver/driver_home_screen.dart';
-import 'features/ride/ride_progress_screen.dart';
 import 'features/driver/driver_profile_screen.dart';
 import 'features/driver/driver_earnings_screen.dart';
 import 'features/driver/driver_activity_screen.dart';
@@ -147,7 +146,6 @@ class RideEaseApp extends StatelessWidget {
         '/destination-search': (context) => const DestinationSearchScreen(),
         '/confirm-booking': (context) => const ConfirmBookingScreen(),
         '/driver-home': (context) => const DriverHomeScreen(),
-        '/ride-progress': (context) => const RideProgressScreen(),
         '/driver-profile': (context) => const DriverProfileScreen(),
         '/driver-earnings': (context) => const DriverEarningsScreen(),
         '/driver-activity': (context) => const DriverActivityScreen(),

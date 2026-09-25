@@ -187,7 +187,7 @@ try {
 ```dart
 try {
   await _apiService.startRide(rideId, otpCode);
-  Navigator.pushReplacementNamed(context, '/ride-progress');
+  // Driver stays on DriverHomeScreen — execution panel renders trip status.
 } on DriverException catch (e) {
   DriverErrorHandler.handleStartRideError(context, e);
 }

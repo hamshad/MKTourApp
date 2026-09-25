@@ -7,7 +7,7 @@ import '../../core/services/payment_service.dart';
 import '../../core/services/socket_service.dart';
 import '../../core/widgets/custom_snackbar.dart';
 import '../ride/payment_webview_screen.dart';
-import '../ride/ride_progress_screen.dart';
+import '../home/home_screen.dart';
 import '../activity/ride_detail_screen.dart';
 
 /// Screen showing the user's scheduled (pre-booked) rides with cancel option.
@@ -98,7 +98,7 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
   }
 
   /// If any scheduled ride has status that's live and pickup time has passed,
-  /// redirect to ride-progress screen.
+  /// redirect to the live tracking screen.
   void _checkLiveHandoff() {
     final now = DateTime.now();
     for (final ride in _rides) {
@@ -112,9 +112,9 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
         if (now.isAfter(pickupTime) && mounted) {
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(
-              builder: (_) => RideProgressScreen(
+              builder: (_) => restoredRideAssignedScreen(
                 rideId: ride.id,
-                driver: ride.driver,
+                ride: ride.toJson(),
               ),
             ),
           );
@@ -459,9 +459,9 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
           ? () {
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => RideProgressScreen(
+                  builder: (_) => restoredRideAssignedScreen(
                     rideId: ride.id,
-                    driver: ride.driver,
+                    ride: ride.toJson(),
                   ),
                 ),
               );
