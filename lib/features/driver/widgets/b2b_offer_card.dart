@@ -1,8 +1,10 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart'
+    show LatLng, LatLngBounds;
+import 'package:latlong2/latlong.dart' as latlong2;
 
 import '../../../core/theme.dart';
+import '../../../core/widgets/platform_map.dart';
 
 /// View data for the driver-side back-to-back offer card.
 ///
@@ -234,14 +236,23 @@ class B2bDismissibleBanner extends StatelessWidget {
   }
 }
 
-/// Uber/Bolt-style mini route preview: pickup → dropoff with the driver's
-/// current position when known. Painted locally (no map tiles, no second
-/// platform view) so it stays cheap, deterministic and never blank on iOS.
+/// Uber/Bolt-style route preview: a real, non-interactive map framing
+/// pickup -> dropoff with the driver's position when known.
+///
+/// Uses the same [PlatformMap] engine as the main driver map (so tiles,
+/// styling and pin icons match the rest of the app) with gestures disabled -
+/// the card is a glanceable preview, not a map to drive by. The builder is
+/// injectable so widget tests never touch platform views.
 class B2bRoutePreview extends StatelessWidget {
   final B2bOfferData data;
   final double? driverLat;
   final double? driverLng;
   final double height;
+
+  /// Test seam: replace the platform view with a placeholder.
+  @visibleForTesting
+  static Widget Function(B2bOfferData data, double? driverLat, double? driverLng)?
+  mapBuilder;
 
   const B2bRoutePreview({
     super.key,
@@ -267,139 +278,74 @@ class B2bRoutePreview extends StatelessWidget {
         ),
       );
     }
+    final builder = mapBuilder;
+    if (builder != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: SizedBox(
+          height: height,
+          width: double.infinity,
+          child: builder(data, driverLat, driverLng),
+        ),
+      );
+    }
+    final pickupLat = data.pickupLat!;
+    final pickupLng = data.pickupLng!;
+    final dropoffLat = data.dropoffLat!;
+    final dropoffLng = data.dropoffLng!;
+    final minLat = pickupLat < dropoffLat ? pickupLat : dropoffLat;
+    final maxLat = pickupLat > dropoffLat ? pickupLat : dropoffLat;
+    final minLng = pickupLng < dropoffLng ? pickupLng : dropoffLng;
+    final maxLng = pickupLng > dropoffLng ? pickupLng : dropoffLng;
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
       child: SizedBox(
         height: height,
         width: double.infinity,
-        child: CustomPaint(
-          painter: _RoutePreviewPainter(
-            pickupLat: data.pickupLat!,
-            pickupLng: data.pickupLng!,
-            dropoffLat: data.dropoffLat!,
-            dropoffLng: data.dropoffLng!,
-            driverLat: driverLat,
-            driverLng: driverLng,
-            routeColor: AppTheme.primaryColor,
+        child: PlatformMap(
+          initialLat: (minLat + maxLat) / 2,
+          initialLng: (minLng + maxLng) / 2,
+          bounds: LatLngBounds(
+            southwest: LatLng(minLat, minLng),
+            northeast: LatLng(maxLat, maxLng),
           ),
+          interactive: false,
+          showMyLocationDot: false,
+          markers: [
+            MapMarker(
+              id: 'pickup',
+              lat: pickupLat,
+              lng: pickupLng,
+              title: data.pickupLabel,
+            ),
+            MapMarker(
+              id: 'dropoff',
+              lat: dropoffLat,
+              lng: dropoffLng,
+              title: data.dropoffLabel,
+            ),
+            if (driverLat != null && driverLng != null)
+              MapMarker(
+                id: 'driver',
+                lat: driverLat!,
+                lng: driverLng!,
+                title: 'You',
+              ),
+          ],
+          polylines: [
+            MapPolyline(
+              id: 'b2b_preview',
+              points: [
+                latlong2.LatLng(pickupLat, pickupLng),
+                latlong2.LatLng(dropoffLat, dropoffLng),
+              ],
+              color: AppTheme.primaryColor,
+              width: 5,
+            ),
+          ],
         ),
       ),
     );
-  }
-}
-
-class _RoutePreviewPainter extends CustomPainter {
-  final double pickupLat;
-  final double pickupLng;
-  final double dropoffLat;
-  final double dropoffLng;
-  final double? driverLat;
-  final double? driverLng;
-  final Color routeColor;
-
-  _RoutePreviewPainter({
-    required this.pickupLat,
-    required this.pickupLng,
-    required this.dropoffLat,
-    required this.dropoffLng,
-    required this.driverLat,
-    required this.driverLng,
-    required this.routeColor,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final backdrop = Paint()..color = const Color(0xFFF1F3F6);
-    canvas.drawRect(Offset.zero & size, backdrop);
-
-    final grid = Paint()
-      ..color = const Color(0xFFE2E6EC)
-      ..strokeWidth = 1;
-    for (var x = 0.0; x < size.width; x += 28) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), grid);
-    }
-    for (var y = 0.0; y < size.height; y += 28) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), grid);
-    }
-
-    final points = [
-      _project(pickupLat, pickupLng, size),
-      _project(dropoffLat, dropoffLng, size),
-    ];
-    if (driverLat != null && driverLng != null) {
-      points.add(_project(driverLat!, driverLng!, size));
-    }
-
-    // Route line sits under every marker.
-    if (points.length >= 2) {
-      final route = Paint()
-        ..color = routeColor.withValues(alpha: 0.85)
-        ..strokeWidth = 4
-        ..strokeCap = StrokeCap.round
-        ..style = PaintingStyle.stroke;
-      final path = Path()..moveTo(points.first.dx, points.first.dy);
-      for (final point in points.skip(1)) {
-        path.lineTo(point.dx, point.dy);
-      }
-      canvas.drawPath(path, route);
-    }
-
-    _drawPin(canvas, points[0], Colors.black87, filled: true);
-    _drawPin(canvas, points[1], const Color(0xFFE23D3D), filled: true);
-    if (points.length > 2) {
-      _drawDriver(canvas, points[2]);
-    }
-  }
-
-  Offset _project(double lat, double lng, Size size) {
-    final lats = <double>[pickupLat, dropoffLat];
-    final lngs = <double>[pickupLng, dropoffLng];
-    if (driverLat != null) lats.add(driverLat!);
-    if (driverLng != null) lngs.add(driverLng!);
-    final minLat = lats.reduce(math.min);
-    final maxLat = lats.reduce(math.max);
-    final minLng = lngs.reduce(math.min);
-    final maxLng = lngs.reduce(math.max);
-    const pad = 22.0;
-    final latSpan = math.max(maxLat - minLat, 0.002);
-    final lngSpan = math.max(maxLng - minLng, 0.002);
-    final x = pad + (lng - minLng) / lngSpan * (size.width - pad * 2);
-    final y =
-        size.height - pad - (lat - minLat) / latSpan * (size.height - pad * 2);
-    return Offset(x, y);
-  }
-
-  void _drawPin(Canvas canvas, Offset at, Color color, {required bool filled}) {
-    canvas.drawCircle(
-      at,
-      8,
-      Paint()..color = Colors.white,
-    );
-    canvas.drawCircle(at, 5.5, Paint()..color = color);
-    if (!filled) return;
-    canvas.drawCircle(
-      at,
-      5.5,
-      Paint()
-        ..color = Colors.white.withValues(alpha: 0.9)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.5,
-    );
-  }
-
-  void _drawDriver(Canvas canvas, Offset at) {
-    canvas.drawCircle(at, 9, Paint()..color = Colors.white);
-    canvas.drawCircle(at, 6, Paint()..color = const Color(0xFF111827));
-  }
-
-  @override
-  bool shouldRepaint(covariant _RoutePreviewPainter old) {
-    return old.pickupLat != pickupLat ||
-        old.pickupLng != pickupLng ||
-        old.dropoffLat != dropoffLat ||
-        old.dropoffLng != dropoffLng ||
-        old.driverLat != driverLat ||
-        old.driverLng != driverLng;
   }
 }
 

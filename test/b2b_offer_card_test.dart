@@ -409,6 +409,22 @@ void main() {
       );
     }
 
+    setUp(() {
+      // Real map view is a platform view; stub it in widget tests.
+      B2bRoutePreview.mapBuilder = (data, lat, lng) => ColoredBox(
+        color: const Color(0xFFE8EAED),
+        child: Center(
+          child: Text(
+            'map:${data.pickupLat},${data.pickupLng}->'
+            '${data.dropoffLat},${data.dropoffLng}',
+            style: const TextStyle(fontSize: 10),
+          ),
+        ),
+      );
+    });
+
+    tearDown(() => B2bRoutePreview.mapBuilder = null);
+
     final sample = B2bOfferData.fromMap({
       'fare': 18.5,
       'distance': 2.4,
@@ -446,6 +462,29 @@ void main() {
       expect(find.text('Route preview unavailable'), findsOneWidget);
       expect(find.text('A'), findsOneWidget);
       expect(find.text('B'), findsOneWidget);
+    });
+
+    testWidgets('preview map receives both points and the driver position', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: B2bOfferCard(
+              data: sample,
+              driverLat: 19.86,
+              driverLng: 75.31,
+              onQueue: () {},
+              onSkip: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.text('map:51.5074,-0.1388->51.5237,-0.1569'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('queue and skip fire their callbacks', (tester) async {
