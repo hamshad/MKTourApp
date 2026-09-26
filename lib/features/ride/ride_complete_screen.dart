@@ -56,16 +56,6 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
       _summary.totalWaitFee > 0 ||
       widget.rideData.containsKey('actualFare');
 
-  /// Per-ride wait rate from the backend payload (`perMinuteRate`), falling
-  /// back to [WaitFeePolicy] only when the backend omits it.
-  double get _waitRate {
-    for (final key in ['perMinuteRate', 'waitRate', 'waitPerMinuteRate']) {
-      final raw = widget.rideData[key];
-      if (raw is num && raw.toDouble() > 0) return raw.toDouble();
-    }
-    return WaitFeePolicy.perMinuteRate;
-  }
-
   /// Big total: actualFare (base + wait) when the backend provides wait
   /// data, otherwise the legacy fare resolution below.
   double get _displayTotal => _hasWaitData ? _summary.actualFare : _fare;
@@ -738,21 +728,27 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                               '£${(_summary.fare > 0 ? _summary.fare : _fare).toStringAsFixed(2)}',
                             ),
                           ],
-                          // Wait row only when waiting actually happened.
+                          // Single aggregate wait row — totalWaitFee/totalWaitMinutes
+                          // already include stop waits, so this is the only
+                          // wait line (backend-authoritative totals).
                           if (_summary.totalWaitMinutes > 0 ||
                               _summary.totalWaitFee > 0) ...[
                             _buildFareRow(
-                              'Wait ${_summary.totalWaitMinutes} min × £${_waitRate.toStringAsFixed(2)}',
+                              'Wait · ${_summary.totalWaitMinutes} min',
                               '£${_summary.totalWaitFee.toStringAsFixed(2)}',
                             ),
                           ],
-                          // Per-stop wait rows.
-                          for (final stop in _stops)
-                            if (stop.waitTimeMinutes > 0)
-                              _buildFareRow(
-                                'Stop ${stop.stopOrder == 0 ? '' : '${stop.stopOrder} '}wait (${stop.waitTimeMinutes} min)',
-                                '£${stop.waitFee.toStringAsFixed(2)}',
-                              ),
+                          // Per-stop wait rows only as fallback when the
+                          // backend omits the aggregate — otherwise the same
+                          // fee shows twice (aggregate + per-stop).
+                          if (_summary.totalWaitMinutes <= 0 &&
+                              _summary.totalWaitFee <= 0)
+                            for (final stop in _stops)
+                              if (stop.waitTimeMinutes > 0)
+                                _buildFareRow(
+                                  'Stop ${stop.stopOrder == 0 ? '' : '${stop.stopOrder} '}wait (${stop.waitTimeMinutes} min)',
+                                  '£${stop.waitFee.toStringAsFixed(2)}',
+                                ),
                           if (_congestionFee > 0) ...[
                             _buildFareRow(
                               'Congestion charge',
