@@ -123,18 +123,12 @@ class AppVersionService {
     return 'android';
   }
 
+  /// Always reports the real installed version (1.1.2) and build (53),
+  /// in dev and release alike. Version thresholds are owned by the backend
+  /// — test scenarios are driven by what the server returns, not by the app.
   Future<String> currentVersion() async {
-    // Dev trigger: report current minus 0.1.0 (e.g. 1.1.2 → 1.0.2) so
-    // backend returns FORCE/SOFT for testing.
-    // Live builds (isDev=false) always report the real version.
     final real = await _realVersion();
-    if (!AppConstants.isDev) return real;
-    final parts = real.split('.');
-    final major = int.tryParse(parts.elementAtOrNull(0) ?? '') ?? 1;
-    final minor = int.tryParse(parts.elementAtOrNull(1) ?? '') ?? 0;
-    final patch = parts.elementAtOrNull(2) ?? '0';
-    if (minor > 0) return '$major.${minor - 1}.$patch';
-    if (major > 1) return '${major - 1}.9.$patch';
+    debugPrint('🔍 [AppVersion] Reporting version=$real isDev=${AppConstants.isDev}');
     return real;
   }
 
@@ -148,7 +142,6 @@ class AppVersionService {
   }
 
   Future<int?> currentBuildNumber() async {
-    if (AppConstants.isDev) return 1;
     try {
       final info = await PackageInfo.fromPlatform();
       return int.tryParse(info.buildNumber);
