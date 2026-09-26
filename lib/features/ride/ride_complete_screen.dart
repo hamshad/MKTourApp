@@ -136,6 +136,18 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
   final SocketService _socketService = SocketService();
   bool _isCashConfirmed = false;
 
+  /// Waiting-fee excess still owed (pendingBalance handoff,
+  /// `payment:balanceDue`, or `paymentStatus == 'balance_due'`).
+  ///
+  /// The total row must NOT say "Paid" while this is true — a non-cash
+  /// method only means the BASE fare was captured; the waiting-fee excess
+  /// settles later via the settlement sheet (result flips it false) or a
+  /// `payment:cashCollected` collection.
+  bool _balanceOwed = false;
+
+  /// Total row settled: base collected AND no waiting-fee excess pending.
+  bool get _totalSettled => _isCashConfirmed && !_balanceOwed;
+
   // Stored for scoped off in dispose — a global off would wipe HomeScreen's
   // balance-banner handlers and any co-mounted settlement listeners.
   void Function(dynamic)? _balanceDueListener;
@@ -152,21 +164,30 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
     // excess gets paid while the summary + rating stay intact underneath.
     final pending = widget.rideData['pendingBalance'];
     if (pending is OutstandingBalance && pending.isOwed) {
+      _balanceOwed = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         _openSettlementSheet(pending);
       });
+    }
+    // Ride payload can also carry the owed state directly.
+    if (widget.rideData['paymentStatus']?.toString() == 'balance_due') {
+      _balanceOwed = true;
     }
     _listenForBalanceDue();
   }
 
   /// Stage 2 settlement sheet presented ON TOP of the receipt (modal bottom
   /// sheet — dismissing it reveals the receipt + rating intact).
+  ///
+  /// A `{success: true}` result means the excess settled — flip the total
+  /// row from pending to Paid (the sheet itself only knows about its own
+  /// balance; the receipt owns the fare-section state).
   Future<void> _openSettlementSheet(OutstandingBalance balance) async {
     if (!mounted) return;
     final rideId =
         balance.rideId.isNotEmpty ? balance.rideId : _rideId;
-    await showModalBottomSheet(
+    final result = await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       builder: (_) => ExcessSettlementSheet(
@@ -184,6 +205,12 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
               ),
       ),
     );
+    if (result is Map && result['success'] == true && mounted) {
+      setState(() {
+        _balanceOwed = false;
+        _isCashConfirmed = true;
+      });
+    }
   }
 
   /// Excess owed after trip end (payment-flow.md §1 Outcome B): a
@@ -213,6 +240,9 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
         'rideId': eventRideId ?? _rideId,
       });
       if (!balance.isOwed) return;
+      // Wait-fee excess now explicitly owed — total row must show pending,
+      // not Paid, until the settlement sheet closes with success.
+      if (mounted) setState(() => _balanceOwed = true);
       _openSettlementSheet(balance);
     };
     _socketService.onPaymentBalanceDue(_balanceDueListener!);
@@ -287,6 +317,7 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
          // Verify rideId if needed
          setState(() {
            _isCashConfirmed = true;
+           _balanceOwed = false;
            _cashJustConfirmed = true;
          });
          CustomSnackbar.show(
@@ -842,11 +873,11 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                                   Row(
                                     children: [
                                       Icon(
-                                        _isCashConfirmed
+                                        _totalSettled
                                             ? Icons.check_circle
                                             : Icons.pending,
                                         size: 14,
-                                        color: _isCashConfirmed
+                                        color: _totalSettled
                                             ? Colors.green[600]
                                             : Colors.orange[600],
                                       ),
@@ -854,14 +885,19 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                                       Text(
                                         _fare == 0 && _isPromoRide
                                             ? 'Free'
-                                            : _isCashConfirmed
+                                            : _totalSettled
                                                 ? 'Paid'
-                                                : 'Pay Cash to Driver',
+                                                : _isCashConfirmed
+                                                    // Base collected but a
+                                                    // waiting-fee excess is
+                                                    // still owed → pending.
+                                                    ? 'Payment pending'
+                                                    : 'Pay Cash to Driver',
                                         style: TextStyle(
                                           fontSize: 12,
                                           color: _fare == 0 && _isPromoRide
                                               ? const Color(0xFF22C55E)
-                                              : _isCashConfirmed
+                                              : _totalSettled
                                                   ? Colors.green[600]
                                                   : Colors.orange[600],
                                           fontWeight: FontWeight.w600,

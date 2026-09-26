@@ -54,6 +54,19 @@ class _ExcessSettlementSheetState extends State<ExcessSettlementSheet> {
   bool _isBusy = false;
   bool _isRefreshing = false;
   bool _settled = false;
+
+  /// WebView reported a successful redirect this session — the gateway has
+  /// confirmed payment even when the balance re-fetch still lags the Stripe
+  /// webhook (or the backend never re-emits `payment:succeeded`).
+  bool _webPaid = false;
+
+  /// Confirm re-fetch attempts when a success signal (socket event or
+  /// WebView redirect) says we're settled but the balance endpoint still
+  /// reports `balance_due` — bridges the webhook→DB lag instead of parking
+  /// the sheet open on the first stale read.
+  static const int _confirmAttempts = 4;
+  static const Duration _confirmDelay = Duration(milliseconds: 1500);
+
   StreamSubscription<bool>? _connectionSub;
   // Stored listener identities — scoped off() removes ONLY these (the
   // singleton socket is shared; a global off from another screen's
@@ -183,16 +196,31 @@ class _ExcessSettlementSheetState extends State<ExcessSettlementSheet> {
 
   /// Re-fetch the balance (mirrors OutstandingBalanceScreen._refresh).
   ///
-  /// When [fromEvent] is true (a socket just told us something settled), a
-  /// 404 (nothing owed) also pops — combined with the event, cleared is the
-  /// likely reading. [successMessage] overrides the default settled copy
-  /// (used for the confirmed event's thank-you message); displayed verbatim.
+  /// When [fromEvent] is true (a socket event or the WebView redirect said
+  /// we're settled), a 404 (nothing owed) also pops — combined with the
+  /// signal, cleared is the likely reading. [successMessage] overrides the
+  /// default settled copy (used for the confirmed event's thank-you
+  /// message); displayed verbatim.
   ///
   /// [cashSettledFallback] covers the driver-cash round-trip arriving as
   /// `payment:succeeded`: the cash handoff leaves no payment record, so the
   /// re-fetch can still return the stale balance_due. The backend's
-  /// "fully settled" word is authoritative — close anyway. Exactly-once via
-  /// [_settled] (a co-fired `payment:excessCashConfirmed` no-ops).
+  /// "fully settled" word is authoritative — close anyway (first attempt).
+  /// Exactly-once via [_settled] (a co-fired `payment:excessCashConfirmed`
+  /// no-ops).
+  ///
+  /// Confirm-signal refreshes retry up to [_confirmAttempts] times
+  /// ([_confirmDelay] apart): the balance endpoint resolves only after the
+  /// Stripe webhook, so the FIRST post-payment read commonly still says
+  /// `balance_due`. A single stale read used to park the sheet open forever.
+  /// After retries, a WebView-confirmed payment ([_webPaid]) closes the
+  /// sheet anyway — the gateway redirect is the payment proof. Without
+  /// [_webPaid] (e.g. a late base-fare capture event) the sheet still stays
+  /// open on the fresh amount, preserving the base-capture guard.
+  ///
+  /// Concurrent triggers (socket event + WebView result) each run their own
+  /// pipeline — the calls are idempotent GETs and [_settled] keeps the
+  /// close-out exactly-once.
   Future<void> _refresh(
       {bool fromEvent = false,
       String? successMessage,
@@ -202,67 +230,91 @@ class _ExcessSettlementSheetState extends State<ExcessSettlementSheet> {
         successMessage ?? 'Excess paid successfully! Your ride is fully settled.';
     setState(() => _isRefreshing = true);
     try {
-      final res = await _apiService.getPaymentBalance(widget.rideId);
-      if (!mounted || _settled) return;
-      final status = res['data'] is Map
-          ? (res['data'] as Map)['status']?.toString()
-          : null;
-      final hasParsed = res['success'] == true;
-      debugPrint(
-        '💰 [ExcessSettlementSheet] refresh res success=${res['success']} status=$status parsed=$hasParsed fallback=$cashSettledFallback event=$fromEvent',
-      );
-      if (res['success'] == true && status == 'succeeded') {
-        CustomSnackbar.show(
-          context,
-          message: settledCopy,
-          type: SnackbarType.success,
+      final maxAttempts = fromEvent ? _confirmAttempts : 1;
+      for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+        if (!mounted || _settled) return;
+        if (attempt > 1) {
+          await Future<void>.delayed(_confirmDelay);
+          if (!mounted || _settled) return;
+        }
+        final res = await _apiService.getPaymentBalance(widget.rideId);
+        if (!mounted || _settled) return;
+        final status = res['data'] is Map
+            ? (res['data'] as Map)['status']?.toString()
+            : null;
+        debugPrint(
+          '💰 [ExcessSettlementSheet] refresh#$attempt success=${res['success']} '
+          'status=$status fallback=$cashSettledFallback event=$fromEvent '
+          'webPaid=$_webPaid attempt=$attempt/$maxAttempts',
         );
-        _settled = true;
-        Navigator.pop(context, {'success': true});
-        return;
-      }
-      final parsed = res['success'] == true
-          ? OutstandingBalance.fromBalanceEnvelope(res, widget.rideId)
-          : null;
-      if (parsed != null) {
+        if (res['success'] == true && status == 'succeeded') {
+          _closeSettled(settledCopy);
+          return;
+        }
+        final parsed = res['success'] == true
+            ? OutstandingBalance.fromBalanceEnvelope(res, widget.rideId)
+            : null;
+        if (parsed == null) {
+          if (fromEvent) {
+            // Signal said settled + API has nothing owed → genuinely cleared.
+            _closeSettled(settledCopy);
+            return;
+          }
+          CustomSnackbar.show(
+            context,
+            message: res['message']?.toString() ?? 'No outstanding balance found.',
+            type: SnackbarType.info,
+          );
+          return;
+        }
         if (cashSettledFallback) {
           // Backend said "fully settled" for the cash handoff but the
           // re-fetch still shows the stale balance — trust the event.
-          CustomSnackbar.show(
-            context,
-            message: settledCopy,
-            type: SnackbarType.success,
+          _closeSettled(settledCopy);
+          return;
+        }
+        if (!parsed.isOwed) {
+          // Not `balance_due` anymore (e.g. `paid`/`completed` variants) →
+          // the balance endpoint itself says we're cleared.
+          _closeSettled(settledCopy);
+          return;
+        }
+        // Still owed — retry while attempts remain (webhook lag).
+        if (attempt < maxAttempts) continue;
+        if (_webPaid) {
+          // Gateway confirmed the payment in our WebView; the backend
+          // flip is lagging (or its emission never came). Close rather
+          // than park the sheet open forever.
+          debugPrint(
+            '✅ [ExcessSettlementSheet] WebView-confirmed payment, closing despite stale balance',
           );
-          _settled = true;
-          Navigator.pop(context, {'success': true});
+          _closeSettled(settledCopy);
           return;
         }
         // Event-driven check found the balance still owed — stay open with
         // the fresh amount (e.g. a mid-trip base capture, not our payment).
         debugPrint(
-          '⏳ [ExcessSettlementSheet] Balance still owed, staying open',
+          '⏳ [ExcessSettlementSheet] Balance still owed after '
+          '$maxAttempts checks, staying open',
         );
         setState(() => _balance = parsed);
-      } else if (fromEvent) {
-        // Event said settled + API has nothing owed → genuinely cleared.
-        CustomSnackbar.show(
-          context,
-          message: settledCopy,
-          type: SnackbarType.success,
-        );
-        _settled = true;
-        Navigator.pop(context, {'success': true});
         return;
-      } else {
-        CustomSnackbar.show(
-          context,
-          message: res['message']?.toString() ?? 'No outstanding balance found.',
-          type: SnackbarType.info,
-        );
       }
     } finally {
       if (mounted) setState(() => _isRefreshing = false);
     }
+  }
+
+  /// Exactly-once settled close-out: success snackbar + pop with result.
+  void _closeSettled(String message) {
+    if (!mounted || _settled) return;
+    CustomSnackbar.show(
+      context,
+      message: message,
+      type: SnackbarType.success,
+    );
+    _settled = true;
+    Navigator.pop(context, {'success': true});
   }
 
   Future<void> _selectCash() async {
@@ -318,9 +370,11 @@ class _ExcessSettlementSheetState extends State<ExcessSettlementSheet> {
       );
       if (!mounted) return;
       if (result is Map && result['success'] == true) {
-        // WebView success is optimistic — backend confirms via
-        // payment:succeeded. Refresh authoritatively; fromEvent:true so a
-        // post-paid 404 means "balance gone → pop with success".
+        // WebView success is the gateway's word — record it before the
+        // authoritative re-fetch so a lagging backend can't park the sheet
+        // open (see [_webPaid]). fromEvent:true so a post-paid 404 means
+        // "balance gone → pop with success" and stale reads get retried.
+        _webPaid = true;
         await _refresh(fromEvent: true);
       } else {
         CustomSnackbar.show(
@@ -404,6 +458,20 @@ class _ExcessSettlementSheetState extends State<ExcessSettlementSheet> {
                   label: const Text('Pay Online'),
                 ),
               ),
+              // Confirm-pipeline activity (event/WebView-triggered re-fetch
+              // retries) — visible on the choice step too, so a socket
+              // success refresh doesn't look like a dead sheet.
+              if (_isRefreshing)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.only(top: 12),
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                ),
             ] else ...[
               Container(
                 width: double.infinity,
