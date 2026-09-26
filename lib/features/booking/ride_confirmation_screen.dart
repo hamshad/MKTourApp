@@ -91,8 +91,16 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     final hasValidFare =
         widget.fareData['total_fare'] != null &&
         (widget.fareData['total_fare'] as num) > 0;
+    final hasStops = widget.stops?.isNotEmpty == true;
 
-    if (_isFixedFare || hasPromoData || hasValidFare) {
+    if (_isFixedFare) {
+      _isFetchingFare = false;
+    } else if (hasStops) {
+      // The passed fareData may predate the stops editor (rider tapped the
+      // vehicle while the stops refetch was still in flight) — never trust
+      // it for pricing. Always re-price with stops before booking is allowed.
+      _fetchDirectionsAndFare();
+    } else if (hasPromoData || hasValidFare) {
       _isFetchingFare = false;
     } else {
       _fetchDirectionsAndFare();
@@ -252,18 +260,16 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     });
 
     try {
-      final pickupLat = widget.pickupLocation['coordinates'][1];
-      final pickupLng = widget.pickupLocation['coordinates'][0];
-      final dropoffLat = widget.dropoffLocation['coordinates'][1];
-      final dropoffLng = widget.dropoffLocation['coordinates'][0];
-
-      final result = await _placesService.getDistanceAndFare(
-        originLat: pickupLat,
-        originLng: pickupLng,
-        destLat: dropoffLat,
-        destLng: dropoffLng,
-        categorySlug: widget.categorySlug,
-      );
+      final hasStops = widget.stops?.isNotEmpty == true;
+      final Map<String, dynamic>? result = hasStops
+          ? await _fetchFareEstimateWithStops()
+          : await _placesService.getDistanceAndFare(
+              originLat: widget.pickupLocation['coordinates'][1],
+              originLng: widget.pickupLocation['coordinates'][0],
+              destLat: widget.dropoffLocation['coordinates'][1],
+              destLng: widget.dropoffLocation['coordinates'][0],
+              categorySlug: widget.categorySlug,
+            );
 
       if (mounted && result != null) {
         setState(() {
@@ -294,6 +300,94 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
         });
       }
     }
+  }
+
+  /// Stops-aware re-price via the same promo-aware estimate endpoint the
+  /// vehicle cards use. Returns the selected category's fare normalized to
+  /// the `_currentFareData` shape (routed distance incl. stops, promo
+  /// split, congestion, outstanding balance).
+  Future<Map<String, dynamic>?> _fetchFareEstimateWithStops() async {
+    final pickupLat = (widget.pickupLocation['coordinates'][1] as num).toDouble();
+    final pickupLng = (widget.pickupLocation['coordinates'][0] as num).toDouble();
+    final dropoffLat =
+        (widget.dropoffLocation['coordinates'][1] as num).toDouble();
+    final dropoffLng =
+        (widget.dropoffLocation['coordinates'][0] as num).toDouble();
+
+    final data = await _placesService.getFareEstimate(
+      pickupLat: pickupLat,
+      pickupLon: pickupLng,
+      dropoffLat: dropoffLat,
+      dropoffLon: dropoffLng,
+      // Fallback only — the backend re-routes with stops and the returned
+      // top-level estimatedDistance (routed incl. stops) wins for booking.
+      distance: (widget.fareData['distance_miles'] as num?)?.toDouble() ?? 0.0,
+      stops: widget.stops,
+    );
+    if (data == null) return null;
+
+    final duration = data['duration'];
+    final durationSeconds = duration is Map
+        ? (duration['seconds'] as num?)?.toInt() ?? 0
+        : 0;
+    final durationText =
+        duration is Map ? duration['text']?.toString() ?? '' : '';
+    final distanceMiles = (data['estimatedDistance'] as num?)?.toDouble();
+    final distanceText = distanceMiles != null
+        ? '${distanceMiles.toStringAsFixed(2)} mi'
+        : '';
+
+    final categories = data['categories'];
+    if (categories is! List) return null;
+    num numOf(dynamic v) => v is num ? v : num.tryParse('$v') ?? 0;
+    for (final raw in categories) {
+      if (raw is! Map) continue;
+      final cat = Map<String, dynamic>.from(raw);
+      final slug = (cat['slug'] ?? cat['categorySlug'])?.toString();
+      if (slug != widget.categorySlug) continue;
+
+      final estimatedFare = numOf(cat['estimatedFare'] ?? cat['total_fare']);
+      final originalFare = numOf(
+        cat['originalFare'] ?? cat['original_fare'] ?? estimatedFare,
+      );
+      final promoApplied =
+          cat['promoApplied'] == true || cat['isPromoApplied'] == true;
+      final isFreeRide =
+          cat['isFreeRide'] == true || (promoApplied && estimatedFare == 0);
+      final discount = numOf(cat['discount'] ?? (originalFare - estimatedFare));
+      final outstandingRaw = numOf(
+        cat['outstandingBalance'] ??
+            cat['excessAmount'] ??
+            cat['outstanding_balance'] ??
+            0,
+      );
+
+      debugPrint(
+        '✅ RideConfirmationScreen: Stops-aware fare £$estimatedFare '
+        '(${distanceMiles ?? '?'} mi, ${widget.stops?.length ?? 0} stops)',
+      );
+
+      return {
+        'total_fare': estimatedFare.toDouble(),
+        'original_fare': originalFare.toDouble(),
+        'discount': (discount < 0 ? 0 : discount).toDouble(),
+        'is_free_ride': isFreeRide,
+        'promo_applied': promoApplied,
+        'is_congestion': cat['isCongestionCharge'] == true,
+        'congestion_amount': numOf(cat['congestionChargeAmount'] ?? 0).toDouble(),
+        'outstanding_balance': (outstandingRaw < 0 ? 0 : outstandingRaw).toDouble(),
+        'distance_miles': distanceMiles ?? 0.0,
+        'distance_text': distanceText,
+        'duration_text': durationText,
+        'duration_seconds': durationSeconds,
+        'category_slug': widget.categorySlug,
+      };
+    }
+    // Selected category missing from response — no safe price to book at.
+    debugPrint(
+      '⚠️ RideConfirmationScreen: category ${widget.categorySlug} missing in stops estimate',
+    );
+    return null;
   }
 
   /// Retry fetching fare after an error

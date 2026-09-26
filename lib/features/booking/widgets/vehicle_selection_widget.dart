@@ -62,6 +62,9 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
   bool _isFetchingFares = false;
   String? _fareError;
   String? _fareErrorAction;
+  // Fetch generation: a slow earlier response (e.g. no-stops route) must
+  // not repopulate estimates after a newer stops-change fetch started.
+  int _fareFetchGen = 0;
 
   @override
   void didUpdateWidget(VehicleSelectionWidget oldWidget) {
@@ -73,6 +76,11 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
         oldWidget.dropoffLat != widget.dropoffLat ||
         oldWidget.dropoffLng != widget.dropoffLng ||
         oldWidget.distance != widget.distance) {
+      // Drop stale estimates immediately: keeping them made old (no-stops)
+      // fares selectable while the refetch ran — booking at the base fare.
+      // Empty map + _isFetchingFares shows the fare skeleton instead.
+      _fareEstimates = {};
+      _promoResponse = null;
       _fetchFareEstimates();
     }
   }
@@ -121,6 +129,9 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
 
   /// Fetch fare estimates for all vehicle categories from backend
   Future<void> _fetchFareEstimates() async {
+    final gen = ++_fareFetchGen;
+    bool stale() => gen != _fareFetchGen;
+
     if (widget.fixedFareByCategory != null) {
       setState(() => _isFetchingFares = true);
       for (final category in _categories) {
@@ -162,6 +173,12 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
         distance: widget.distance ?? 0.0,
         stops: widget.stops,
       );
+
+      if (stale()) {
+        // A newer fetch (stops/route change) superseded this one — it owns
+        // _isFetchingFares and the estimate map now.
+        return;
+      }
 
       if (mounted && promoData != null) {
         // Extract shared distance/duration from API response top-level
@@ -213,6 +230,7 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
         }
         debugPrint('⚠️ Falling back to sequential fare estimates');
         for (final category in _categories) {
+          if (stale()) break;
           try {
             final result = await _placesService.getDistanceAndFare(
               originLat: widget.pickupLat!,
@@ -222,7 +240,7 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
               categorySlug: category.slug,
             );
 
-            if (mounted && result != null) {
+            if (mounted && result != null && !stale()) {
               setState(() {
                 _fareEstimates[category.slug] = result;
               });
@@ -236,7 +254,7 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
       }
     } catch (e) {
       debugPrint('❌ VehicleSelectionWidget: Error fetching fare estimates: $e');
-      if (mounted) {
+      if (mounted && !stale()) {
         final info = RideErrorMapper.map(e.toString());
         setState(() {
           _fareError = '${info.title}: ${info.copy}';
@@ -245,7 +263,7 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
       }
     }
 
-    if (mounted) {
+    if (mounted && !stale()) {
       setState(() => _isFetchingFares = false);
     }
   }
