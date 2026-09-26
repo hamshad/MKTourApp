@@ -1,4 +1,7 @@
+import 'dart:async';
 import 'dart:math' as math;
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -103,6 +106,23 @@ class _PlatformMapState extends State<PlatformMap>
     with WidgetsBindingObserver {
   GoogleMapController? _controller;
 
+  /// Native GoogleMap renders a black texture until its first frame paints
+  /// (known google_maps_flutter platform-view behavior, flutter/flutter#39797).
+  /// We cover that window with a neutral placeholder. onMapCreated fires when
+  /// the platform CHANNEL is ready — not when tiles are drawn (flutter/flutter#54758) —
+  /// so a fixed delay always races the native renderer (white -> black flash -> map
+  /// on iOS). Instead we poll takeSnapshot() until the native frame actually
+  /// contains map pixels, THEN fade. Fallback deadline guarantees we never stick.
+  bool _showPlaceholder = true;
+
+  /// Safety net only for the "onMapCreated never fired" failure mode.
+  Timer? _placeholderSafetyTimer;
+
+  /// Placeholder color: light neutral that matches the app's light theme, so
+  /// the transition into the first map frame reads as "map loading" instead of
+  /// a black flash.
+  static const Color _placeholderColor = Color(0xFFF1F3F4);
+
   /// Last camera position we applied. Used to (a) throttle follow-animation
   /// so rapid location updates don't spam animateCamera (tiles never settle
   /// → intermittent blank map), and (b) re-assert the camera on app resume
@@ -125,13 +145,107 @@ class _PlatformMapState extends State<PlatformMap>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Absolute fallback: if onMapCreated never fires (native view failed to
+    // attach), never leave the placeholder on screen forever.
+    _placeholderSafetyTimer = Timer(const Duration(seconds: 8), () {
+      if (mounted && _showPlaceholder) {
+        debugPrint('🗺️ PlatformMap: placeholder safety timeout fired');
+        setState(() => _showPlaceholder = false);
+      }
+    });
     _ensureIcons();
   }
 
   @override
   void dispose() {
+    _placeholderSafetyTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  /// True when [bytes] (a map snapshot) contains actual map pixels —
+  /// NOT a uniform black (unpainted texture) or uniform white (empty view)
+  /// frame. Samples a downsampled decode and checks luminance spread.
+  static Future<bool> _frameHasMapPixels(Uint8List bytes) async {
+    ui.Codec? codec;
+    try {
+      codec = await ui.instantiateImageCodec(
+        bytes,
+        targetWidth: 32,
+        targetHeight: 32,
+      );
+      final frame = await codec.getNextFrame();
+      final data =
+          await frame.image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      if (data == null) return false;
+      final pixels = data.buffer.asUint8List();
+      var min = 255, max = 0, sum = 0, n = 0;
+      for (var i = 0; i < pixels.length; i += 4) {
+        // Luminance of RGB; ignore alpha (empty snapshots can be opaque black).
+        final lum = ((pixels[i] * 299) +
+                (pixels[i + 1] * 587) +
+                (pixels[i + 2] * 114)) ~/
+            1000;
+        if (lum < min) min = lum;
+        if (lum > max) max = lum;
+        sum += lum;
+        n++;
+      }
+      if (n == 0) return false;
+      final mean = sum / n;
+      // Count pixels that look like map content (tiles are light-toned in the
+      // default style); a handful of labels/markers over a black texture keeps
+      // the lit fraction near zero.
+      var lit = 0;
+      var m = 0;
+      for (var i = 0; i < pixels.length; i += 4) {
+        final lum = ((pixels[i] * 299) +
+                (pixels[i + 1] * 587) +
+                (pixels[i + 2] * 114)) ~/
+            1000;
+        if (lum > 25) lit++;
+        m++;
+      }
+      if (m == 0) return false;
+      final litFraction = lit / m;
+      // Unpainted texture = mostly-black (low lit fraction, low mean).
+      // Uniform white/empty = high lit fraction but no variation (spread ~0).
+      // Real map tiles = most pixels light-toned AND visible variation.
+      return litFraction > 0.35 && max - min > 20 && mean > 30;
+    } catch (_) {
+      // Snapshot failed (map not ready to render) — keep polling.
+      return false;
+    } finally {
+      codec?.dispose();
+    }
+  }
+
+  /// Poll the native map every 250ms until its frame actually contains map
+  /// pixels, then fade the placeholder. Replaces the old fixed-delay fade that
+  /// raced the renderer (revealed black texture on iOS). Hard deadline so a
+  /// failed map can't leave the placeholder stuck.
+  Future<void> _waitForPaintedFrame() async {
+    const deadline = Duration(seconds: 6);
+    final sw = Stopwatch()..start();
+    // First check deferred: map view needs a beat to produce any snapshot.
+    await Future.delayed(const Duration(milliseconds: 250));
+    while (mounted && _showPlaceholder && sw.elapsed < deadline) {
+      Uint8List? bytes;
+      try {
+        bytes = await _controller?.takeSnapshot();
+      } catch (e) {
+        // iOS throws PlatformException when snapshot is called before the
+        // native map initialized — keep polling until it succeeds.
+        debugPrint('🗺️ PlatformMap: snapshot not ready yet: $e');
+      }
+      if (bytes != null && await _frameHasMapPixels(bytes)) {
+        break;
+      }
+      await Future.delayed(const Duration(milliseconds: 250));
+    }
+    if (mounted && _showPlaceholder) {
+      setState(() => _showPlaceholder = false);
+    }
   }
 
   @override
@@ -447,48 +561,81 @@ class _PlatformMapState extends State<PlatformMap>
       }
     }
 
-    return GoogleMap(
-      initialCameraPosition: CameraPosition(
-        target: initialTarget,
-        zoom: widget.bounds != null ? 12.0 : 14.0, // Zoom out slightly if showing bounds
-        bearing: widget.bearing,
-        tilt: widget.tilt,
-      ),
-      markers: googleMarkers,
-      polylines: googlePolylines,
-      onCameraMove: _onCameraMove,
-      onMapCreated: (GoogleMapController controller) {
-        debugPrint('🗺️ PlatformMap: Google Map created successfully');
-        _controller = controller;
-        // Seed the resume-nudge target so a background/foreground cycle
-        // before any camera move still refreshes tiles.
-        _lastCameraPosition ??= CameraPosition(
-          target: initialTarget,
-          zoom: widget.bounds != null ? 12.0 : 14.0,
-          bearing: widget.bearing,
-          tilt: widget.tilt,
-        );
-        if (widget.bounds != null) {
-          // Extra delay to ensure layout is complete
-          Future.delayed(const Duration(milliseconds: 600), _fitBounds);
-        }
-      },
-      onTap: (LatLng position) {
-        widget.onTap?.call(position.latitude, position.longitude);
-      },
-      // Native dot is opt-in (see showMyLocationDot): our custom user/driver/
-      // pickup markers already cover the device position, and enabling both
-      // draws two overlapping pins. The recenter button is tied to the dot —
-      // showing it without the location layer would be a dead button.
-      myLocationEnabled: widget.showMyLocationDot,
-      myLocationButtonEnabled:
-          widget.interactive && widget.showMyLocationDot,
-      mapToolbarEnabled: false,
-      zoomControlsEnabled: false,
-      zoomGesturesEnabled: widget.interactive,
-      scrollGesturesEnabled: widget.interactive,
-      rotateGesturesEnabled: widget.interactive,
-      tiltGesturesEnabled: widget.interactive,
+    return Stack(
+      fit: StackFit.passthrough,
+      children: [
+        GoogleMap(
+          initialCameraPosition: CameraPosition(
+            target: initialTarget,
+            zoom: widget.bounds != null ? 12.0 : 14.0, // Zoom out slightly if showing bounds
+            bearing: widget.bearing,
+            tilt: widget.tilt,
+          ),
+          markers: googleMarkers,
+          polylines: googlePolylines,
+          onCameraMove: _onCameraMove,
+          onMapCreated: (GoogleMapController controller) {
+            debugPrint('🗺️ PlatformMap: Google Map created successfully');
+            _controller = controller;
+            // Seed the resume-nudge target so a background/foreground cycle
+            // before any camera move still refreshes tiles.
+            _lastCameraPosition ??= CameraPosition(
+              target: initialTarget,
+              zoom: widget.bounds != null ? 12.0 : 14.0,
+              bearing: widget.bearing,
+              tilt: widget.tilt,
+            );
+            // onMapCreated = platform channel ready, NOT tiles drawn.
+            // Measure actual painted frame instead of guessing a delay.
+            _placeholderSafetyTimer?.cancel();
+            unawaited(_waitForPaintedFrame());
+            if (widget.bounds != null) {
+              // Extra delay to ensure layout is complete
+              Future.delayed(const Duration(milliseconds: 600), _fitBounds);
+            }
+          },
+          onTap: (LatLng position) {
+            widget.onTap?.call(position.latitude, position.longitude);
+          },
+          // Native dot is opt-in (see showMyLocationDot): our custom user/driver/
+          // pickup markers already cover the device position, and enabling both
+          // draws two overlapping pins. The recenter button is tied to the dot —
+          // showing it without the location layer would be a dead button.
+          myLocationEnabled: widget.showMyLocationDot,
+          myLocationButtonEnabled:
+              widget.interactive && widget.showMyLocationDot,
+          mapToolbarEnabled: false,
+          zoomControlsEnabled: false,
+          zoomGesturesEnabled: widget.interactive,
+          scrollGesturesEnabled: widget.interactive,
+          rotateGesturesEnabled: widget.interactive,
+          tiltGesturesEnabled: widget.interactive,
+        ),
+        // Loading cover: hides the native view's white-boot and black-paint
+        // phases until real map pixels exist (measured via snapshot poll).
+        // NOTE: no AnimatedOpacity here on purpose — animating opacity over an
+        // iOS UiKitView/Metal layer produces black frames (that WAS the black
+        // flash). Instant swap instead: placeholder present until frame is
+        // measured painted, then removed in one frame.
+        if (_showPlaceholder)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: const ColoredBox(
+                color: _placeholderColor,
+                child: Center(
+                  child: SizedBox(
+                    width: 26,
+                    height: 26,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: Color(0xFF9AA0A6),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
