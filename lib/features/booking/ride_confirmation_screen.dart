@@ -61,6 +61,11 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   bool _isFetchingFare = true;
   String? _fareError; // Error message if fare fetch fails
   Map<String, dynamic>? _dynamicFareData;
+  // Route-derived duration (from the waypoint directions refetch). The
+  // fare-estimate response carries no duration, so this — or the value the
+  // vehicle cards already resolved from the route — backs Trip Details.
+  String? _routeDurationText;
+  int _routeDurationSeconds = 0;
   PaymentTiming _paymentTiming = PaymentTiming.payLater;
   late String _selectedPaymentMethod;
   // Pending unpaid scheduled ride — set when backend returns a paymentUrl.
@@ -229,6 +234,17 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
         stops: widget.stops,
       );
       if (!mounted) return;
+      if (directions != null) {
+        // Duration only — the estimate endpoint returns none.
+        final routeText = directions['duration_text']?.toString() ?? '';
+        final routeSeconds = (directions['duration_seconds'] as num?)?.toInt();
+        if (routeText.isNotEmpty || routeSeconds != null) {
+          setState(() {
+            if (routeText.isNotEmpty) _routeDurationText = routeText;
+            if (routeSeconds != null) _routeDurationSeconds = routeSeconds;
+          });
+        }
+      }
       if (directions != null &&
           directions['polyline'] is List &&
           (directions['polyline'] as List).isNotEmpty) {
@@ -326,12 +342,20 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     );
     if (data == null) return null;
 
+    // The estimate endpoint usually returns no duration at all, and shapes
+    // vary (`duration: {text, seconds}`, flat `duration_text`, or bare
+    // seconds) — accept all, then fall back to the route-derived values.
     final duration = data['duration'];
     final durationSeconds = duration is Map
         ? (duration['seconds'] as num?)?.toInt() ?? 0
-        : 0;
-    final durationText =
-        duration is Map ? duration['text']?.toString() ?? '' : '';
+        : duration is num
+        ? duration.toInt()
+        : (data['duration_seconds'] as num?)?.toInt() ?? 0;
+    final durationText = duration is Map
+        ? duration['text']?.toString() ?? ''
+        : duration is String
+        ? duration
+        : data['duration_text']?.toString() ?? '';
     final distanceMiles = (data['estimatedDistance'] as num?)?.toDouble();
     final distanceText = distanceMiles != null
         ? '${distanceMiles.toStringAsFixed(2)} mi'
@@ -453,8 +477,26 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
       (_currentFareData['outstanding_balance'] as num?)?.toDouble() ?? 0.0;
 
   String get _distanceText => _currentFareData['distance_text'] ?? '';
-  String get _durationText => _currentFareData['duration_text'] ?? '';
-  int get _durationSeconds => _currentFareData['duration_seconds'] ?? 0;
+
+  /// Duration text with fallbacks: the fare response, then the value the
+  /// vehicle cards resolved from the route, then our own waypoint refetch.
+  /// The estimate endpoint returns no duration, so without these the Trip
+  /// Details row rendered blank and the ETA collapsed onto "now".
+  String get _durationText {
+    final fromFare = _currentFareData['duration_text']?.toString() ?? '';
+    if (fromFare.isNotEmpty) return fromFare;
+    final passed = widget.fareData['duration_text']?.toString() ?? '';
+    if (passed.isNotEmpty) return passed;
+    return _routeDurationText ?? '';
+  }
+
+  int get _durationSeconds {
+    final fromFare = (_currentFareData['duration_seconds'] as num?)?.toInt();
+    if (fromFare != null && fromFare > 0) return fromFare;
+    final passed = (widget.fareData['duration_seconds'] as num?)?.toInt();
+    if (passed != null && passed > 0) return passed;
+    return _routeDurationSeconds;
+  }
 
   String get _estimatedArrival {
     final now = DateTime.now();
