@@ -301,6 +301,8 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                       final totalWaitMinutes =
                           ((_rideDetails!['totalWaitMinutes'] as num?) ?? 0)
                               .toInt();
+                      final freeWindow =
+                          ((_rideDetails!['freeMinutes'] as num?)?.toInt());
                       if (stops.isEmpty && totalWaitFee <= 0) {
                         return const SizedBox.shrink();
                       }
@@ -331,7 +333,9 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                                   ),
                                   const SizedBox(width: 8),
                                   Text(
-                                    'Wait $totalWaitMinutes min (${WaitFeePolicy.freeMinutes} free) · £${totalWaitFee.toStringAsFixed(2)}',
+                                    freeWindow != null && freeWindow > 0
+                                        ? 'Waiting time ($totalWaitMinutes min, $freeWindow min free) · £${totalWaitFee.toStringAsFixed(2)}'
+                                        : 'Waiting time ($totalWaitMinutes min) · £${totalWaitFee.toStringAsFixed(2)}',
                                     style: TextStyle(
                                       fontSize: 13,
                                       fontWeight: FontWeight.w600,

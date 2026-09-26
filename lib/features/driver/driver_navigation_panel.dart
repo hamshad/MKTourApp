@@ -16,12 +16,12 @@ class DriverNavigationPanel extends StatelessWidget {
   final NavigationState? navigationState;
   final bool isLoading;
 
-  /// Free-wait policy label shown after arrival (e.g. "5 min free ·
-  /// £0.35/min after"). Backend values via driver home, policy fallback.
+  /// Free-wait policy label shown after arrival (backend values via driver
+  /// home; null hides it). Example: "5 min free · £0.35/min after".
   final String? freeWaitLabel;
 
   /// Backend per-ride wait policy (from arrive / stop-arrive responses).
-  /// Null → [WaitFeePolicy] defaults. Threaded into the live wait chip so
+  /// Null → no fee estimate shown. Threaded into the live wait chip so
   /// the fee preview matches the backend rule for THIS ride.
   final int? freeWaitMinutes;
   final double? perMinuteRate;
@@ -866,8 +866,8 @@ class DriverNavigationPanel extends StatelessWidget {
 
 /// Live wait timer chip for the at-stop state.
 ///
-/// Ticks every 30s from the backend `arrivedAt`; the fee preview uses
-/// [WaitFeePolicy] (backend-computed `waitFee` stays authoritative).
+/// Ticks every 30s from the backend `arrivedAt`; the fee preview needs both
+/// backend policy values (backend-computed `waitFee` stays authoritative).
 class _StopWaitChip extends StatefulWidget {
   final String? arrivedAt;
 
@@ -912,16 +912,18 @@ class _StopWaitChipState extends State<_StopWaitChip> {
   @override
   Widget build(BuildContext context) {
     final elapsed = _elapsedMinutes;
-    // No backend policy → show elapsed only, never an invented window.
+    // Backend policy required for any fee estimate — without both values
+    // show elapsed time only, never an invented fee.
     final window = widget.freeMinutes;
-    final preview = window == null
+    final rate = widget.perMinuteRate;
+    final preview = (window == null || rate == null)
         ? 0.0
         : WaitFeePolicy.feeFor(
             elapsed,
-            freeMinutes: widget.freeMinutes,
-            perMinuteRate: widget.perMinuteRate,
+            freeMinutes: window,
+            perMinuteRate: rate,
           );
-    final text = window == null
+    final text = (window == null || rate == null)
         ? 'Waiting ${elapsed}m'
         : preview > 0
             ? 'Waiting ${elapsed}m · £${preview.toStringAsFixed(2)} so far'

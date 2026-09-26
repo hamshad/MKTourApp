@@ -368,22 +368,21 @@ class EndRideEarlyResponse {
   }
 }
 
-/// Single source of truth for wait-fee math (mirrors backend).
+/// Wait-fee math (mirrors backend).
 ///
-/// Backend rule (defaults): 5-minute free window per stop/pickup, then
-/// £0.35/min. The backend sends per-ride `freeMinutes`/`perMinuteRate`
-/// (arrive / stop-arrive responses, ride payloads) — thread those through
-/// [feeFor]/[billableMinutes] via the optional params. The static constants
-/// are FALLBACKS for when the backend omits them, never the primary source.
-/// UI must never hardcode these numbers — import from here.
+/// The backend owns the policy: per-ride `freeMinutes`/`perMinuteRate`
+/// arrive in arrive / stop-arrive responses and ride payloads. These helpers
+/// take the policy as REQUIRED params — there are no hardcoded fallbacks.
+/// When the backend omits the policy, callers must show no fee estimate
+/// (elapsed time only), never an invented number.
+/// UI must never hardcode wait rates — thread backend values through.
 class WaitFeePolicy {
-  static const int freeMinutes = 5;
-  static const double perMinuteRate = 0.35;
-
   /// Billable minutes after the free window.
-  static int billableMinutes(int waitTimeMinutes, {int? freeMinutes}) {
-    final window = freeMinutes ?? WaitFeePolicy.freeMinutes;
-    final billable = waitTimeMinutes - window;
+  static int billableMinutes(
+    int waitTimeMinutes, {
+    required int freeMinutes,
+  }) {
+    final billable = waitTimeMinutes - freeMinutes;
     return billable > 0 ? billable : 0;
   }
 
@@ -391,11 +390,11 @@ class WaitFeePolicy {
   /// the backend-computed `waitFee` is authoritative).
   static double feeFor(
     int waitTimeMinutes, {
-    int? freeMinutes,
-    double? perMinuteRate,
+    required int freeMinutes,
+    required double perMinuteRate,
   }) =>
       billableMinutes(waitTimeMinutes, freeMinutes: freeMinutes) *
-      (perMinuteRate ?? WaitFeePolicy.perMinuteRate);
+      perMinuteRate;
 }
 
 /// Status of a single intermediate stop.

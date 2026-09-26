@@ -147,7 +147,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   String _proximityTarget = 'pickup';
 
   // Free-wait policy from arrive/stop-arrive success (backend authoritative,
-  // WaitFeePolicy fallback). Shown as a chip once arrived/at-stop.
+  // null when backend omits it — no fallback). Shown as a chip once arrived/at-stop.
   int? _freeWaitMinutes;
   double? _freeWaitRate;
 
@@ -3250,7 +3250,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             // Proximity resolved — drop the banner.
             _proximityDistance = null;
             _proximityRequired = null;
-            // Backend-authoritative wait policy; WaitFeePolicy fallback.
+            // Backend-authoritative wait policy (null when omitted).
             _harvestWaitPolicy(data);
             if (response['data'] != null) {
               final newData = response['data'] as Map<String, dynamic>;

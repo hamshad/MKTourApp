@@ -734,7 +734,7 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                           if (_summary.totalWaitMinutes > 0 ||
                               _summary.totalWaitFee > 0) ...[
                             _buildFareRow(
-                              'Wait · ${_summary.totalWaitMinutes} min',
+                              'Waiting time (${_summary.totalWaitMinutes} min)',
                               '£${_summary.totalWaitFee.toStringAsFixed(2)}',
                             ),
                           ],
