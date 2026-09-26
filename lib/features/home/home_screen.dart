@@ -749,8 +749,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _socketService.off('ride:scheduledExpired');
     _socketService.off('ride:noShow');
     _socketService.offDriverReassigning();
-    _socketService.offPaymentBalanceDue();
-    _socketService.offPaymentSucceeded();
+    // Scoped — never wipe another mounted screen's payment handlers
+    // (settlement sheet, receipt) that are live above HomeScreen.
+    _socketService.off('payment:balanceDue', _balanceDueListener);
+    _socketService.off('payment:succeeded', _balanceSucceededListener);
 
     // Listen for ride accepted event
     _socketService.on('ride:accepted', (data) {
@@ -1688,8 +1690,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _socketService.off('ride:scheduledExpired');
     _socketService.off('ride:noShow');
     _socketService.offDriverReassigning();
-    _socketService.offPaymentBalanceDue();
-    _socketService.offPaymentSucceeded();
+    _socketService.off('payment:balanceDue', _balanceDueListener);
+    _socketService.off('payment:succeeded', _balanceSucceededListener);
 
     _pageController.dispose();
     _bannerTimer?.cancel();

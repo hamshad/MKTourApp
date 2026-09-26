@@ -190,6 +190,15 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   void Function(dynamic)? _driverEnRouteListener;
   void Function(dynamic)? _etaUpdateListener;
 
+  // Payment listeners stored for scoped off. Global offs here wipe
+  // co-mounted screens' handlers: HomeScreen balance banner,
+  // RideCompleteScreen settlement sheet, ExcessSettlementSheet
+  // close-out — that deafened `payment:balanceDue` after completion.
+  void Function(dynamic)? _balanceDueListener;
+  void Function(dynamic)? _paymentAuthorizedListener;
+  void Function(dynamic)? _paymentFailedListener;
+  void Function(dynamic)? _paymentSucceededListener;
+
   // Cancellation state
   bool _isCancelling = false;
   bool _isProcessingPayment = false;
@@ -1150,10 +1159,12 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     _socketService.off('ride:cancelledByDriver');
     _socketService.off('ride:earlyCompleted');
     _socketService.off('ride:expired');
-    _socketService.off('payment:succeeded');
-    _socketService.off('payment:authorized');
-    _socketService.off('payment:failed');
-    _socketService.off('payment:balanceDue');
+    // Scoped offs for payment events — global offs wipe HomeScreen /
+    // RideCompleteScreen / settlement sheet handlers for these events.
+    _socketService.off('payment:succeeded', _paymentSucceededListener);
+    _socketService.off('payment:authorized', _paymentAuthorizedListener);
+    _socketService.off('payment:failed', _paymentFailedListener);
+    _socketService.off('payment:balanceDue', _balanceDueListener);
     _socketService.off('ride:longRunning');
     _socketService.off('user:status');
     _socketService.off('ride:promoApplied');
@@ -1665,7 +1676,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     // Excess owed after trip end (payment-flow.md §1 Outcome B, §4).
     // Cash + payment_link only: open the balance screen, never a
     // Stripe sheet. FCM balance_due_reminder duplicates this — one screen.
-    _socketService.onPaymentBalanceDue((data) {
+    _balanceDueListener ??= (data) {
       if (!mounted) return;
       debugPrint('💰 [RideAssignedScreen] Balance due: $data');
       final map = data is Map<String, dynamic>
@@ -1684,7 +1695,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
         return;
       }
       _openBalanceScreen(map);
-    });
+    };
+    _socketService.onPaymentBalanceDue(_balanceDueListener!);
 
     // Listen for promo applied event (user's 6th ride within Milton Keynes)
     _socketService.on('ride:promoApplied', (data) {
@@ -1742,7 +1754,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     });
 
     // New listener for Payment Link Authorization (happens when user pays via link)
-    _socketService.on('payment:authorized', (data) {
+    _paymentAuthorizedListener ??= (data) {
       if (!mounted) return;
       debugPrint('✅ [RideAssignedScreen] Payment Authorized: $data');
 
@@ -1776,10 +1788,11 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
           duration: Duration(seconds: 4),
         ),
       );
-    });
+    };
+    _socketService.on('payment:authorized', _paymentAuthorizedListener!);
 
     // New listener for Payment Failure (expired link or failed payment)
-    _socketService.on('payment:failed', (data) {
+    _paymentFailedListener ??= (data) {
       if (!mounted) return;
       debugPrint('❌ [RideAssignedScreen] Payment Failed: $data');
 
@@ -1819,9 +1832,10 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       }
 
       _showPaymentFailedDialog(message);
-    });
+    };
+    _socketService.on('payment:failed', _paymentFailedListener!);
 
-    _socketService.on('payment:succeeded', (data) {
+    _paymentSucceededListener ??= (data) {
       if (!mounted || !context.mounted) return;
 
       debugPrint('✅ [RideAssignedScreen] Payment Succeeded: $data');
@@ -1893,7 +1907,8 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
       }
 
       _showPaymentSuccessScreen(mergedRideData);
-    });
+    };
+    _socketService.on('payment:succeeded', _paymentSucceededListener!);
 
     _socketService.on('ride:driverArrived', (data) {
       debugPrint('🚖 [RideAssignedScreen] Driver Arrived via event: $data');
@@ -2724,10 +2739,13 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
     _socketService.off('ride:driverArrived');
     _socketService.off('ride:cancelledByDriver');
     _socketService.off('ride:earlyCompleted');
-    _socketService.off('payment:succeeded');
-    _socketService.off('payment:authorized');
-    _socketService.off('payment:failed');
-    _socketService.off('payment:balanceDue');
+    // Scoped: global offs would wipe co-mounted screens' payment handlers
+    // (RideCompleteScreen settlement sheet, HomeScreen banner, settlement
+    // sheet close-out) that registered after this screen's listeners.
+    _socketService.off('payment:succeeded', _paymentSucceededListener);
+    _socketService.off('payment:authorized', _paymentAuthorizedListener);
+    _socketService.off('payment:failed', _paymentFailedListener);
+    _socketService.off('payment:balanceDue', _balanceDueListener);
     _socketService.off('ride:longRunning');
     _socketService.off('ride:promoApplied');
     _socketService.offDriverReassigning();

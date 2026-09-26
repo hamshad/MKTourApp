@@ -136,6 +136,11 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
   final SocketService _socketService = SocketService();
   bool _isCashConfirmed = false;
 
+  // Stored for scoped off in dispose — a global off would wipe HomeScreen's
+  // balance-banner handlers and any co-mounted settlement listeners.
+  void Function(dynamic)? _balanceDueListener;
+  void Function(dynamic)? _cashCollectedListener;
+
   @override
   void initState() {
     super.initState();
@@ -186,7 +191,7 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
   /// sheet on top of the receipt. FCM balance_due_reminder duplicates this —
   /// one sheet (dedupe guard).
   void _listenForBalanceDue() {
-    _socketService.onPaymentBalanceDue((data) {
+    _balanceDueListener ??= (data) {
       if (!mounted) return;
       final map = data is Map<String, dynamic>
           ? data
@@ -209,7 +214,8 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
       });
       if (!balance.isOwed) return;
       _openSettlementSheet(balance);
-    });
+    };
+    _socketService.onPaymentBalanceDue(_balanceDueListener!);
   }
 
   /// Self-hydrate missing bill fields. The receipt can be built from a
@@ -276,7 +282,7 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
   void _listenForPaymentUpdates() {
     if (_isCashConfirmed) return;
 
-    _socketService.on('payment:cashCollected', (data) {
+    _cashCollectedListener ??= (data) {
       if (mounted) {
          // Verify rideId if needed
          setState(() {
@@ -288,18 +294,21 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
            message: 'Cash payment confirmed!',
            type: SnackbarType.success,
          );
-         // Fade the success flash after a moment; the paid state persists.
-         Future.delayed(const Duration(seconds: 3), () {
-           if (mounted) setState(() => _cashJustConfirmed = false);
-         });
+          // Fade the success flash after a moment; the paid state persists.
+          Future.delayed(const Duration(seconds: 3), () {
+            if (mounted) setState(() => _cashJustConfirmed = false);
+          });
       }
-    });
+    };
+    _socketService.on('payment:cashCollected', _cashCollectedListener!);
   }
 
   @override
   void dispose() {
-    _socketService.off('payment:cashCollected');
-    _socketService.offPaymentBalanceDue();
+    // Scoped offs — global offs would wipe HomeScreen's balance-banner
+    // handlers and co-mounted settlement listeners.
+    _socketService.off('payment:cashCollected', _cashCollectedListener);
+    _socketService.off('payment:balanceDue', _balanceDueListener);
     _feedbackController.dispose();
     super.dispose();
   }
