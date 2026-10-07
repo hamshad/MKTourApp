@@ -2400,6 +2400,9 @@ class ApiService {
 
   /// Driver cancels a claimed scheduled ride before pickup.
   /// Returns decoded backend message (error, schedule conflict, etc.).
+  /// NOTE: the driver endpoint validates the `reason` key (NOT
+  /// `cancellationReason` — that key belongs to the user-cancel endpoint).
+  /// Must match PaymentService.cancelScheduledRideDriver's proven shape.
   Future<Map<String, dynamic>> cancelScheduledRideDriver(
     String rideId, {
     String? reason,
@@ -2411,6 +2414,7 @@ class ApiService {
     debugPrint(
       '🔵 [Request] URL: ${ApiConstants.cancelScheduledRideDriver(rideId)}',
     );
+    debugPrint('🔵 [Request] Body reason: ${reason ?? '<none>'}');
 
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -2424,7 +2428,7 @@ class ApiService {
           'Authorization': 'Bearer $token',
         },
         body: jsonEncode({
-          if (reason != null) 'cancellationReason': reason,
+          if (reason != null) 'reason': reason,
         }),
       );
 
