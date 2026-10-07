@@ -248,6 +248,25 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
     );
   }
 
+  /// Whether the user can still cancel this scheduled ride.
+  /// Terminal states (cancelled / completed / expired) hide the button;
+  /// everything else — including driver-assigned states (accepted,
+  /// driver_arrived, in_progress) — stays cancellable so the user can
+  /// cancel anytime.
+  bool _isCancellable(String status) {
+    switch (status) {
+      case 'awaiting_deposit':
+      case 'scheduled':
+      case 'requested':
+      case 'accepted':
+      case 'driver_arrived':
+      case 'in_progress':
+        return true;
+      default:
+        return false;
+    }
+  }
+
   // ignore: unused_element
   Future<void> _payDeposit(ScheduledRide ride) async {
     final rideId = ride.id;
@@ -634,7 +653,7 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
                 ),
               ),
             )
-          else if (status == 'awaiting_deposit')
+          else if (_isCancellable(status))
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
               child: SizedBox(
@@ -642,30 +661,11 @@ class _ScheduledRidesScreenState extends State<ScheduledRidesScreen> {
                 child: OutlinedButton.icon(
                   onPressed: () => _showCancelDialog(ride),
                   icon: const Icon(Icons.close, size: 18, color: Colors.red),
-                  label: const Text(
-                    'Cancel Booking',
-                    style: TextStyle(color: Colors.red),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Colors.red),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                ),
-              ),
-            )
-          else if (status == 'scheduled' || status == 'requested')
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-              child: SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () => _showCancelDialog(ride),
-                  icon: const Icon(Icons.close, size: 18, color: Colors.red),
-                  label: const Text(
-                    'Cancel Ride',
-                    style: TextStyle(color: Colors.red),
+                  label: Text(
+                    status == 'awaiting_deposit'
+                        ? 'Cancel Booking'
+                        : 'Cancel Ride',
+                    style: const TextStyle(color: Colors.red),
                   ),
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: Colors.red),
