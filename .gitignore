@@ -52,6 +52,8 @@ ios/Runner/Secrets.plist
 /ios/Flutter/Secrets.xcconfig
 
 # Opencode and GSD related
-.opencode/
+# Track project skills (shared, part of the repo); ignore local opencode state.
+.opencode/*
+!.opencode/skills/
 .planning/
 
