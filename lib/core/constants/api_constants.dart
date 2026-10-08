@@ -48,6 +48,15 @@ class ApiConstants {
   static const String driverRides = '$baseUrl/drivers/rides';
   static const String driverBankDetails = '$baseUrl/drivers/bank-details';
 
+  /// Driver earnings dashboard summary (toll_price_implementation.md §2.2).
+  /// GET with `?period=today|yesterday|week|month|all`.
+  static const String earningsSummary =
+      '$baseUrl/drivers/earnings/summary';
+
+  /// Driver earnings itemized rides list (spec §2.3).
+  /// GET with `?period=&page=&limit=`.
+  static const String earningsRides = '$baseUrl/drivers/earnings/rides';
+
   // Generic Document Endpoints (Section 1 & 2)
   static String uploadDocument(String type) =>
       '$baseUrl/drivers/documents/$type';

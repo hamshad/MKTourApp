@@ -2273,6 +2273,168 @@ class ApiService {
     }
   }
 
+  /// Driver earnings dashboard summary (toll_price_implementation.md §2.2).
+  ///
+  /// GET `earningsSummary?period=<today|yesterday|week|month|all>`.
+  /// Mirrors `getRideHistory` transport (same http client, auth headers,
+  /// debugPrint naming) but NEVER throws: every failure path returns a
+  /// `{success:false, message}` map so the screen can render error+retry.
+  Future<Map<String, dynamic>> getDriverEarningsSummary({
+    required String period,
+  }) async {
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
+    debugPrint('🔵 [ApiService] getDriverEarningsSummary called');
+    final uri = Uri.parse(ApiConstants.earningsSummary)
+        .replace(queryParameters: {'period': period});
+    debugPrint('🔵 [Request] URL: $uri');
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString(_prefsAuthTokenKey);
+
+      if (token == null) {
+        return {'success': false, 'message': 'No auth token found'};
+      }
+
+      debugPrint(
+        '🔵 [Request] Headers: Authorization: Bearer ${_masked(token)}',
+      );
+
+      final response = await http.get(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
+      debugPrint('🟣 [Response] Body: ${response.body}');
+
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
+
+      if (response.statusCode == 200) {
+        debugPrint('🟢 [ApiService] getDriverEarningsSummary Success');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
+        return _decodeMap(response.body) ??
+            {'success': false, 'message': 'Malformed earnings summary response'};
+      }
+
+      debugPrint(
+        '🔴 [ApiService] getDriverEarningsSummary Failed: ${response.body}',
+      );
+      debugPrint(
+        '🔵 ------------------------------------------------------------------',
+      );
+      return {
+        'success': false,
+        'message': 'Failed to get earnings summary: ${response.body}',
+      };
+    } catch (e) {
+      debugPrint('🟠 [ApiService] Exception caught: $e');
+      debugPrint(
+        '🔵 ------------------------------------------------------------------',
+      );
+      return {'success': false, 'message': 'Failed to get earnings summary: $e'};
+    }
+  }
+
+  /// Driver earnings itemized rides list (spec §2.3).
+  ///
+  /// GET `earningsRides?period=<today|yesterday|week|month|all>&page=&limit=`.
+  /// Same never-throw contract as [getDriverEarningsSummary]: failures
+  /// return `{success:false, message}` instead of throwing.
+  Future<Map<String, dynamic>> getDriverEarningsRides({
+    String? period,
+    int page = 1,
+    int limit = 20,
+  }) async {
+    debugPrint(
+      '🔵 ------------------------------------------------------------------',
+    );
+    debugPrint('🔵 [ApiService] getDriverEarningsRides called');
+    final uri = Uri.parse(ApiConstants.earningsRides).replace(
+      queryParameters: <String, String>{
+        if (period != null) 'period': period,
+        'page': '$page',
+        'limit': '$limit',
+      },
+    );
+    debugPrint('🔵 [Request] URL: $uri');
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString(_prefsAuthTokenKey);
+
+      if (token == null) {
+        return {'success': false, 'message': 'No auth token found'};
+      }
+
+      debugPrint(
+        '🔵 [Request] Headers: Authorization: Bearer ${_masked(token)}',
+      );
+
+      final response = await http.get(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      debugPrint('🟣 [Response] Status Code: ${response.statusCode}');
+      debugPrint('🟣 [Response] Body: ${response.body}');
+
+      // Check for 401 unauthorized
+      await _checkUnauthorized(response);
+
+      if (response.statusCode == 200) {
+        debugPrint('🟢 [ApiService] getDriverEarningsRides Success');
+        debugPrint(
+          '🔵 ------------------------------------------------------------------',
+        );
+        return _decodeMap(response.body) ??
+            {'success': false, 'message': 'Malformed earnings rides response'};
+      }
+
+      debugPrint(
+        '🔴 [ApiService] getDriverEarningsRides Failed: ${response.body}',
+      );
+      debugPrint(
+        '🔵 ------------------------------------------------------------------',
+      );
+      return {
+        'success': false,
+        'message': 'Failed to get earnings rides: ${response.body}',
+      };
+    } catch (e) {
+      debugPrint('🟠 [ApiService] Exception caught: $e');
+      debugPrint(
+        '🔵 ------------------------------------------------------------------',
+      );
+      return {'success': false, 'message': 'Failed to get earnings rides: $e'};
+    }
+  }
+
+  /// Decode a response body to a map, null when it isn't one. Never throws.
+  static Map<String, dynamic>? _decodeMap(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map<String, dynamic>) return decoded;
+      if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    } catch (_) {}
+    return null;
+  }
+
+  /// Log-safe token prefix (never truncates a short token).
+  static String _masked(String token) =>
+      token.length > 10 ? '${token.substring(0, 10)}...' : token;
+
   /// Fetch open pool of unassigned scheduled rides available for driver to claim.
   /// Returns rides filtered by driver vehicle capacity and schedule conflicts.
   Future<Map<String, dynamic>> getScheduledPool() async {
