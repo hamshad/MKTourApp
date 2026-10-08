@@ -1,10 +1,11 @@
 # MK Tours - Project State
 
 ## Current Position
-- **Phase:** 21-toll-price-implementation — In progress (3/5 plans; 21-01 + 21-03 + 21-04 complete 2026-10-08; driver offer toll badges + completion earnings popup with scoped ride:completed enrich, 12 TOLL-04/05 tests, full suite green)
-- **Next:** Phase 21 plan 21-02 (rider, in flight) then 21-05 verification — parallel wave 2 on shared TollInfo + canonical FCM dispatch
+- **Phase:** 21-toll-price-implementation — In progress (4/5 plans; 21-01 + 21-02 + 21-03 + 21-04 complete 2026-10-08; rider category toll rows + booking breakdown + receipt itemization landed, 20 TOLL-01/02/03 tests, full 275-test suite green)
+- **Next:** Phase 21 plan 21-05 (verification) — all implementation plans done; wave 2 + verification use shared TollInfo + canonical FCM dispatch
 
 ## Completed Plans
+- 21-02: Rider booking + receipt toll display — category list toll rows + estimate parse, pre/post-create Fare + Toll = total breakdown, receipt toll/trip-fare rows with backend-verbatim TOTAL, hydration backfill keys, 20 contract tests (`c26ef0e`, `f4c5ea2`, `409a25f`)
 - 21-03: Driver offer toll UI + completion earnings popup — `_estimatedEarnings` intake (TOLL-08 zero-drift), reimbursement badges on request panel + B2B card, DriverEarnings dual-alias model, REST-owned popup with verbatim take-home, scoped ride:completed enrich pair (`c541286`, `d4b74ed`)
 - 21-04: Driver earnings dashboard live — earningsSummary/earningsRides consts + never-throw ApiService methods, period tabs, Tolls Reimbursed KPI beside Net Earnings, gated per-ride toll lines, 14 TOLL-06 tests (`9f44dca`, `d5b89e7`)
 - 21-01: Toll contract + parsing/transport foundation — verbatim §3.2/§4 contract tests, never-throw TollInfo parser, FCM UPPERCASE→snake_case canonicalization, silent payout_settled, fareDetails intake (`4defe6f`, `6d4ac8c`)
@@ -53,6 +54,11 @@
 - 19-03: Connection UX + kill-proofing — ConnectionBanner on rider/driver screens, stale chips, queued-intent copy, widget tests + sweep (`98b4aeb`, `70e2a6a`); rider searching-save bug fixed + canonicalization tests (`8532ad2`, `c708cba`)
 
 ## Decisions
+- [21-02] fareBreakdown not threaded into searching navigation payload — ride_assigned_screen.dart outside plan files_modified (21-03 lock); breakdown rendered pre-navigation on confirmation screen, assigned-screen display deferred as follow-up (ctor param like paymentUrl precedent)
+- [21-02] Fare + Toll = total equation rendered ONCE under fare row; compact price + CTA show backend _payableFare/total_with_toll verbatim (dup would double-print in one Row; CTA FittedBox maxLines=1 shrinks long strings)
+- [21-02] 900ms pre-navigation paint delay gated on toll breakdown presence — live backend sends none → zero behavior change; _isLoading keeps CTA disabled during delay (no double-book)
+- [21-02] TOTAL line toll-gated: receipt.totalCharged → totalFare on toll-bearing payload → legacy resolution; toll gate keeps scheduled-airport/promo/legacy totals byte-identical (top-level totalFare is reused by other flows)
+- [21-02] receipt.tripFare row occupies legacy Base-fare slot — one pre-toll fare row, avoids Base fare/Trip fare duplication
 - [21-03] REST complete response owns trip-earnings popup; socket ride:completed enrich-only (same rideId, toll 0→>0), never opens popup, notifier cleared in showDialog().then()
 - [21-03] socket_service ride:completed pair SCOPED (off takes handler) — bare off('ride:completed') would kill rider raw subscribers (ride_assigned_screen.dart:1605/1165/2752)
 - [21-03] DriverEarnings double fields default 0.0 + hasData gate → 'none' renders legacy popup rows; totalDriverTakeHome shown verbatim, never client-computed
@@ -182,7 +188,8 @@
 - Phase 17 added: Backend enforces payment_link only for scheduled rides — remove cash from prebook flow and handle new error responses
 
 ## Session
-- Last session: Completed 21-03-PLAN.md (2026-10-08, 2 commits `c541286`, `d4b74ed`, SUMMARY at phases/21-toll-price-implementation/21-03-SUMMARY.md). Driver offer toll badges + TOLL-05 completion earnings popup, 12 contract tests green, full suite green. Next: 21-05 after 21-02 lands.
+- Last session: Completed 21-02-PLAN.md (2026-10-08, 3 commits `c26ef0e`, `f4c5ea2`, `409a25f`, SUMMARY at phases/21-toll-price-implementation/21-02-SUMMARY.md). Rider category toll rows + booking breakdown + receipt itemization, 20 TOLL-01/02/03 tests, full 275-test suite green, analyzer at baseline. Next: 21-05 verification.
+- Previous: Completed 21-03-PLAN.md (2026-10-08, 2 commits `c541286`, `d4b74ed`, SUMMARY at phases/21-toll-price-implementation/21-03-SUMMARY.md). Driver offer toll badges + TOLL-05 completion earnings popup, 12 contract tests green, full suite green. Next: 21-05 after 21-02 lands.
 - Previous: Completed 21-04-PLAN.md (2026-10-08, 2 commits `9f44dca`, `d5b89e7`, SUMMARY at phases/21-toll-price-implementation/21-04-SUMMARY.md). Live earnings dashboard + TOLL-06, 257-test suite green. Next: 21-05 after 21-02/21-03 land.
 - Previous: Completed 21-01-PLAN.md (2026-10-08, 2 commits `4defe6f`, `6d4ac8c`, SUMMARY at phases/21-toll-price-implementation/21-01-SUMMARY.md). TollInfo + FCM canonicalization + fareDetails intake, 229-test suite green. Next: 21-02/21-03/21-04 parallel wave 2.
 - Previous: Completed 20-01-PLAN.md (2026-09-24, 3 commits `8a6fe43`, `44868e2`, `246d220`, SUMMARY at phases/20-driver-back-to-back/20-01-SUMMARY.md). Next: 20-02 + 20-03.
