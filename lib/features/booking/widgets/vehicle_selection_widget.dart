@@ -920,10 +920,10 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                           // entirely — no £0.00, no layout shift (TOLL-08).
                           if (fareData != null && tollFee > 0)
                             Container(
-                              margin: const EdgeInsets.only(top: 4),
+                              margin: const EdgeInsets.only(top: 2),
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 3,
+                                horizontal: 6,
+                                vertical: 2,
                               ),
                               decoration: BoxDecoration(
                                 color: Colors.blue.shade50,
@@ -937,7 +937,7 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                                     ? 'Toll +£${tollFee.toStringAsFixed(2)}'
                                     : 'Toll · $tollName +£${tollFee.toStringAsFixed(2)}',
                                 style: TextStyle(
-                                  fontSize: 11,
+                                  fontSize: 10,
                                   fontWeight: FontWeight.w600,
                                   color: Colors.blue.shade800,
                                 ),
