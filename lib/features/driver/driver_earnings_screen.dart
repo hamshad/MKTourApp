@@ -440,11 +440,8 @@ class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
     final ride = rideRaw is Map ? Map<String, dynamic>.from(rideRaw) : null;
     if (ride == null) return const SizedBox.shrink();
 
-    final financialsRaw = ride['financials'];
-    final financials =
-        financialsRaw is Map ? Map<String, dynamic>.from(financialsRaw) : null;
-    final earnings = earningsNumOf(financials?['driverEarnings']);
-    final toll = TollInfo.fromBreakdown(financials);
+    final earnings = earningsNumOf(ride['driverEarnings']);
+    final toll = TollInfo.fromBreakdown(ride);
     final pickup = ride['pickupAddress']?.toString() ?? 'Unknown pickup';
     final dropoff = ride['dropoffAddress']?.toString() ?? '';
     final timeStr = _formatCompletedAt(ride['completedAt']?.toString());
