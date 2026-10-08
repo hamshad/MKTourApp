@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mktours/core/models/toll_breakdown.dart';
+import 'package:mktours/core/models/vehicle.dart';
 
 /// Driver-side toll contract tests (21-03, toll_price_implementation.md
 /// §3.1 incoming offer, §4.1 FCM dispatch, §2.1 completion earnings,
@@ -167,6 +168,116 @@ void main() {
 
     test('FCM without toll keys → NO estimated_earnings key', () {
       expect(normalisedEstimatedEarnings(fcmNewRideRequestNoToll()), isNull);
+    });
+  });
+
+  // ── TOLL-05: completion earnings popup + driver ride:completed enrich ──
+
+  // Verbatim §2.1 complete-ride `data.earnings` (REST — primary popup source).
+  Map<String, dynamic> earnings21() => {
+        'customerFare': 33.00,
+        'platformCommissionPercent': 20,
+        'platformFee': 6.60,
+        'netTripEarnings': 26.40,
+        'tollReimbursed': 8.90,
+        'tollName': 'M6 Toll Highway',
+        'totalDriverTakeHome': 35.30,
+        'currency': 'GBP',
+      };
+
+  // Verbatim §3.3 ride:completed payload TO DRIVER (enrich-only source).
+  Map<String, dynamic> rideCompletedDriverPayload() => {
+        'event': 'ride:completed',
+        'payload': {
+          'rideId': '67045b8e9a21a002b2c9e201',
+          'customerFare': 33.00,
+          'platformFeeDeducted': 6.60,
+          'tollReimbursement': 8.90,
+          'netTakeHome': 35.30,
+          'paymentType': 'stripe',
+          'currency': 'GBP',
+        },
+      };
+
+  group('TOLL-05 §2.1 complete earnings → DriverEarnings', () {
+    test('parses every field, take-home pinned VERBATIM (no arithmetic)',
+        () {
+      final e = DriverEarnings.fromJson(earnings21());
+      expect(e.customerFare, 33.00);
+      expect(e.platformFee, 6.60);
+      expect(e.netTripEarnings, 26.40);
+      expect(e.tollReimbursed, 8.90);
+      expect(e.tollName, 'M6 Toll Highway');
+      // Passthrough pin: the popup shows 35.30 because the backend said
+      // so — never because the UI computed 26.40 + 8.90 itself.
+      expect(e.totalDriverTakeHome, 35.30);
+      expect(e.hasData, isTrue);
+    });
+
+    test('absent earnings → none: toll 0.0, legacy popup rows only', () {
+      expect(DriverEarnings.none.tollReimbursed, 0.0);
+      expect(DriverEarnings.none.totalDriverTakeHome, 0.0);
+      expect(DriverEarnings.none.hasData, isFalse);
+      // Complete responses without an `earnings` map land here.
+      expect(DriverEarnings.parse(null).hasData, isFalse);
+      expect(DriverEarnings.parse('junk').tollReimbursed, 0.0);
+      expect(DriverEarnings.parse({'tollReimbursed': 'nope'}).hasData,
+          isFalse);
+    });
+
+    test('string numbers coerce, malformed values never throw', () {
+      final e = DriverEarnings.fromJson({
+        'customerFare': '33.00',
+        'platformFee': '6.60',
+        'netTripEarnings': '26.40',
+        'tollReimbursed': '8.90',
+        'totalDriverTakeHome': '35.30',
+      });
+      expect(e.tollReimbursed, 8.90);
+      expect(e.totalDriverTakeHome, 35.30);
+      expect(
+        () => DriverEarnings.fromJson({
+          'customerFare': null,
+          'tollReimbursed': {},
+          'totalDriverTakeHome': [],
+        }),
+        returnsNormally,
+      );
+    });
+  });
+
+  group('TOLL-05 §3.3 driver ride:completed payload → alias parse', () {
+    test('tollReimbursement alias + platformFeeDeducted + netTakeHome', () {
+      final payload =
+          rideCompletedDriverPayload()['payload'] as Map<String, dynamic>;
+      final e = DriverEarnings.fromJson(payload);
+      // §3.3 spelling: tollReimbursement (not tollReimbursed) parses.
+      expect(e.tollReimbursed, 8.90);
+      expect(e.platformFee, 6.60);
+      expect(e.totalDriverTakeHome, 35.30);
+      // Enrich-only payload carries no net-trip split.
+      expect(e.netTripEarnings, 0.0);
+      expect(e.hasData, isTrue);
+    });
+
+    test('§2.1 and §3.3 agree on toll + take-home (one popup, two transports)',
+        () {
+      final rest = DriverEarnings.fromJson(earnings21());
+      final socket = DriverEarnings.fromJson(
+        rideCompletedDriverPayload()['payload'] as Map<String, dynamic>,
+      );
+      expect(socket.tollReimbursed, rest.tollReimbursed);
+      expect(socket.totalDriverTakeHome, rest.totalDriverTakeHome);
+    });
+
+    test('driver payload without toll → toll 0.0, enrich gate stays shut', () {
+      final e = DriverEarnings.fromJson({
+        'rideId': '67045b8e9a21a002b2c9e201',
+        'customerFare': 33.00,
+        'netTakeHome': 26.40,
+      });
+      expect(e.tollReimbursed, 0.0);
+      expect(e.tollName, isNull);
     });
   });
 }

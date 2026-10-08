@@ -946,6 +946,24 @@ class SocketService with WidgetsBindingObserver {
     off('ride:accepted');
   }
 
+  /// Ride completed — DRIVER payload (§3.3: customerFare,
+  /// platformFeeDeducted, tollReimbursement, netTakeHome). Additive
+  /// enrich-only helper (21-03 TOLL-05): nothing here subscribes
+  /// internally, and the rider's raw 'ride:completed' subscribers
+  /// (ride_assigned_screen.dart:1605) keep working untouched.
+  void onRideCompletedEvent(void Function(dynamic) handler) {
+    on('ride:completed', handler);
+  }
+
+  /// Scoped removal — takes the exact handler passed to
+  /// [onRideCompletedEvent]. Deliberately NOT the bare `off('ride:completed')`
+  /// form: a global off would deafen every other 'ride:completed'
+  /// subscriber on this shared singleton socket (20-01 decision: raw
+  /// subscribers are never reworked).
+  void offRideCompletedEvent(void Function(dynamic) handler) {
+    off('ride:completed', handler);
+  }
+
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   void disconnect() {

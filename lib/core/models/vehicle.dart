@@ -628,6 +628,93 @@ class FareSummary {
       'FareSummary(fare: £$fare, wait: ${totalWaitMinutes}min/£$totalWaitFee, actual: £$actualFare)';
 }
 
+/// Driver earnings itemization returned by the complete-ride response
+/// (§2.1 `data.earnings`) and derivable from the §3.3 driver
+/// `ride:completed` socket payload.
+///
+/// Tolerant, never throws (OutstandingBalance style): doubles default to
+/// 0.0, `tollName` stays null when absent, every value passes through
+/// [_asDouble] coercion (string numbers included). Totals are VERBATIM
+/// passthroughs — the UI never computes net − fee or fare + toll
+/// (research Pitfall 1, zero client-side arithmetic).
+class DriverEarnings {
+  /// Customer-facing trip fare (§2.1 `customerFare`).
+  final double customerFare;
+
+  /// Platform commission taken from the trip (§2.1 `platformFee`).
+  final double platformFee;
+
+  /// Driver's trip earnings before toll reimbursement (§2.1
+  /// `netTripEarnings`). 0.0 on the §3.3 driver socket payload (absent).
+  final double netTripEarnings;
+
+  /// Toll reimbursement owed to the driver. Alias chain:
+  /// `tollReimbursed ?? tollReimbursement ?? toll_fee` so §2.1 REST,
+  /// §3.1 offer, §3.3 driver socket and FCM shapes all parse.
+  final double tollReimbursed;
+
+  /// Toll road name, null when absent.
+  final String? tollName;
+
+  /// Backend-authoritative take-home total (§2.1 `totalDriverTakeHome`,
+  /// §3.3 driver `netTakeHome`) — verbatim, never client-computed.
+  final double totalDriverTakeHome;
+
+  const DriverEarnings({
+    this.customerFare = 0.0,
+    this.platformFee = 0.0,
+    this.netTripEarnings = 0.0,
+    this.tollReimbursed = 0.0,
+    this.tollName,
+    this.totalDriverTakeHome = 0.0,
+  });
+
+  /// No-earnings equivalent — complete responses without `earnings`
+  /// keep the legacy popup rows (TOLL-08 zero-drift).
+  static DriverEarnings get none => const DriverEarnings();
+
+  /// True when the payload carried any earnings data at all. Absent
+  /// `earnings` maps must render exactly like today, so every popup row
+  /// is gated on this (never on `!= null` alone — `none` is still data-free).
+  bool get hasData =>
+      customerFare != 0.0 ||
+      platformFee != 0.0 ||
+      netTripEarnings != 0.0 ||
+      tollReimbursed != 0.0 ||
+      totalDriverTakeHome != 0.0 ||
+      tollName != null;
+
+  /// Never throws: junk/null input yields [none].
+  factory DriverEarnings.fromJson(Map<String, dynamic> json) {
+    return DriverEarnings(
+      customerFare: _asDouble(json['customerFare'] ?? json['fare']),
+      platformFee: _asDouble(
+        json['platformFee'] ?? json['platformFeeDeducted'],
+      ),
+      netTripEarnings: _asDouble(json['netTripEarnings']),
+      tollReimbursed: _asDouble(
+        json['tollReimbursed'] ?? json['tollReimbursement'] ?? json['toll_fee'],
+      ),
+      tollName: json['tollName']?.toString() ?? json['toll_name']?.toString(),
+      totalDriverTakeHome: _asDouble(
+        json['totalDriverTakeHome'] ?? json['netTakeHome'],
+      ),
+    );
+  }
+
+  /// Tolerant: non-map input yields [none].
+  factory DriverEarnings.parse(dynamic raw) {
+    if (raw is Map<String, dynamic>) return DriverEarnings.fromJson(raw);
+    if (raw is Map) return DriverEarnings.fromJson(Map<String, dynamic>.from(raw));
+    return none;
+  }
+
+  @override
+  String toString() =>
+      'DriverEarnings(net: £$netTripEarnings, toll: £$tollReimbursed'
+      '${tollName != null ? ' ($tollName)' : ''}, take-home: £$totalDriverTakeHome)';
+}
+
 /// Cancellation policy settings model
 class CancellationPolicySettings {
   final int cancellationFeePercentage;

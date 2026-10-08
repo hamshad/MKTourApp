@@ -80,6 +80,19 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   bool _b2bBannerDismissed = false;
   String? _b2bOfferError;
   void Function(dynamic)? _nextTripListener;
+
+  /// Driver `ride:completed` enrich passthrough (21-03 TOLL-05). Scoped —
+  /// off() takes this exact closure so the rider's raw 'ride:completed'
+  /// subscriber (ride_assigned_screen.dart:1605) can never be deafened.
+  void Function(dynamic)? _rideCompletedListener;
+
+  /// Enrich-only channel for the open trip-earnings popup. Non-null only
+  /// while the dialog is mounted; socket payloads may UPDATE values but
+  /// can never open the popup (REST response stays the sole trigger).
+  ValueNotifier<DriverEarnings?>? _fareSummaryEarnings;
+
+  /// rideId of the ride whose popup is open — enrich matching guard.
+  String? _fareSummaryRideId;
   // Deferred promotion: Trip A was cash, so the queued promotion fires
   // after cash confirmation instead of at completion (20-02).
   bool _queuedPromotionPending = false;
@@ -702,6 +715,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     _socketService.offExcessCashCancelled();
     _socketService.offExcessCashConfirmed();
     _socketService.offNextTripActivated();
+    // Scoped ride:completed removal — bare off would deafen the rider's
+    // raw subscriber on the shared socket (20-01: raw subs untouched).
+    final priorCompleted = _rideCompletedListener;
+    if (priorCompleted != null) {
+      _socketService.offRideCompletedEvent(priorCompleted);
+    }
 
     // Stop and clean up notification playback if still playing
     AudioService.instance.stop();
@@ -1488,6 +1507,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
       _socketService.offExcessCashRequested();
       _socketService.offExcessCashCancelled();
       _socketService.offExcessCashConfirmed();
+      // Scoped — never bare off('ride:completed'): that would kill the
+      // rider assigned-screen's raw subscriber on this shared singleton.
+      final priorCompleted = _rideCompletedListener;
+      if (priorCompleted != null) {
+        _socketService.offRideCompletedEvent(priorCompleted);
+      }
     }
 
     _socketListenersSetup = true;
@@ -2011,6 +2036,63 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     };
     _socketService.offNextTripActivated();
     _socketService.onNextTripActivated(_nextTripListener!);
+
+    // Driver ride:completed (§3.3 driver payload) — ENRICH ONLY (21-03
+    // TOLL-05). The REST complete response is the ONLY thing that opens
+    // the trip-earnings popup; this handler may fill toll keys into an
+    // ALREADY-OPEN popup for the same ride and does nothing else. Popup
+    // closed → debug log only, nothing stored, no navigation, ever.
+    // Scoped pair: offRideCompletedEvent takes this exact closure so the
+    // rider's raw 'ride:completed' subscriber is never deafened.
+    final priorCompleted = _rideCompletedListener;
+    if (priorCompleted != null) {
+      _socketService.offRideCompletedEvent(priorCompleted);
+    }
+    _rideCompletedListener = (data) {
+      debugPrint('🏁 [DriverHomeScreen] ride:completed enrich: $data');
+      if (!mounted || data is! Map) return;
+      final payload = data is Map<String, dynamic>
+          ? data
+          : Map<String, dynamic>.from(data);
+      final eventRideId = payload['rideId']?.toString();
+      final openNotifier = _fareSummaryEarnings;
+      if (openNotifier == null || eventRideId == null) {
+        debugPrint(
+          '🏁 [DriverHomeScreen] ride:completed for $eventRideId — '
+          'no popup open, enrich skipped (REST owns the popup)',
+        );
+        return;
+      }
+      if (eventRideId != _fareSummaryRideId) {
+        debugPrint(
+          '🏁 [DriverHomeScreen] ride:completed for $eventRideId — '
+          'open popup is for $_fareSummaryRideId, enrich skipped',
+        );
+        return;
+      }
+      final incoming = DriverEarnings.fromJson(payload);
+      final current = openNotifier.value ?? DriverEarnings.none;
+      // Enrich only when this payload carries toll reimbursement AND the
+      // open popup's map lacks it. Never duplicates an existing row.
+      if (incoming.tollReimbursed <= 0 || current.tollReimbursed > 0) return;
+      openNotifier.value = DriverEarnings(
+        customerFare:
+            incoming.customerFare > 0 ? incoming.customerFare : current.customerFare,
+        platformFee:
+            incoming.platformFee > 0 ? incoming.platformFee : current.platformFee,
+        // §3.3 driver payload carries no net-trip split — keep the REST value.
+        netTripEarnings: current.netTripEarnings,
+        tollReimbursed: incoming.tollReimbursed,
+        tollName: current.tollName ?? incoming.tollName,
+        totalDriverTakeHome: incoming.totalDriverTakeHome > 0
+            ? incoming.totalDriverTakeHome
+            : current.totalDriverTakeHome,
+      );
+      debugPrint(
+        '🏁 [DriverHomeScreen] ride:completed enriched popup toll=£${incoming.tollReimbursed}',
+      );
+    };
+    _socketService.onRideCompletedEvent(_rideCompletedListener!);
   }
 
   double? _parseNum(dynamic v) {
@@ -3395,6 +3477,15 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             ...?completingRide,
             ...rideResult,
           });
+          // §2.1 earnings drive the itemized popup rows (21-03 TOLL-05).
+          // No `earnings` map in the response → none → legacy rows only,
+          // byte-identical to today (TOLL-08). Totals are verbatim from
+          // the backend — never computed here.
+          final earnings = rideResult['earnings'] is Map
+              ? DriverEarnings.fromJson(
+                  Map<String, dynamic>.from(rideResult['earnings'] as Map),
+                )
+              : DriverEarnings.none;
           // Trip A is gone and Trip B already owns the screen: summarize
           // only. Never mutate status/ride state for a superseded ride —
           // this is what painted 'Confirm Cash Collected' over Trip B.
@@ -3405,6 +3496,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
               summary: summary,
               headline: 'Ride completed — next trip ready',
               subline: 'Your next trip is ready. Head to the pickup location.',
+              earnings: earnings,
+              rideId: completingRideId,
             );
             return;
           }
@@ -3433,6 +3526,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
                   summary: summary,
                   headline: 'Promotional ride complete',
                   subline: 'No cash to collect.',
+                  earnings: earnings,
+                  rideId: completingRideId,
                 );
                 return;
               }
@@ -3449,6 +3544,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
                 summary: summary,
                 headline: 'Promotional ride complete',
                 subline: 'No cash to collect.',
+                earnings: earnings,
+                rideId: completingRideId,
               );
             } else {
               if (!mounted) return;
@@ -3475,6 +3572,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             summary: summary,
             headline: 'Ride completed',
             subline: 'Collect cash from the passenger.',
+            earnings: earnings,
+            rideId: completingRideId,
           );
           } else {
             // B2B: Trip B takes over instead of going online (20-02).
@@ -3486,6 +3585,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
                 summary: summary,
                 headline: 'Ride completed successfully',
                 subline: null,
+                earnings: earnings,
+                rideId: completingRideId,
               );
               return;
             }
@@ -3509,6 +3610,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
                 subline: promoted
                     ? 'Your next trip is ready. Head to the pickup location.'
                     : null,
+                earnings: earnings,
+                rideId: completingRideId,
               );
               if (promoted) return;
               if (_currentRideId == null) {
@@ -3536,6 +3639,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
               summary: summary,
               headline: 'Ride completed successfully',
               subline: null,
+              earnings: earnings,
+              rideId: completingRideId,
             );
           }
         } else {
@@ -3743,53 +3848,113 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     required FareSummary summary,
     required String headline,
     String? subline,
+    DriverEarnings? earnings,
+    String? rideId,
   }) {
+    // Enrich-only channel (21-03 TOLL-05): while this popup is open a
+    // driver `ride:completed` socket payload (§3.3) may fill missing toll
+    // keys. The socket can NEVER open this dialog — the REST complete
+    // response above remains the single trigger. Cleared + disposed when
+    // the dialog closes so a late event finds nothing to enrich.
+    final earningsNotifier = ValueNotifier<DriverEarnings?>(earnings);
+    _fareSummaryEarnings = earningsNotifier;
+    _fareSummaryRideId = rideId ?? _currentRideId;
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(headline),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Trip total'),
-                Text(
-                  '£${summary.actualFare.toStringAsFixed(2)}',
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.primaryColor,
+      builder: (context) => ValueListenableBuilder<DriverEarnings?>(
+        valueListenable: earningsNotifier,
+        builder: (context, liveEarnings, _) => AlertDialog(
+          title: Text(headline),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Trip total'),
+                  Text(
+                    '£${summary.actualFare.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.primaryColor,
+                    ),
                   ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text('Base fare £${summary.fare.toStringAsFixed(2)}'),
+              if (summary.totalWaitMinutes > 0 || summary.totalWaitFee > 0)
+                Text(
+                  'Wait ${summary.totalWaitMinutes} min · '
+                  '£${summary.totalWaitFee.toStringAsFixed(2)} fees',
+                ),
+              // §2.1 earnings itemization (21-03 TOLL-05). Verbatim backend
+              // values only — no net − fee or fare + toll arithmetic here.
+              // Absent earnings → subtree omitted → legacy rows exactly.
+              if (liveEarnings != null && liveEarnings.hasData) ...[
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Net earnings'),
+                    Text(
+                      '£${liveEarnings.netTripEarnings.toStringAsFixed(2)}',
+                    ),
+                  ],
+                ),
+                if (liveEarnings.tollReimbursed > 0)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Toll reimbursement'),
+                      Text(
+                        liveEarnings.tollName != null
+                            ? '£${liveEarnings.tollReimbursed.toStringAsFixed(2)}'
+                                ' · ${liveEarnings.tollName}'
+                            : '£${liveEarnings.tollReimbursed.toStringAsFixed(2)}',
+                      ),
+                    ],
+                  ),
+                if (liveEarnings.totalDriverTakeHome > 0)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Total take-home'),
+                      Text(
+                        '£${liveEarnings.totalDriverTakeHome.toStringAsFixed(2)}',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+              ],
+              if (subline != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  subline,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
               ],
-            ),
-            const SizedBox(height: 12),
-            Text('Base fare £${summary.fare.toStringAsFixed(2)}'),
-            if (summary.totalWaitMinutes > 0 || summary.totalWaitFee > 0)
-              Text(
-                'Wait ${summary.totalWaitMinutes} min · '
-                '£${summary.totalWaitFee.toStringAsFixed(2)} fees',
-              ),
-            if (subline != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                subline,
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
             ],
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Done'),
+            ),
           ],
         ),
-        actions: [
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Done'),
-          ),
-        ],
       ),
-    );
+    ).then((_) {
+      // Drop the enrich channel only if this dialog still owns it (a
+      // newer popup would have replaced it already).
+      if (identical(_fareSummaryEarnings, earningsNotifier)) {
+        _fareSummaryEarnings = null;
+        _fareSummaryRideId = null;
+      }
+      earningsNotifier.dispose();
+    });
   }
 
   /// Current stop label for proximity guidance ("stop #2").
@@ -4843,44 +5008,46 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Earnings Pill
-                    // GestureDetector(
-                    //   onTap: () =>
-                    //       Navigator.pushNamed(context, '/driver-earnings'),
-                    //   child: Container(
-                    //     padding: const EdgeInsets.symmetric(
-                    //       horizontal: 16,
-                    //       vertical: 8,
-                    //     ),
-                    //     decoration: BoxDecoration(
-                    //       color: Colors.white,
-                    //       borderRadius: BorderRadius.circular(24),
-                    //       boxShadow: [
-                    //         BoxShadow(
-                    //           color: Colors.black.withValues(alpha: 0.1),
-                    //           blurRadius: 10,
-                    //         ),
-                    //       ],
-                    //     ),
-                    //     child: Row(
-                    //       children: [
-                    //         Icon(
-                    //           Icons.account_balance_wallet,
-                    //           color: AppTheme.primaryColor,
-                    //         ),
-                    //         SizedBox(width: 8),
-                    //         Text(
-                    //           '£${_todayStats['earnings']}',
-                    //           style: GoogleFonts.outfit(
-                    //             fontWeight: FontWeight.bold,
-                    //             fontSize: 16,
-                    //             color: AppTheme.textPrimary,
-                    //           ),
-                    //         ),
-                    //       ],
-                    //     ),
-                    //   ),
-                    // ),
+                    // Earnings Pill — entry point for the earnings
+                    // dashboard (21-03 TOLL-05 re-enables; route registered
+                    // at main.dart:150, live screen owned by 21-04).
+                    GestureDetector(
+                      onTap: () =>
+                          Navigator.pushNamed(context, '/driver-earnings'),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(24),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.1),
+                              blurRadius: 10,
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.account_balance_wallet,
+                              color: AppTheme.primaryColor,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              '£${_todayStats['earnings']}',
+                              style: GoogleFonts.outfit(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                                color: AppTheme.textPrimary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
 
                     // Profile Button
                     CircleAvatar(
