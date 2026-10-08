@@ -20,6 +20,7 @@
 | 18 | Enforce payment_method constraints for scheduled | Planned | 0 | PAYCONST-01..06 |
 | 19 | 3/3 | Complete   | 2026-09-22 | RES-01..06 |
 | 20 | 3/3 | In Progress|  | B2B-01..08 |
+| 21 | Toll Price Implementation | Planned | 5 | TOLL-01..08 |
 
 ---
 
@@ -443,3 +444,32 @@ Plans:
 - Mid-trip B2B accept → pill visible → complete A → auto-navigate to B pickup, exactly once
 - Rider B sees driver card + live marker + honest ETA, never queue language
 - `flutter analyze` clean; contract + full test suite green; human two-device B2B pass
+
+## Phase 21: Toll Price Implementation
+
+**Goal:** Trust-based toll model fully surfaced in both apps — rider sees toll upfront (estimate → booking → receipt), driver sees toll reimbursement (incoming offer → completion → earnings dashboard), socket/FCM payloads carry toll fields; zero regression when toll fields absent. Full contract in `toll_price_implementation.md`.
+
+**Requirements:**
+- **TOLL-01**: Fare-estimate parsing + UI — `hasToll`/`tollDetails` + per-category `tollFee`/`totalFare` shown in vehicle category list on estimate screen
+- **TOLL-02**: Booking breakdown — create-ride `fareBreakdown` (standardFare + tollFee + tollName = totalFare) displayed on booking/confirmation surfaces
+- **TOLL-03**: Rider receipt — ride detail `receipt` itemizes tripFare, tollFee, tollName, totalCharged
+- **TOLL-04**: Driver incoming offer — `ride:newRequest` `estimatedEarnings` (netFare, tollReimbursement, tollName, totalEstimatedTakeHome) parsed + "Includes £X Toll Reimbursement" badge
+- **TOLL-05**: Driver completion — complete-ride `earnings` (platformFee, netTripEarnings, tollReimbursed, totalDriverTakeHome) + driver `ride:completed` payload in trip earnings popup
+- **TOLL-06**: Driver earnings dashboard — earnings summary `tollsReimbursedTotal` KPI + earnings rides list per-ride `tollFee`/`tollName` (wire endpoints if not yet present)
+- **TOLL-07**: Socket/FCM toll fields — `ride:accepted` `fareDetails`, FCM NEW_RIDE_REQUEST / RIDE_COMPLETED / PAYOUT_SETTLED data toll keys land correctly
+- **TOLL-08**: No regressions — tolerant parsing when toll fields absent/hasToll false; existing fare, payment, settlement, restore flows behavior-identical
+
+**Plans:** 5 plans (3 waves)
+
+Plans:
+- [ ] `21-01-PLAN.md` — Contract + parsing foundation: TollInfo helper, FCM UPPERCASE type canonicalization, fareDetails intake, toll_contract_test (wave 1, TOLL-07)
+- [ ] `21-02-PLAN.md` — Rider surfaces: estimate toll rows, booking breakdown, itemized receipt (wave 2, TOLL-01..03)
+- [ ] `21-03-PLAN.md` — Driver offer badge + completion earnings popup + ride:completed enrich (wave 2, TOLL-04..05)
+- [ ] `21-04-PLAN.md` — Driver earnings dashboard: live endpoints + Tolls Reimbursed KPI (wave 2, TOLL-06)
+- [ ] `21-05-PLAN.md` — Regression sweep + absent-toll tests + human two-device pass (wave 3, TOLL-08)
+
+**Success Criteria:**
+- Toll row visible at estimate, breakdown at booking, itemized receipt after trip (rider)
+- Driver sees reimbursement badge on offer, toll line in completion popup, tolls-reimbursed KPI in earnings
+- `flutter analyze` clean; new contract tests + full existing suite green
+- Absent toll fields render existing UI unchanged (no null crashes, no layout shift)
