@@ -43,6 +43,21 @@ void main() {
   /// Rendering gate for the per-ride toll line: shown only when fee > 0.
   bool showTollLine(double tollFee) => tollFee > 0;
 
+  /// KPI tile money formatting (`£0.00` when a field is absent).
+  String kpiMoney(double v) => '£${v.toStringAsFixed(2)}';
+
+  /// Itemized toll line copy built by the rides list tile.
+  String tollLineLabel(String? tollName, double fee) =>
+      'Toll · ${tollName ?? 'Toll'} £${fee.toStringAsFixed(2)}';
+
+  /// Period tab label → API `period` value (spec §2.2 dashboard tabs).
+  const Map<String, String> periodTabs = {
+    'Today': 'today',
+    'Week': 'week',
+    'Month': 'month',
+    'All': 'all',
+  };
+
   // ---------------------------------------------------------------------------
   // Verbatim §2.2 Driver Earnings Summary payload.
   // ---------------------------------------------------------------------------
@@ -259,6 +274,66 @@ void main() {
       expect(showTollLine(toll.tollFee), isFalse);
       expect(ride['pickupAddress'], 'Heathrow Terminal 5');
       expect(ride['completedAt'], '2026-10-07T18:05:00.000Z');
+    });
+  });
+
+  group('TOLL-06 rendering gates (earnings screen tolerant readers)', () {
+    test('Tolls Reimbursed KPI: present → £35.60, absent → £0.00', () {
+      expect(
+        kpiMoney(readTollsReimbursedTotal(
+            summaryData(earningsSummaryWeek()))),
+        '£35.60',
+      );
+      expect(
+        kpiMoney(readTollsReimbursedTotal(
+            summaryData(earningsSummaryNoTolls()))),
+        '£0.00',
+      );
+    });
+
+    test('Net Earnings KPI reads netTripEarnings, Total Earnings verbatim',
+        () {
+      final data = summaryData(earningsSummaryWeek());
+      expect(kpiMoney(readNetTripEarnings(data)), '£496.00');
+      expect(kpiMoney(readTotalEarnings(data)), '£531.60');
+    });
+
+    test('toll line gate: fee > 0 renders labelled line, absent renders none',
+        () {
+      final withToll = TollInfo.fromBreakdown(
+          firstRideFinancials(earningsRidesWeek()));
+      expect(showTollLine(withToll.tollFee), isTrue);
+      expect(tollLineLabel(withToll.tollName, withToll.tollFee),
+          'Toll · M6 Toll Highway £8.90');
+
+      final noToll = TollInfo.fromBreakdown(
+          firstRideFinancials(earningsRidesNoToll()));
+      expect(showTollLine(noToll.tollFee), isFalse);
+
+      final noFinancials = TollInfo.fromBreakdown(null);
+      expect(showTollLine(noFinancials.tollFee), isFalse);
+    });
+
+    test('payout row gate: present renders balance + date, absent hides row',
+        () {
+      final payout =
+          readPayoutStatus(summaryData(earningsSummaryWeek()));
+      expect(payout, isNotNull);
+      expect(kpiMoney(numOf(payout!['unsettledBalance'])), '£310.50');
+      expect(payout['nextPayoutDate'], '2026-10-12T00:00:00.000Z');
+      expect(readPayoutStatus(summaryData(earningsSummaryNoTolls())), isNull);
+    });
+
+    test('period tabs map to API values; Yesterday intentionally unexposed',
+        () {
+      expect(periodTabs, {
+        'Today': 'today',
+        'Week': 'week',
+        'Month': 'month',
+        'All': 'all',
+      });
+      expect(periodTabs.values, isNot(contains('yesterday')));
+      expect(periodTabs.keys.toList(), ['Today', 'Week', 'Month', 'All']);
     });
   });
 }

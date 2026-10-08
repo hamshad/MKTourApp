@@ -1,6 +1,18 @@
 import 'package:flutter/material.dart';
+
+import '../../core/api_service.dart';
+import '../../core/models/toll_breakdown.dart';
 import '../../core/theme.dart';
 
+/// Driver earnings dashboard — live data from the spec §2.2 summary and
+/// §2.3 rides endpoints (phase 21-04, TOLL-06).
+///
+/// Period tabs map to the API `period` values (Today/Week/Month/All —
+/// spec §2.2 dashboard tabs; the API also accepts `yesterday` but no tab
+/// exposes it). KPI tiles sit per spec §5: **Tolls Reimbursed** beside
+/// Net Earnings, value verbatim from `tollsReimbursedTotal`. Every scalar
+/// read is tolerant (never throws) and per-ride toll lines are gated on
+/// `tollFee > 0` so legacy rides render exactly as before.
 class DriverEarningsScreen extends StatefulWidget {
   const DriverEarningsScreen({super.key});
 
@@ -8,8 +20,112 @@ class DriverEarningsScreen extends StatefulWidget {
   State<DriverEarningsScreen> createState() => _DriverEarningsScreenState();
 }
 
+/// Never-throw scalar read: num → double, numeric string → parsed,
+/// anything else → 0.0. Mirrors `TollInfo._coerce` style.
+double earningsNumOf(dynamic v) =>
+    v is num ? v.toDouble() : num.tryParse('$v')?.toDouble() ?? 0.0;
+
+/// `payoutStatus` read — absent / non-map → null (row not rendered).
+Map<String, dynamic>? earningsPayoutStatus(Map<String, dynamic>? data) {
+  final v = data?['payoutStatus'];
+  if (v is Map<String, dynamic>) return v;
+  if (v is Map) return Map<String, dynamic>.from(v);
+  return null;
+}
+
+/// Rendering gate for the per-ride toll line: shown only when fee > 0.
+bool showEarningsTollLine(double tollFee) => tollFee > 0;
+
+/// Month abbreviations for the two date rows (no `intl` dependency —
+/// `intl` is not a direct pubspec dependency and importing it would add
+/// a new analyzer issue).
+const List<String> _monthAbbrevs = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
 class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
-  int _selectedPeriodIndex = 0; // 0: Daily, 1: Weekly
+  final ApiService _apiService = ApiService();
+
+  // Spec §2.2 dashboard tabs. `Yesterday` is a valid API value but is
+  // intentionally not exposed as a tab (see class docs).
+  static const List<String> _periodLabels = [
+    'Today',
+    'Week',
+    'Month',
+    'All',
+  ];
+  static const List<String> _periodValues = [
+    'today',
+    'week',
+    'month',
+    'all',
+  ];
+
+  int _periodIndex = 1; // Week — spec §2.2 example period
+  bool _isLoading = true;
+  String? _error;
+  Map<String, dynamic>? _summary;
+  List<dynamic> _rides = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetch();
+  }
+
+  String get _period => _periodValues[_periodIndex];
+
+  Future<void> _fetch() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    final summaryRes =
+        await _apiService.getDriverEarningsSummary(period: _period);
+    final ridesRes = await _apiService.getDriverEarningsRides(period: _period);
+    if (!mounted) return;
+
+    final summaryOk = summaryRes['success'] == true;
+    final ridesOk = ridesRes['success'] == true;
+    if (!summaryOk || !ridesOk) {
+      final failing = !summaryOk ? summaryRes : ridesRes;
+      setState(() {
+        _isLoading = false;
+        _error = failing['message']?.toString() ?? 'Could not load earnings.';
+      });
+      return;
+    }
+
+    final summaryData = summaryRes['data'];
+    final ridesData = ridesRes['data'];
+    final rides = ridesData is Map ? ridesData['rides'] : null;
+
+    setState(() {
+      _isLoading = false;
+      _summary = summaryData is Map
+          ? Map<String, dynamic>.from(summaryData)
+          : <String, dynamic>{};
+      _rides = rides is List ? List<dynamic>.from(rides) : <dynamic>[];
+    });
+  }
+
+  void _selectPeriod(int index) {
+    if (index == _periodIndex) return;
+    setState(() => _periodIndex = index);
+    _fetch();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -20,11 +136,57 @@ class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
         foregroundColor: Colors.black,
         elevation: 0,
       ),
-      body: SingleChildScrollView(
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? _buildError()
+              : _buildBody(),
+    );
+  }
+
+  Widget _buildError() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline,
+                size: 48, color: AppTheme.errorColor),
+            const SizedBox(height: 16),
+            Text(
+              _error ?? 'Could not load earnings.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppTheme.textSecondary),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: _fetch,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBody() {
+    final summary = _summary ?? <String, dynamic>{};
+    final payout = earningsPayoutStatus(_summary);
+
+    return RefreshIndicator(
+      onRefresh: _fetch,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(20),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Period Toggle
+            // Period tabs: Today | Week | Month | All
             Container(
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
@@ -33,59 +195,60 @@ class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
               ),
               child: Row(
                 children: [
-                  _buildToggleOption('Daily', 0),
-                  _buildToggleOption('Weekly', 1),
+                  for (var i = 0; i < _periodLabels.length; i++)
+                    _buildToggleOption(_periodLabels[i], i),
                 ],
               ),
             ),
-            
-            const SizedBox(height: 32),
-            
-            // Total Earnings
-            const Text(
-              'Total Earnings',
-              style: TextStyle(
-                fontSize: 16,
-                color: AppTheme.textSecondary,
-              ),
+
+            const SizedBox(height: 24),
+
+            // KPI tiles — spec §5: Tolls Reimbursed beside Net Earnings.
+            Row(
+              children: [
+                Expanded(
+                  child: _buildKpiCard(
+                    label: 'Net Earnings',
+                    value: _money(earningsNumOf(summary['netTripEarnings'])),
+                    color: AppTheme.primaryColor,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildKpiCard(
+                    label: 'Tolls Reimbursed',
+                    // Absent field → £0.00, never a crash.
+                    value: _money(
+                        earningsNumOf(summary['tollsReimbursedTotal'])),
+                    color: AppTheme.successColor,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
-            Text(
-              _selectedPeriodIndex == 0 ? '£142.50' : '£850.00',
-              style: const TextStyle(
-                fontSize: 40,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.textPrimary,
-              ),
-            ),
-            
-            const SizedBox(height: 32),
-            
-            // Chart Placeholder
-            Container(
-              height: 200,
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppTheme.borderColor),
-              ),
-              child: CustomPaint(
-                painter: EarningsChartPainter(),
-              ),
-            ),
-            
-            const SizedBox(height: 32),
-            
-            // Breakdown
-            _buildBreakdownItem('Net Fare', '£120.00', Colors.blue),
-            _buildBreakdownItem('Tips', '£15.00', Colors.green),
-            _buildBreakdownItem('Bonuses', '£7.50', Colors.orange),
-            
-            const SizedBox(height: 32),
-            
-            // Recent Transactions
+
+            const SizedBox(height: 24),
+
+            // Supporting breakdown rows.
+            _buildBreakdownItem(
+                'Trips Completed',
+                earningsNumOf(summary['tripsCompleted']).toStringAsFixed(0)),
+            _buildBreakdownItem('Online Hours',
+                earningsNumOf(summary['onlineHours']).toStringAsFixed(1)),
+            _buildBreakdownItem(
+                'Gross Fares', _money(earningsNumOf(summary['grossPassengerFares']))),
+            _buildBreakdownItem(
+                'Platform Deductions', _money(earningsNumOf(summary['platformDeductions']))),
+            // Total earnings rendered verbatim from the payload.
+            _buildBreakdownItem(
+                'Total Earnings', _money(earningsNumOf(summary['totalEarnings']))),
+
+            if (payout != null) ...[
+              _buildPayoutRow(payout),
+            ],
+
+            const SizedBox(height: 24),
+
+            // Itemized rides list (§2.3).
             const Align(
               alignment: Alignment.centerLeft,
               child: Text(
@@ -97,21 +260,127 @@ class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 16),
-            _buildTransactionItem('Heathrow Terminal 5', '£24.50', '10:30 AM'),
-            _buildTransactionItem('The Shard', '£18.20', '09:15 AM'),
-            _buildTransactionItem('Oxford Street', '£12.50', '08:45 AM'),
+            const SizedBox(height: 12),
+            if (_rides.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: Text(
+                    'No rides yet',
+                    style: TextStyle(color: Colors.grey[500]),
+                  ),
+                ),
+              )
+            else
+              ..._rides.map(_buildRideTile),
           ],
         ),
       ),
     );
   }
 
+  String _money(double value) => '£${value.toStringAsFixed(2)}';
+
+  Widget _buildKpiCard({
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.borderColor),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 13,
+              color: AppTheme.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPayoutRow(Map<String, dynamic> payout) {
+    final balance = earningsNumOf(payout['unsettledBalance']);
+    final dateRaw = payout['nextPayoutDate']?.toString();
+    return Container(
+      margin: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceColor,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.account_balance_wallet_outlined,
+              size: 20, color: AppTheme.textSecondary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Next Payout · ${_money(balance)} unsettled',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+                if (dateRaw != null && dateRaw.isNotEmpty)
+                  Text(
+                    'Expected ${_formatPayoutDate(dateRaw)}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatPayoutDate(String iso) {
+    try {
+      final date = DateTime.parse(iso).toLocal();
+      return '${date.day} ${_monthAbbrevs[date.month - 1]} ${date.year}';
+    } catch (_) {
+      return iso;
+    }
+  }
+
   Widget _buildToggleOption(String text, int index) {
-    final isSelected = _selectedPeriodIndex == index;
+    final isSelected = _periodIndex == index;
     return Expanded(
       child: GestureDetector(
-        onTap: () => setState(() => _selectedPeriodIndex = index),
+        onTap: () => _selectPeriod(index),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
@@ -140,32 +409,23 @@ class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
     );
   }
 
-  Widget _buildBreakdownItem(String label, String amount, Color color) {
+  Widget _buildBreakdownItem(String label, String amount) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.only(bottom: 14),
       child: Row(
         children: [
-          Container(
-            width: 12,
-            height: 12,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 12),
           Text(
             label,
             style: const TextStyle(
-              fontSize: 16,
-              color: AppTheme.textPrimary,
+              fontSize: 15,
+              color: AppTheme.textSecondary,
             ),
           ),
           const Spacer(),
           Text(
             amount,
             style: const TextStyle(
-              fontSize: 16,
+              fontSize: 15,
               fontWeight: FontWeight.bold,
               color: AppTheme.textPrimary,
             ),
@@ -175,9 +435,34 @@ class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
     );
   }
 
-  Widget _buildTransactionItem(String title, String amount, String time) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
+  Widget _buildRideTile(dynamic rideRaw) {
+    final ride = rideRaw is Map ? Map<String, dynamic>.from(rideRaw) : null;
+    if (ride == null) return const SizedBox.shrink();
+
+    final financialsRaw = ride['financials'];
+    final financials =
+        financialsRaw is Map ? Map<String, dynamic>.from(financialsRaw) : null;
+    final earnings = earningsNumOf(financials?['driverEarnings']);
+    final toll = TollInfo.fromBreakdown(financials);
+    final pickup = ride['pickupAddress']?.toString() ?? 'Unknown pickup';
+    final dropoff = ride['dropoffAddress']?.toString() ?? '';
+    final timeStr = _formatCompletedAt(ride['completedAt']?.toString());
+    final payment = ride['paymentType']?.toString() ?? '';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: Row(
         children: [
           Container(
@@ -186,32 +471,53 @@ class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
               color: AppTheme.surfaceColor,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(Icons.directions_car, color: AppTheme.textSecondary),
+            child: const Icon(Icons.directions_car,
+                color: AppTheme.textSecondary, size: 22),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  title,
+                  dropoff.isEmpty ? pickup : '$pickup → $dropoff',
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
-                    fontSize: 16,
+                    fontSize: 15,
+                    color: AppTheme.textPrimary,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
+                const SizedBox(height: 4),
                 Text(
-                  time,
+                  [
+                    if (timeStr.isNotEmpty) timeStr,
+                    if (payment.isNotEmpty) _paymentLabel(payment),
+                  ].join(' · '),
                   style: const TextStyle(
                     color: AppTheme.textSecondary,
-                    fontSize: 14,
+                    fontSize: 13,
                   ),
                 ),
+                // Per-ride toll, gated: absent toll renders the plain row.
+                if (showEarningsTollLine(toll.tollFee))
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      'Toll · ${toll.tollName ?? 'Toll'} ${_money(toll.tollFee)}',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.primaryColor,
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
           Text(
-            amount,
+            _money(earnings),
             style: const TextStyle(
               fontWeight: FontWeight.bold,
               fontSize: 16,
@@ -222,36 +528,23 @@ class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
       ),
     );
   }
-}
 
-class EarningsChartPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = AppTheme.primaryColor
-      ..strokeWidth = 3
-      ..style = PaintingStyle.stroke;
-
-    final path = Path();
-    // Mock chart data
-    path.moveTo(0, size.height * 0.8);
-    path.quadraticBezierTo(size.width * 0.25, size.height * 0.6, size.width * 0.5, size.height * 0.4);
-    path.quadraticBezierTo(size.width * 0.75, size.height * 0.2, size.width, size.height * 0.3);
-
-    canvas.drawPath(path, paint);
-    
-    // Fill below
-    final fillPaint = Paint()
-      ..color = AppTheme.primaryColor.withValues(alpha: 0.1)
-      ..style = PaintingStyle.fill;
-      
-    path.lineTo(size.width, size.height);
-    path.lineTo(0, size.height);
-    path.close();
-    
-    canvas.drawPath(path, fillPaint);
+  String _paymentLabel(String payment) {
+    if (payment.isEmpty) return payment;
+    return payment[0].toUpperCase() + payment.substring(1).toLowerCase();
   }
 
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  String _formatCompletedAt(String? iso) {
+    if (iso == null || iso.isEmpty) return '';
+    try {
+      final date = DateTime.parse(iso).toLocal();
+      final hour12 = date.hour % 12 == 0 ? 12 : date.hour % 12;
+      final minute = date.minute.toString().padLeft(2, '0');
+      final suffix = date.hour < 12 ? 'AM' : 'PM';
+      return '${date.day} ${_monthAbbrevs[date.month - 1]}, '
+          '$hour12:$minute $suffix';
+    } catch (_) {
+      return iso;
+    }
+  }
 }
