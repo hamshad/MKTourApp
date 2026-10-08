@@ -5,6 +5,7 @@ import '../../core/services/socket_service.dart';
 import '../../core/widgets/custom_snackbar.dart';
 import '../../core/models/vehicle.dart';
 import '../../core/models/outstanding_balance.dart';
+import '../../core/models/toll_breakdown.dart';
 import '../../core/models/error_display_helper.dart';
 import '../../core/services/ride_event_dedupe.dart';
 import 'excess_settlement_sheet.dart';
@@ -56,9 +57,47 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
       _summary.totalWaitFee > 0 ||
       widget.rideData.containsKey('actualFare');
 
-  /// Big total: actualFare (base + wait) when the backend provides wait
-  /// data, otherwise the legacy fare resolution below.
-  double get _displayTotal => _hasWaitData ? _summary.actualFare : _fare;
+  /// Receipt map (§1.3) when the payload carries one. REST detail data
+  /// arrives here via hydration; socket §3.3 payloads carry the same toll
+  /// keys at TOP level instead (no receipt) — see [_tollInfo].
+  Map<String, dynamic>? get _receipt {
+    final raw = widget.rideData['receipt'];
+    return raw is Map ? Map<String, dynamic>.from(raw) : null;
+  }
+
+  /// Trip-fare line from the §1.3 receipt (`tripFare`) — null when absent.
+  double? get _receiptTripFare =>
+      (_receipt?['tripFare'] as num?)?.toDouble();
+
+  /// Backend-charged total from the §1.3 receipt (`totalCharged`) —
+  /// VERBATIM passthrough, null when absent. The TOTAL line takes this
+  /// instead of any client-side arithmetic (research Pitfall 1).
+  double? get _receiptTotalCharged =>
+      (_receipt?['totalCharged'] as num?)?.toDouble();
+
+  /// Toll over whichever shape arrived: REST §1.3 receipt first, socket
+  /// §3.3 top-level fallback. Never throws; fee/name/total verbatim.
+  TollInfo get _tollInfo {
+    final receipt = _receipt;
+    if (receipt != null) {
+      final fromReceipt = TollInfo.fromBreakdown(receipt);
+      if (fromReceipt.tollFee > 0 || fromReceipt.hasToll) return fromReceipt;
+    }
+    return TollInfo.fromBreakdown(widget.rideData);
+  }
+
+  /// Big total: receipt `totalCharged` VERBATIM when present; else the
+  /// backend `totalFare` on a toll-bearing socket §3.3 payload; else
+  /// actualFare (base + wait) / the legacy fare resolution below.
+  /// Toll-gated so legacy payloads (no toll keys) render byte-identical.
+  double get _displayTotal {
+    final charged = _receiptTotalCharged;
+    if (charged != null) return charged;
+    if (_tollInfo.hasToll && _tollInfo.total != null) {
+      return _tollInfo.total!;
+    }
+    return _hasWaitData ? _summary.actualFare : _fare;
+  }
 
 
   // Get actual fare from ride data
@@ -280,6 +319,16 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
           'stops',
           'paymentMethod',
           'paymentStatus',
+          // Toll receipt keys (TOLL-03): REST §1.3 ships a nested
+          // `receipt` while socket §3.3 ships tollFee/tollName/totalFare
+          // at top level — carry both shapes through the backfill so
+          // either source can hydrate the receipt card.
+          'receipt',
+          'tollFee',
+          'tollName',
+          'totalCharged',
+          'tripFare',
+          'totalFare',
         ]) {
           if ((!d.containsKey(k) || d[k] == null) &&
               m.containsKey(k) &&
@@ -758,11 +807,16 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                               '£${_originalFare.toStringAsFixed(2)}',
                             ),
                           ],
-                          // Base fare always shown (parsed from fare/estimatedFare,
-                          // always present on a receipt). The scheduled-airport
-                          // flow has its own Original/Deposit rows below, so it
-                          // is excluded to avoid a duplicated/confusing base.
-                          if (!(_isScheduled && _isAirportTransfer)) ...[
+                          // Trip fare from the §1.3 receipt when present —
+                          // occupies the legacy Base-fare slot so the card
+                          // carries exactly one pre-toll fare row, backend
+                          // value verbatim. Base fare otherwise (unchanged).
+                          if (_receiptTripFare != null)
+                            _buildFareRow(
+                              'Trip fare',
+                              '£${_receiptTripFare!.toStringAsFixed(2)}',
+                            )
+                          else if (!(_isScheduled && _isAirportTransfer)) ...[
                             _buildFareRow(
                               'Base fare',
                               '£${(_summary.fare > 0 ? _summary.fare : _fare).toStringAsFixed(2)}',
@@ -825,6 +879,22 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                               'Promo Discount',
                               '- £${(_originalFare - _fare).clamp(0, 4.45).toStringAsFixed(2)}',
                               valueColor: const Color(0xFF22C55E),
+                            ),
+                          ],
+
+                          // Toll itemization (§1.3/§3.3, TOLL-03): row
+                          // cloned from the congestion-row pattern. Shown
+                          // only when a toll actually arrived — fee/name
+                          // verbatim, absent → omitted entirely (TOLL-08,
+                          // no layout shift). The TOTAL line below never
+                          // adds fare + toll (Pitfall 1).
+                          if (_tollInfo.tollFee > 0) ...[
+                            _buildFareRow(
+                              _tollInfo.tollName == null ||
+                                      _tollInfo.tollName!.isEmpty
+                                  ? 'Toll'
+                                  : 'Toll — ${_tollInfo.tollName}',
+                              '£${_tollInfo.tollFee.toStringAsFixed(2)}',
                             ),
                           ],
 

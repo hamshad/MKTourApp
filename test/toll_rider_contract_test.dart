@@ -95,6 +95,31 @@ String? createdBreakdownLine(Map<String, dynamic>? fareBreakdown) {
       '£${total.toStringAsFixed(2)}';
 }
 
+/// Mirrors `RideCompleteScreen._tollInfo` — the REST §1.3 receipt wins
+/// when it carries a toll; otherwise the socket §3.3 top-level map.
+TollInfo screenTollInfo(Map<String, dynamic> rideData) {
+  final raw = rideData['receipt'];
+  if (raw is Map) {
+    final fromReceipt = TollInfo.fromBreakdown(Map<String, dynamic>.from(raw));
+    if (fromReceipt.tollFee > 0 || fromReceipt.hasToll) return fromReceipt;
+  }
+  return TollInfo.fromBreakdown(rideData);
+}
+
+/// Mirrors `RideCompleteScreen._displayTotal` — receipt `totalCharged`
+/// verbatim → else backend `totalFare` when a toll arrived → else the
+/// legacy total passed in. Never computes fare + toll.
+double displayTotal(Map<String, dynamic> rideData, double legacyTotal) {
+  final raw = rideData['receipt'];
+  if (raw is Map) {
+    final charged = (raw['totalCharged'] as num?)?.toDouble();
+    if (charged != null) return charged;
+  }
+  final info = screenTollInfo(rideData);
+  if (info.hasToll && info.total != null) return info.total!;
+  return legacyTotal;
+}
+
 void main() {
   // Verbatim §1.1 fare-estimate `data` map (both spec categories incl.
   // tollFee/totalFare + top-level hasToll/tollDetails).
@@ -351,6 +376,129 @@ void main() {
       expect(
         createdBreakdownLine({'standardFare': 33.00, 'tollFee': 8.90}),
         isNull,
+      );
+    });
+  });
+
+  // Verbatim §1.3 ride-details payload with nested `receipt`.
+  Map<String, dynamic> rideDetailsWithReceipt() => {
+        'success': true,
+        'data': {
+          'rideId': '67045b8e9a21a002b2c9e201',
+          'status': 'completed',
+          'pickup': {'address': 'Birmingham City Centre'},
+          'dropoff': {'address': 'Cannock Retail Park'},
+          'driver': {
+            'name': 'David Smith',
+            'carModel': 'Toyota Prius (Silver)',
+            'plateNumber': 'WP19 XYZ',
+          },
+          'receipt': {
+            'tripFare': 33.00,
+            'tollFee': 8.90,
+            'tollName': 'M6 Toll Highway',
+            'totalCharged': 41.90,
+            'paymentMethod': 'stripe',
+            'currency': 'GBP',
+          },
+          'completedAt': '2026-10-08T11:45:00.000Z',
+        },
+      };
+
+  // Verbatim §3.3 ride:completed PASSENGER payload (top-level toll keys).
+  Map<String, dynamic> rideCompletedSocket() => {
+        'event': 'ride:completed',
+        'payload': {
+          'rideId': '67045b8e9a21a002b2c9e201',
+          'fare': 33.00,
+          'tollFee': 8.90,
+          'tollName': 'M6 Toll Highway',
+          'totalFare': 41.90,
+          'paymentType': 'stripe',
+          'paymentStatus': 'paid',
+          'currency': 'GBP',
+        },
+      };
+
+  // Absent-toll receipt (today's shape) and a bare legacy ride map.
+  Map<String, dynamic> receiptNoToll() => {
+        'tripFare': 33.00,
+        'totalCharged': 33.00,
+        'paymentMethod': 'stripe',
+        'currency': 'GBP',
+      };
+
+  group('TOLL-03 §1.3 receipt / §3.3 socket → receipt card', () {
+    test('§1.3 receipt parses tollFee/tollName/totalCharged verbatim', () {
+      final data = rideDetailsWithReceipt()['data'] as Map<String, dynamic>;
+      final info = TollInfo.fromBreakdown(data['receipt']);
+      expect(info.tollFee, 8.90);
+      expect(info.tollName, 'M6 Toll Highway');
+      expect(info.total, 41.90); // totalCharged passthrough
+      expect(info.hasToll, isTrue);
+    });
+
+    test('§3.3 socket payload parses fare/toll/totalFare verbatim', () {
+      final payload =
+          rideCompletedSocket()['payload'] as Map<String, dynamic>;
+      final info = TollInfo.fromBreakdown(payload);
+      expect(info.tollFee, 8.90);
+      expect(info.tollName, 'M6 Toll Highway');
+      expect(info.total, 41.90); // totalFare passthrough
+      expect(info.hasToll, isTrue);
+      expect(payload['fare'], 33.00); // fare stays the component, not total
+    });
+
+    test('displayed total == backend total, never fare + toll computed',
+        () {
+      // REST §1.3: TOTAL line takes receipt.totalCharged VERBATIM.
+      final rest = rideDetailsWithReceipt()['data'] as Map<String, dynamic>;
+      expect(displayTotal(rest, 33.00), 41.90);
+      expect(displayTotal(rest, 33.00), (rest['receipt'] as Map)['totalCharged']);
+
+      // Socket §3.3: TOTAL line takes the backend totalFare verbatim.
+      final socket = rideCompletedSocket()['payload'] as Map<String, dynamic>;
+      expect(displayTotal(socket, 33.00), 41.90);
+      expect(displayTotal(socket, 33.00), socket['totalFare']);
+
+      // Backend total that is NOT fare + toll: client math would say
+      // 42.90, the receipt says 41.90 — displayed total must be 41.90.
+      expect(
+        displayTotal({
+          'receipt': {'tripFare': 34.00, 'tollFee': 8.90, 'totalCharged': 41.90},
+        }, 34.00),
+        41.90,
+      );
+      expect(34.00 + 8.90, isNot(41.90));
+    });
+
+    test('toll row visible for both REST §1.3 and socket §3.3 shapes', () {
+      final rest = rideDetailsWithReceipt()['data'] as Map<String, dynamic>;
+      expect(screenTollInfo(rest).tollFee, 8.90);
+      expect(screenTollInfo(rest).tollName, 'M6 Toll Highway');
+      final socket = rideCompletedSocket()['payload'] as Map<String, dynamic>;
+      expect(screenTollInfo(socket).tollFee, 8.90);
+      expect(screenTollInfo(socket).tollName, 'M6 Toll Highway');
+    });
+
+    test('absent toll keys → no row, legacy total path (TOLL-08)', () {
+      expect(screenTollInfo({'receipt': receiptNoToll()}).tollFee, 0.0);
+      expect(screenTollInfo({'receipt': receiptNoToll()}).hasToll, isFalse);
+      // Receipt totalCharged still drives the TOTAL line (33.00 == legacy).
+      expect(displayTotal({'receipt': receiptNoToll()}, 33.00), 33.00);
+      // No receipt, no toll: legacy resolution untouched.
+      expect(displayTotal({'fare': 12.5}, 12.5), 12.5);
+      // No receipt, toll-free top-level fare keys: still legacy.
+      expect(displayTotal({'fare': 12.5, 'totalFare': 12.5}, 12.5), 12.5);
+    });
+
+    test('TollInfo never throws on malformed receipt shapes', () {
+      expect(() => TollInfo.fromBreakdown({'receipt': 'junk'}), returnsNormally);
+      expect(
+        () => screenTollInfo({
+          'receipt': {'tollFee': 'abc', 'totalCharged': null},
+        }),
+        returnsNormally,
       );
     });
   });
