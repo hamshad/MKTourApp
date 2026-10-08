@@ -74,6 +74,12 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   String? _pendingScheduledRideId;
   // Last time picked in the sheet — reused as sheet initial so cancel keeps it.
   DateTime? _lastScheduledTime;
+  // Create-ride `fareBreakdown` (§1.2, TOLL-02): raw map captured VERBATIM
+  // from the booking result (delivered free by the payment_service rideData
+  // spread) so the confirmation sheet can itemize the backend breakdown
+  // before navigation. Current live backend sends none → stays null and
+  // nothing renders (zero behavior change).
+  Map<String, dynamic>? _createdFareBreakdown;
   bool get _isFixedFare => widget.fareData['is_fixed_fare'] == true;
 
   // Route polyline points - initialized synchronously from passed data
@@ -491,6 +497,52 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   double get _outstandingBalance =>
       (_currentFareData['outstanding_balance'] as num?)?.toDouble() ?? 0.0;
 
+  // Toll breakdown (§1.1 category map, TOLL-02): display-only — every
+  // value is read VERBATIM from the normalized category map and the total
+  // is the backend `total_with_toll`, never fare + toll computed here
+  // (research Pitfall 1). Absent toll renders nothing (TOLL-08).
+  double get _tollFee =>
+      (_currentFareData['toll_fee'] as num?)?.toDouble() ?? 0.0;
+
+  double? get _tollTotalWithToll =>
+      (_currentFareData['total_with_toll'] as num?)?.toDouble();
+
+  /// Backend toll-inclusive payable total when the category carries a
+  /// toll, otherwise today's fare — used by the compact price + CTA.
+  double get _payableFare {
+    if (_tollFee <= 0) return _fare;
+    return _tollTotalWithToll ?? _fare;
+  }
+
+  /// Itemized §1.2 line from the raw create-ride `fareBreakdown`:
+  /// `Fare £33.00 + Toll £8.90 = £41.90` — every value read verbatim
+  /// (`standardFare`, `tollFee`, backend `totalFare` via TollInfo.total).
+  /// Null when absent or toll-free → legacy rendering gate (TOLL-08).
+  String? get _createdBreakdownLine {
+    final fb = _createdFareBreakdown;
+    if (fb == null) return null;
+    final info = TollInfo.fromBreakdown(fb);
+    if (info.tollFee <= 0) return null;
+    final fare = (fb['standardFare'] as num?)?.toDouble();
+    final total = info.total;
+    if (fare == null || total == null) return null;
+    return 'Fare £${fare.toStringAsFixed(2)} + '
+        'Toll £${info.tollFee.toStringAsFixed(2)} = '
+        '£${total.toStringAsFixed(2)}';
+  }
+
+  /// Spec §5 line: `Fare £33.00 + Toll £8.90 = £41.90` — values verbatim
+  /// from the category map. Null when toll absent or the backend sent no
+  /// total (never compute `fare + toll` client-side).
+  String? get _tollBreakdownLine {
+    if (_tollFee <= 0) return null;
+    final total = _tollTotalWithToll;
+    if (total == null) return null;
+    return 'Fare £${_fare.toStringAsFixed(2)} + '
+        'Toll £${_tollFee.toStringAsFixed(2)} = '
+        '£${total.toStringAsFixed(2)}';
+  }
+
   String get _distanceText => _currentFareData['distance_text'] ?? '';
 
   /// Duration text with fallbacks: the fare response, then the value the
@@ -734,6 +786,21 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
 
           debugPrint('✅ [RideConfirmationScreen] Ride created: $rideId');
 
+          // §1.2 fareBreakdown (TOLL-02): read from the booking result —
+          // already carried by the payment_service rideData spread
+          // (payment_service.dart, untouched). Shared read path for both
+          // /rides/create and /rides/schedule. Absent → no state change.
+          final rawBreakdown = result.data!['fareBreakdown'];
+          if (rawBreakdown is Map) {
+            setState(() {
+              _createdFareBreakdown = Map<String, dynamic>.from(rawBreakdown);
+            });
+            debugPrint(
+              '🧾 [RideConfirmationScreen] fareBreakdown captured: '
+              '${_createdFareBreakdown!.keys.toList()}',
+            );
+          }
+
           if (scheduledAt != null) {
             // Cash (no paymentUrl) → confirm directly.
             // Payment Link → open webview first; mark scheduled only after success.
@@ -764,6 +831,17 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
           // branch above keeps WebView routing.
           final dataMethod =
               result.data!['paymentMethod']?.toString() ?? paymentMethod;
+
+          // Pre-navigation confirmation (TOLL-02): give the itemized
+          // fareBreakdown banner a beat to paint before the route swaps.
+          // Only fires when the backend sent a toll breakdown — the
+          // current live backend sends none, so today's flow is untouched.
+          // _isLoading stays true through the delay (CTA disabled, no
+          // double-book) while the banner renders above it.
+          if (_createdBreakdownLine != null) {
+            await Future.delayed(const Duration(milliseconds: 900));
+            if (!mounted) return;
+          }
 
           debugPrint(
             '🚀 [RideConfirmationScreen] Navigating directly to RideAssignedScreen',
@@ -1024,9 +1102,27 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
             Text('Ride Scheduled!', textAlign: TextAlign.center),
           ],
         ),
-        content: Text(
-          'Your ride for ${DateFormat('MMM dd, h:mm a').format(scheduledAt)} has been confirmed. A driver will be assigned closer to the time.',
-          textAlign: TextAlign.center,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Your ride for ${DateFormat('MMM dd, h:mm a').format(scheduledAt)} has been confirmed. A driver will be assigned closer to the time.',
+              textAlign: TextAlign.center,
+            ),
+            // §1.2 breakdown (TOLL-02): itemized fare+toll=total from the
+            // create-ride response. Null when absent → dialog unchanged.
+            if (_createdBreakdownLine != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                _createdBreakdownLine!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ],
         ),
         actions: [
           SizedBox(
@@ -1768,7 +1864,9 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     final hasError = _fareError != null;
     final isPrebooked = widget.isScheduled && widget.scheduledDateTime != null;
     final confirmLabel = isPrebooked ? 'Confirm Prebook' : 'Confirm';
-    final priceLabel = _isFetchingFare ? '...' : '£${_fare.toStringAsFixed(2)}';
+    final priceLabel = _isFetchingFare
+        ? '...'
+        : '£${_payableFare.toStringAsFixed(2)}';
 
     return Container(
       decoration: BoxDecoration(
@@ -1901,6 +1999,34 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                   ],
                 ),
 
+              // Booking breakdown (spec §5, TOLL-02): `Fare + Toll = total`
+              // itemized under the fare row — values verbatim from the
+              // category map. Absent toll (or no backend total) renders
+              // nothing, exactly as today (TOLL-08).
+              if (!hasError && _tollBreakdownLine != null) ...[
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.toll,
+                      size: 14,
+                      color: AppTheme.primaryColor,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        _tollBreakdownLine!,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey[700],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+
               // Fare-variance note folded to a single-line caption w/ tooltip
               if (!hasError) ...[
                 const SizedBox(height: 6),
@@ -1976,6 +2102,42 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
               // Single payment-method row (11-02 toggle, compact idiom).
               if (!hasError) ...[
                 _buildPaymentMethodSelector(),
+                const SizedBox(height: 10),
+              ],
+
+              // Post-create breakdown (§1.2, TOLL-02): itemized backend
+              // `fareBreakdown` on the confirmation sheet before navigation.
+              // Rendered only when the create-ride response carried a toll
+              // breakdown — absent → nothing, byte-identical to today.
+              if (!hasError && _createdBreakdownLine != null) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.blue.shade100),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.toll, size: 18, color: Colors.blue.shade800),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _createdBreakdownLine!,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.blue.shade800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 const SizedBox(height: 10),
               ],
 
@@ -2170,11 +2332,15 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                _fare == 0 ? 'FREE' : '£${_fare.toStringAsFixed(2)}',
+                // TOLL-02: backend toll-inclusive total when the category
+                // carries a toll; today's fare otherwise (byte-identical).
+                _payableFare == 0
+                    ? 'FREE'
+                    : '£${_payableFare.toStringAsFixed(2)}',
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
-                  color: _fare == 0
+                  color: _payableFare == 0
                       ? AppTheme.successColor
                       : AppTheme.primaryColor,
                 ),
@@ -2191,7 +2357,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
       );
     }
     return Text(
-      '£${_fare.toStringAsFixed(2)}',
+      '£${_payableFare.toStringAsFixed(2)}',
       style: const TextStyle(
         fontSize: 20,
         fontWeight: FontWeight.bold,

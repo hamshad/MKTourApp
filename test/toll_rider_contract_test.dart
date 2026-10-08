@@ -65,6 +65,36 @@ Map<String, dynamic>? normalizeCategoryFare(Map<String, dynamic> cat) {
   };
 }
 
+/// Mirrors `RideConfirmationScreen._tollBreakdownLine` — the pre-create
+/// spec §5 breakdown line built from the normalized category fare map.
+/// Values verbatim; null when toll absent OR the backend sent no
+/// `total_with_toll` (never computes `fare + toll` client-side).
+String? tollBreakdownLine(Map<String, dynamic> fare) {
+  final tollFee = (fare['toll_fee'] as num?)?.toDouble() ?? 0.0;
+  if (tollFee <= 0) return null;
+  final total = (fare['total_with_toll'] as num?)?.toDouble();
+  if (total == null) return null;
+  final fareValue = (fare['total_fare'] as num?)?.toDouble() ?? 0.0;
+  return 'Fare £${fareValue.toStringAsFixed(2)} + '
+      'Toll £${tollFee.toStringAsFixed(2)} = '
+      '£${total.toStringAsFixed(2)}';
+}
+
+/// Mirrors `RideConfirmationScreen._createdBreakdownLine` — the
+/// post-create §1.2 line from the raw create-ride `fareBreakdown`.
+/// Legacy rendering gate: absent or toll-free → null (renders nothing).
+String? createdBreakdownLine(Map<String, dynamic>? fareBreakdown) {
+  if (fareBreakdown == null) return null;
+  final info = TollInfo.fromBreakdown(fareBreakdown);
+  if (info.tollFee <= 0) return null;
+  final fare = (fareBreakdown['standardFare'] as num?)?.toDouble();
+  final total = info.total;
+  if (fare == null || total == null) return null;
+  return 'Fare £${fare.toStringAsFixed(2)} + '
+      'Toll £${info.tollFee.toStringAsFixed(2)} = '
+      '£${total.toStringAsFixed(2)}';
+}
+
 void main() {
   // Verbatim §1.1 fare-estimate `data` map (both spec categories incl.
   // tollFee/totalFare + top-level hasToll/tollDetails).
@@ -219,6 +249,109 @@ void main() {
       );
       expect(() => TollInfo.fromEstimate(null), returnsNormally);
       expect(() => TollInfo.fromEstimate({'tollDetails': 'junk'}), returnsNormally);
+    });
+  });
+
+  // Verbatim §1.2 create-ride 201 `fareBreakdown`.
+  Map<String, dynamic> fareBreakdown() => {
+        'standardFare': 33.00,
+        'tollFee': 8.90,
+        'tollName': 'M6 Toll Highway',
+        'isTollIncurred': true,
+        'totalFare': 41.90,
+        'currency': 'GBP',
+      };
+
+  // Live backend today: create-ride response carries NO fareBreakdown.
+  Map<String, dynamic> createRideNoBreakdown() => {
+        'rideId': '67045b8e9a21a002b2c9e201',
+        'status': 'pending',
+        'paymentType': 'stripe',
+        'paymentStatus': 'hold_placed',
+      };
+
+  group('TOLL-02 §1.2 create-ride fareBreakdown → booking breakdown', () {
+    test('§1.2 fareBreakdown parses tollFee/tollName/totalFare verbatim',
+        () {
+      final info = TollInfo.fromBreakdown(fareBreakdown());
+      expect(info.tollFee, 8.90);
+      expect(info.tollName, 'M6 Toll Highway');
+      expect(info.total, 41.90);
+      // hasToll via the explicit `isTollIncurred` flag (spec §1.2).
+      expect(info.hasToll, isTrue);
+    });
+
+    test('itemized line is byte-exact spec §5 copy', () {
+      expect(
+        createdBreakdownLine(fareBreakdown()),
+        'Fare £33.00 + Toll £8.90 = £41.90',
+      );
+      // Backend total verbatim: the line's total equals the fixture's
+      // totalFare — never 33.00 + 8.90 computed client-side (identical
+      // result here, but the value must come from the backend key).
+      final info = TollInfo.fromBreakdown(fareBreakdown());
+      expect(info.total, 41.90);
+    });
+
+    test('absent fareBreakdown → none parse + legacy gate false', () {
+      final info = TollInfo.fromBreakdown(
+        createRideNoBreakdown()['fareBreakdown'],
+      );
+      expect(info.tollFee, 0.0);
+      expect(info.hasToll, isFalse);
+      expect(info.total, isNull);
+      // Legacy rendering gate: no fareBreakdown / no toll → no line.
+      expect(createdBreakdownLine(null), isNull);
+      expect(
+        createdBreakdownLine(createRideNoBreakdown()['fareBreakdown']
+            as Map<String, dynamic>?),
+        isNull,
+      );
+      expect(
+        createdBreakdownLine({'standardFare': 33.00, 'totalFare': 33.00}),
+        isNull,
+      );
+    });
+
+    test('pre-create line from category map (spec §5 booking screen)', () {
+      expect(
+        tollBreakdownLine({
+          'total_fare': 33.00,
+          'toll_fee': 8.90,
+          'has_toll': true,
+          'total_with_toll': 41.90,
+        }),
+        'Fare £33.00 + Toll £8.90 = £41.90',
+      );
+    });
+
+    test('pre-create gate: absent toll → no line (byte-identical today)',
+        () {
+      expect(
+        tollBreakdownLine({
+          'total_fare': 12.5,
+          'original_fare': 12.5,
+          'discount': 0.0,
+          'is_free_ride': false,
+          'promo_applied': false,
+          'is_congestion': false,
+          'congestion_amount': 0.0,
+          'outstanding_balance': 0.0,
+        }),
+        isNull,
+      );
+    });
+
+    test('toll present but backend total absent → line withheld (no math)',
+        () {
+      expect(
+        tollBreakdownLine({'total_fare': 33.00, 'toll_fee': 8.90}),
+        isNull,
+      );
+      expect(
+        createdBreakdownLine({'standardFare': 33.00, 'tollFee': 8.90}),
+        isNull,
+      );
     });
   });
 }
