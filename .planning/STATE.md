@@ -1,10 +1,11 @@
 # MK Tours - Project State
 
 ## Current Position
-- **Phase:** 21-toll-price-implementation — In progress (4/5 plans; 21-01 + 21-02 + 21-03 + 21-04 complete 2026-10-08; rider category toll rows + booking breakdown + receipt itemization landed, 20 TOLL-01/02/03 tests, full 275-test suite green)
-- **Next:** Phase 21 plan 21-05 (verification) — all implementation plans done; wave 2 + verification use shared TollInfo + canonical FCM dispatch
+- **Phase:** 21-toll-price-implementation — 5/5 plans executed; **21-05 at BLOCKING human-verify checkpoint (automated portion complete 2026-10-08: 20 TOLL-08 tests, 8 audits, full 295/295 suite — human two-device pass NOT yet approved)**
+- **Next:** Human runs 8-step two-device pass per 21-05-SUMMARY "Human Verification Record"; "approved" (or issues → gap-closure plan) closes Phase 21 → phase transition
 
 ## Completed Plans
+- 21-05: Regression sweep (automated portion; checkpoint pending) — test/toll_regression_test.dart 20 absent-toll tests, 8-point audit all PASS (zero drift, zero fixes), full 295/295 suite, analyze baseline unchanged (`1050a80`); HUMAN TWO-DEVICE PASS AWAITING
 - 21-02: Rider booking + receipt toll display — category list toll rows + estimate parse, pre/post-create Fare + Toll = total breakdown, receipt toll/trip-fare rows with backend-verbatim TOTAL, hydration backfill keys, 20 contract tests (`c26ef0e`, `f4c5ea2`, `409a25f`)
 - 21-03: Driver offer toll UI + completion earnings popup — `_estimatedEarnings` intake (TOLL-08 zero-drift), reimbursement badges on request panel + B2B card, DriverEarnings dual-alias model, REST-owned popup with verbatim take-home, scoped ride:completed enrich pair (`c541286`, `d4b74ed`)
 - 21-04: Driver earnings dashboard live — earningsSummary/earningsRides consts + never-throw ApiService methods, period tabs, Tolls Reimbursed KPI beside Net Earnings, gated per-ride toll lines, 14 TOLL-06 tests (`9f44dca`, `d5b89e7`)
@@ -54,6 +55,9 @@
 - 19-03: Connection UX + kill-proofing — ConnectionBanner on rider/driver screens, stale chips, queued-intent copy, widget tests + sweep (`98b4aeb`, `70e2a6a`); rider searching-save bug fixed + canonicalization tests (`8532ad2`, `c708cba`)
 
 ## Decisions
+- [21-05] Earnings-screen top-level helpers (earningsNumOf/showEarningsTollLine/kpiMoney) mirrored as pure functions in the regression test, not imported — keeps suite widget-free per fare_estimate_balance precedent; parser coverage stays on REAL shared classes
+- [21-05] Task 1 committed test-only (`test(21-05)`) — all 8 audits passed first run, zero chain-extend fixes needed; TOLL-08 code-level promise proven without touching lib/
+- [21-05] Checkpoint NOT auto-approved (auto_advance=false, plan autonomous:false) — human two-device pass is the phase gate; SUMMARY records checkpoint reached, not approved
 - [21-02] fareBreakdown not threaded into searching navigation payload — ride_assigned_screen.dart outside plan files_modified (21-03 lock); breakdown rendered pre-navigation on confirmation screen, assigned-screen display deferred as follow-up (ctor param like paymentUrl precedent)
 - [21-02] Fare + Toll = total equation rendered ONCE under fare row; compact price + CTA show backend _payableFare/total_with_toll verbatim (dup would double-print in one Row; CTA FittedBox maxLines=1 shrinks long strings)
 - [21-02] 900ms pre-navigation paint delay gated on toll breakdown presence — live backend sends none → zero behavior change; _isLoading keeps CTA disabled during delay (no double-book)
@@ -188,7 +192,8 @@
 - Phase 17 added: Backend enforces payment_link only for scheduled rides — remove cash from prebook flow and handle new error responses
 
 ## Session
-- Last session: Completed 21-02-PLAN.md (2026-10-08, 3 commits `c26ef0e`, `f4c5ea2`, `409a25f`, SUMMARY at phases/21-toll-price-implementation/21-02-SUMMARY.md). Rider category toll rows + booking breakdown + receipt itemization, 20 TOLL-01/02/03 tests, full 275-test suite green, analyzer at baseline. Next: 21-05 verification.
+- Last session: Automated portion of 21-05-PLAN.md (2026-10-08, 1 commit `1050a80`, SUMMARY at phases/21-toll-price-implementation/21-05-SUMMARY.md). TOLL-08 regression suite 20/20, 8 audits PASS, full 295/295. **STOPPED at blocking checkpoint:human-verify — human two-device pass pending approval.**
+- Previous: Completed 21-02-PLAN.md (2026-10-08, 3 commits `c26ef0e`, `f4c5ea2`, `409a25f`, SUMMARY at phases/21-toll-price-implementation/21-02-SUMMARY.md). Rider category toll rows + booking breakdown + receipt itemization, 20 TOLL-01/02/03 tests, full 275-test suite green, analyzer at baseline. Next: 21-05 verification.
 - Previous: Completed 21-03-PLAN.md (2026-10-08, 2 commits `c541286`, `d4b74ed`, SUMMARY at phases/21-toll-price-implementation/21-03-SUMMARY.md). Driver offer toll badges + TOLL-05 completion earnings popup, 12 contract tests green, full suite green. Next: 21-05 after 21-02 lands.
 - Previous: Completed 21-04-PLAN.md (2026-10-08, 2 commits `9f44dca`, `d5b89e7`, SUMMARY at phases/21-toll-price-implementation/21-04-SUMMARY.md). Live earnings dashboard + TOLL-06, 257-test suite green. Next: 21-05 after 21-02/21-03 land.
 - Previous: Completed 21-01-PLAN.md (2026-10-08, 2 commits `4defe6f`, `6d4ac8c`, SUMMARY at phases/21-toll-price-implementation/21-01-SUMMARY.md). TollInfo + FCM canonicalization + fareDetails intake, 229-test suite green. Next: 21-02/21-03/21-04 parallel wave 2.
