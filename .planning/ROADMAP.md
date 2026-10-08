@@ -20,7 +20,7 @@
 | 18 | Enforce payment_method constraints for scheduled | Planned | 0 | PAYCONST-01..06 |
 | 19 | 3/3 | Complete   | 2026-09-22 | RES-01..06 |
 | 20 | 3/3 | In Progress|  | B2B-01..08 |
-| 21 | 1/5 | In Progress|  | TOLL-01..08 |
+| 21 | 2/5 | In Progress|  | TOLL-01..08 |
 
 ---
 
@@ -459,13 +459,13 @@ Plans:
 - **TOLL-07**: Socket/FCM toll fields — `ride:accepted` `fareDetails`, FCM NEW_RIDE_REQUEST / RIDE_COMPLETED / PAYOUT_SETTLED data toll keys land correctly
 - **TOLL-08**: No regressions — tolerant parsing when toll fields absent/hasToll false; existing fare, payment, settlement, restore flows behavior-identical
 
-**Plans:** 1/5 plans executed
+**Plans:** 2/5 plans executed
 
 Plans:
 - [ ] `21-01-PLAN.md` — Contract + parsing foundation: TollInfo helper, FCM UPPERCASE type canonicalization, fareDetails intake, toll_contract_test (wave 1, TOLL-07)
 - [ ] `21-02-PLAN.md` — Rider surfaces: estimate toll rows, booking breakdown, itemized receipt (wave 2, TOLL-01..03)
 - [ ] `21-03-PLAN.md` — Driver offer badge + completion earnings popup + ride:completed enrich (wave 2, TOLL-04..05)
-- [ ] `21-04-PLAN.md` — Driver earnings dashboard: live endpoints + Tolls Reimbursed KPI (wave 2, TOLL-06)
+- [x] `21-04-PLAN.md` — Driver earnings dashboard: live endpoints + Tolls Reimbursed KPI (wave 2, TOLL-06)
 - [ ] `21-05-PLAN.md` — Regression sweep + absent-toll tests + human two-device pass (wave 3, TOLL-08)
 
 **Success Criteria:**
