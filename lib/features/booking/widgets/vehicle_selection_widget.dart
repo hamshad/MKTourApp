@@ -941,9 +941,6 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                                   fontWeight: FontWeight.w600,
                                   color: Colors.blue.shade800,
                                 ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                softWrap: true,
                               ),
                             ),
                           // Outstanding-balance split (Phase 15): caption under
