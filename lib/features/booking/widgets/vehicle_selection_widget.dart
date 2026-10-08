@@ -790,9 +790,10 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                     ),
 
                     // Price (from backend)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 12),
-                      child: Column(
+                    Flexible(
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 12),
+                        child: Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           _isFetchingFares && fareData == null
@@ -951,6 +952,7 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                             ),
                         ],
                       ),
+                    ),
                     ),
                   ],
                 ),
