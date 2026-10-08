@@ -1,8 +1,8 @@
 class ApiConstants {
   // Local development socket URL (commented when using live API)
-  // static const String socketUrl = 'http://192.168.1.16:5001';
+  static const String socketUrl = 'http://192.168.1.8:5001';
   // Live API socket URL
-  static const String socketUrl = 'https://api.mktours.co.uk';
+  // static const String socketUrl = 'https://api.mktours.co.uk';
   static const String baseUrl = '$socketUrl/api/v1';
 
   // Auth Endpoints
@@ -50,8 +50,7 @@ class ApiConstants {
 
   /// Driver earnings dashboard summary (toll_price_implementation.md §2.2).
   /// GET with `?period=today|yesterday|week|month|all`.
-  static const String earningsSummary =
-      '$baseUrl/drivers/earnings/summary';
+  static const String earningsSummary = '$baseUrl/drivers/earnings/summary';
 
   /// Driver earnings itemized rides list (spec §2.3).
   /// GET with `?period=&page=&limit=`.
