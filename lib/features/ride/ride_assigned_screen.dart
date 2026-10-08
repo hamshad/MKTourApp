@@ -231,6 +231,15 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
   // rehydrate) provides payment fields.
   AcceptedPayment? _acceptedPayment;
 
+  // Toll fareDetails (toll spec §3.2): captured verbatim from the
+  // `ride:accepted` payload when the backend includes it. Absent
+  // fareDetails leaves this null and changes nothing (TOLL-08).
+  Map<String, dynamic>? _fareDetails;
+
+  /// Verbatim `fareDetails` from the latest `ride:accepted` payload
+  /// (toll spec §3.2), or null when the backend omitted it.
+  Map<String, dynamic>? get fareDetails => _fareDetails;
+
   // Set when the rider's link payment authorizes — via the WebView success
   // result or the `payment:authorized` socket event. Dismisses the Pay Now
   // prompt and flips the banner to authorized copy. Never navigates, never
@@ -1328,6 +1337,11 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
           if (data['isPromoRide'] == true) _isPromoRide = true;
           if (data['originalFare'] != null) {
             _promoOriginalFare = (data['originalFare'] as num).toDouble();
+          }
+          if (data['fareDetails'] is Map) {
+            _fareDetails = Map<String, dynamic>.from(
+              data['fareDetails'] as Map,
+            );
           }
 
           // Accept-time payment (16-02 §3 Step 2): snapshot requiresPayment /

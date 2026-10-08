@@ -81,6 +81,11 @@ class NotificationType {
   static const String paymentSucceeded = 'payment_succeeded';
   static const String paymentFailed = 'payment_failed';
 
+  // Payout settlement (toll spec §4.3). Backend sends UPPERCASE
+  // `PAYOUT_SETTLED`; `canonicalFcmType` maps it here. Known silent type —
+  // no sound, no navigation; the tray copy already carries the message.
+  static const String payoutSettled = 'payout_settled';
+
   // System Notifications
   static const String healthCheck = 'health_check';
 
@@ -127,6 +132,27 @@ String canonicalExcessCashDedupeType(String type) {
   }
 }
 
+/// Canonicalize an FCM `data.type` onto the app's snake_case
+/// `NotificationType` constants (toll spec §4.1-4.3).
+///
+/// Spec sends UPPERCASE types (`NEW_RIDE_REQUEST`, `RIDE_COMPLETED`,
+/// `PAYOUT_SETTLED`) while live backend types are snake_case and already
+/// match the dispatch switch byte-identically — those are returned
+/// untouched (regression guard: existing payloads unchanged). UPPERCASE
+/// (or mixed-case) inputs lowercase first, then apply the alias table for
+/// lowerings that still don't match a canonical constant. Pure function,
+/// never throws.
+String canonicalFcmType(String raw) {
+  if (raw.isEmpty) return raw;
+  // Already canonical snake_case (or empty) — byte-identical passthrough.
+  if (raw == raw.toLowerCase()) return raw;
+  const aliases = <String, String>{
+    'new_ride_request': NotificationType.rideRequest,
+  };
+  final lower = raw.toLowerCase();
+  return aliases[lower] ?? lower;
+}
+
 /// FCM Notification payload data
 class FcmNotificationData {
   final String type;
@@ -148,6 +174,8 @@ class FcmNotificationData {
   final bool isFallback;
   final String? fallbackNote;
   final Map<String, dynamic> rawData;
+  final double? tollFee;
+  final String? tollName;
 
   FcmNotificationData({
     required this.type,
@@ -168,12 +196,16 @@ class FcmNotificationData {
     this.isReminder = false,
     this.isFallback = false,
     this.fallbackNote,
+    this.tollFee,
+    this.tollName,
     required this.rawData,
   });
 
   factory FcmNotificationData.fromMap(Map<String, dynamic> data) {
     return FcmNotificationData(
-      type: data['type'] ?? '',
+      // Spec §4 types are UPPERCASE; live types are snake_case. Canonical
+      // form feeds the dispatch switch — snake_case stays byte-identical.
+      type: canonicalFcmType(data['type'] ?? ''),
       rideId: data['rideId'],
       otp: data['otp'],
       newOTP: data['newOTP'] ?? data['newOtp'],
@@ -191,6 +223,9 @@ class FcmNotificationData {
       isReminder: data['isReminder']?.toString().toLowerCase() == 'true',
       isFallback: data['isFallback']?.toString().toLowerCase() == 'true',
       fallbackNote: data['fallbackNote'] ?? data['message'],
+      // FCM toll values arrive stringly (§4: "8.90"); coerce at intake.
+      tollFee: _parseDouble(data['tollFee']),
+      tollName: data['tollName']?.toString(),
       rawData: data,
     );
   }
@@ -814,6 +849,12 @@ mixin FcmNotificationHandler<T extends StatefulWidget> on State<T> {
       case NotificationType.scheduledRideCancelledByUser:
         onScheduledRideCancelledByUser(data);
         break;
+      // Payout settlement (toll spec §4.3) — known type, silent handler
+      // (backend notification body already carries the copy). Explicitly
+      // cased so it never falls through to the unknown-type log.
+      case NotificationType.payoutSettled:
+        onPayoutSettled(data);
+        break;
       default:
         debugPrint('🔔 [FCM Handler] Unknown notification type: ${data.type}');
     }
@@ -849,6 +890,9 @@ mixin FcmNotificationHandler<T extends StatefulWidget> on State<T> {
   void onRideCancelledByUser(FcmNotificationData data) {}
   void onPaymentSelected(FcmNotificationData data) {}
   void onRideReminder(FcmNotificationData data) {}
+  // Payout settled (§4.3): silent — no sound, no navigation. Known type
+  // only; tray copy is the whole experience.
+  void onPayoutSettled(FcmNotificationData data) {}
 
   // Common notification handlers
   void onRideExpired(FcmNotificationData data) {}
