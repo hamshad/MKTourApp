@@ -752,28 +752,40 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                           ),
                           const SizedBox(height: 4),
                           Row(
-                            children: [
-                              Text(
-                                'Up to $seatingCapacity people',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[600],
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Icon(Icons.luggage, size: 14, color: Colors.grey[500]),
-                              Text(
-                                ' ${category.luggage.suitcases}',
-                                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                              ),
-                              const SizedBox(width: 8),
-                              Icon(Icons.shopping_bag, size: 14, color: Colors.grey[500]),
-                              Text(
-                                ' ${category.luggage.smallCases}',
-                                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                              ),
-                            ],
-                          ),
+                             children: [
+                               Expanded(
+                                 child: Text(
+                                   'Up to $seatingCapacity people',
+                                   overflow: TextOverflow.ellipsis,
+                                   maxLines: 1,
+                                   style: TextStyle(
+                                     fontSize: 12,
+                                     color: Colors.grey[600],
+                                   ),
+                                 ),
+                               ),
+                               const SizedBox(width: 8),
+                               Row(
+                                 children: [
+                                   Icon(Icons.luggage, size: 14, color: Colors.grey[500]),
+                                   Text(
+                                     ' ${category.luggage.suitcases}',
+                                     style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                                   ),
+                                 ],
+                               ),
+                               const SizedBox(width: 8),
+                               Row(
+                                 children: [
+                                   Icon(Icons.shopping_bag, size: 14, color: Colors.grey[500]),
+                                   Text(
+                                     ' ${category.luggage.smallCases}',
+                                     style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                                   ),
+                                 ],
+                               ),
+                             ],
+                           ),
                           if (fareData != null) ...[
                              const SizedBox(height: 4),
                              Text(
