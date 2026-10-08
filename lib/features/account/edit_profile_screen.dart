@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../core/auth_provider.dart';
 import '../../core/constants/countries.dart';
 import '../../core/theme.dart';
+import '../../core/utils/share_utils.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -301,19 +302,24 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         iconTheme: const IconThemeData(color: AppTheme.textPrimary),
-        actions: [
-          _isLoading
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : IconButton(
-                  onPressed: _saveProfile,
-                  icon: const Icon(Icons.save, color: AppTheme.primaryColor),
-                  tooltip: 'Save',
-                ),
-        ],
+actions: [
+            IconButton(
+              icon: const Icon(Icons.share),
+              onPressed: () => ShareUtils.shareApp(),
+              tooltip: 'Share App',
+            ),
+            _isLoading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : IconButton(
+                    onPressed: _saveProfile,
+                    icon: const Icon(Icons.save, color: AppTheme.primaryColor),
+                    tooltip: 'Save',
+                  ),
+          ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),

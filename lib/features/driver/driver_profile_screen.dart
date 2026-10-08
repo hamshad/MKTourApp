@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/theme.dart';
 import '../../core/auth_provider.dart';
+import '../../core/utils/share_utils.dart';
 import '../auth/phone_login_screen.dart';
 import '../auth/role_selection_screen.dart';
 import 'edit_driver_profile_screen.dart';
@@ -428,27 +429,32 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
         elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.edit),
-            onPressed: () {
-              final driver = Provider.of<AuthProvider>(
-                context,
-                listen: false,
-              ).user;
-              if (driver != null) {
-                Navigator.push(
+actions: [
+            IconButton(
+              icon: const Icon(Icons.share),
+              onPressed: () => ShareUtils.shareApp(),
+              tooltip: 'Share App',
+            ),
+            IconButton(
+              icon: const Icon(Icons.edit),
+              onPressed: () {
+                final driver = Provider.of<AuthProvider>(
                   context,
-                  MaterialPageRoute(
-                    builder: (context) =>
-                        EditDriverProfileScreen(driverData: driver),
-                  ),
-                ).then((_) => _fetchProfile());
-              }
-            },
-          ),
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _fetchProfile),
-        ],
+                  listen: false,
+                ).user;
+                if (driver != null) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          EditDriverProfileScreen(driverData: driver),
+                    ),
+                  ).then((_) => _fetchProfile());
+                }
+              },
+            ),
+            IconButton(icon: const Icon(Icons.refresh), onPressed: _fetchProfile),
+          ],
       ),
       body: Consumer<AuthProvider>(
         builder: (context, authProvider, child) {
