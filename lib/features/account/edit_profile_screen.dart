@@ -7,7 +7,6 @@ import 'package:provider/provider.dart';
 import '../../core/auth_provider.dart';
 import '../../core/constants/countries.dart';
 import '../../core/theme.dart';
-import '../../core/utils/share_utils.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -303,11 +302,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         elevation: 0,
         iconTheme: const IconThemeData(color: AppTheme.textPrimary),
 actions: [
-            IconButton(
-              icon: const Icon(Icons.share),
-              onPressed: () => ShareUtils.shareApp(),
-              tooltip: 'Share App',
-            ),
             _isLoading
                 ? const SizedBox(
                     width: 20,

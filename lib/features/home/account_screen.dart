@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/theme.dart';
 import '../../core/ui_frame.dart';
+import '../../core/utils/share_utils.dart';
 import '../account/edit_profile_screen.dart';
 import '../account/payment_methods_screen.dart';
 import '../account/settings_screen.dart';
@@ -42,6 +43,11 @@ class _AccountScreenState extends State<AccountScreen> {
         elevation: 0,
         automaticallyImplyLeading: false,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.share),
+            onPressed: () => ShareUtils.shareApp(),
+            tooltip: 'Share App',
+          ),
           IconButton(
             icon: const Icon(
               Icons.settings_outlined,
