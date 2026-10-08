@@ -2,8 +2,8 @@ import 'package:share_plus/share_plus.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 class ShareUtils {
-  static const String androidAppLink = 'https://play.google.com/store/apps/details?id=com.mktours.app';
-  static const String iosAppLink = 'https://apps.apple.com/app/id123456789';
+  static const String androidAppLink = 'https://play.google.com/store/apps/details?id=com.mokshasolutions.mktours';
+  static const String iosAppLink = 'https://apps.apple.com/us/app/mk-tours/id6757809090';
 
   static Future<void> shareApp({
     String? customMessage,
