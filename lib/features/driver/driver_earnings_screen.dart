@@ -234,14 +234,14 @@ class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
                 'Trips Completed',
                 earningsNumOf(metrics['totalRides']).toStringAsFixed(0)),
             _buildBreakdownItem('Online Hours',
-                earningsNumOf(metrics['onlineHours']).toStringAsFixed(1)),
+                earningsNumOf(metrics['onlineHours'] ?? 0.0).toStringAsFixed(1)),
             _buildBreakdownItem(
                 'Gross Fares', _money(earningsNumOf(metrics['grossFare']))),
             _buildBreakdownItem(
                 'Platform Deductions', _money(earningsNumOf(metrics['platformFee']))),
             // Total earnings rendered verbatim from the payload.
             _buildBreakdownItem(
-                'Total Earnings', _money(earningsNumOf(metrics['totalEarnings']))),
+                'Total Earnings', _money(earningsNumOf(metrics['netEarnings']))),
 
             if (payout != null) ...[
               _buildPayoutRow(payout),
