@@ -14,10 +14,14 @@ class ShareUtils {
     final appName = packageInfo.appName;
 
     final message = customMessage ??
-        'Check out $appName - the best way to book rides! '
-            'Download now: Android: $androidAppLink | iOS: $iosAppLink';
+        '🌟✨ Experience the FUTURE of ride-hailing with MK Tours! ✨🌟\n\n'
+        '🚀 Seamless booking • ⚡ Real-time tracking • 💎 Premium comfort\n\n'
+        '📥 Download the ULTIMATE ride experience NOW:\n'
+        '🤖 Android: $androidAppLink\n'
+        '🍎 iOS: $iosAppLink\n\n'
+        '💫 Your journey, elevated. Ride like royalty! 👑';
 
-    await _share(message, subject: subject ?? 'Share $appName');
+    await _share(message, subject: subject ?? '🚀 Share the Future of Rides with MK Tours!');
   }
 
   static Future<void> shareAppWithReferral({
@@ -26,14 +30,19 @@ class ShareUtils {
     final packageInfo = await PackageInfo.fromPlatform();
     final appName = packageInfo.appName;
 
-    String message = 'Check out $appName - the best way to book rides! '
-        'Download now: Android: $androidAppLink | iOS: $iosAppLink';
+    String message = '🌟✨ Experience the FUTURE of ride-hailing with MK Tours! ✨🌟\n\n'
+        '🚀 Seamless booking • ⚡ Real-time tracking • 💎 Premium comfort\n\n'
+        '📥 Download the ULTIMATE ride experience NOW:\n'
+        '🤖 Android: $androidAppLink\n'
+        '🍎 iOS: $iosAppLink';
 
     if (referralCode != null && referralCode.isNotEmpty) {
-      message += '\n\nUse my referral code: $referralCode';
+      message += '\n\n🎁 EXCLUSIVE: Use my referral code **$referralCode** for VIP perks!';
     }
 
-    await _share(message, subject: 'Share $appName');
+    message += '\n\n💫 Your journey, elevated. Ride like royalty! 👑';
+
+    await _share(message, subject: '🚀 Share the Future of Rides with MK Tours!');
   }
 
   static Future<void> _share(String text, {String? subject}) async {
