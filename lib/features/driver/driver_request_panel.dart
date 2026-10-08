@@ -619,6 +619,8 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                     children: [
                       Text(
                         widget.rideData?['user']?['name'] ?? 'Passenger',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -637,6 +639,8 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                                   driverUser?['vehicle']?['categorySlug']?.toString();
                               return Text(
                                 _getVehicleDisplayName(driverCategory),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   fontSize: 14,
                                   color: AppTheme.textSecondary,
