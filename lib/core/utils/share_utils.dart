@@ -14,14 +14,21 @@ class ShareUtils {
     final appName = packageInfo.appName;
 
     final message = customMessage ??
-        '🌟✨ Experience the FUTURE of ride-hailing with MK Tours! ✨🌟\n\n'
-        '🚀 Seamless booking • ⚡ Real-time tracking • 💎 Premium comfort\n\n'
-        '📥 Download the ULTIMATE ride experience NOW:\n'
-        '🤖 Android: $androidAppLink\n'
-        '🍎 iOS: $iosAppLink\n\n'
-        '💫 Your journey, elevated. Ride like royalty! 👑';
+        '🚗 *MK Tours — Your ride, your way.*\n\n'
+        'Need to get somewhere? Just choose your *pickup point and destination*, book your ride, and let MK Tours take care of the rest. 📍\n\n'
+        '✨ Easy ride booking\n'
+        '📍 Choose your pickup & destination\n'
+        '🚘 Get a ride when you need it\n'
+        '💳 Simple & convenient payments\n'
+        '🛡️ Ride with trusted drivers\n\n'
+        '📲 *Download MK Tours and book your next ride:*\n\n'
+        '🤖 *Android*\n'
+        '$androidAppLink\n\n'
+        '🍎 *iPhone*\n'
+        '$iosAppLink\n\n'
+        '*Wherever you\'re going, just book a ride with MK Tours.* 🚘';
 
-    await _share(message, subject: subject ?? '🚀 Share the Future of Rides with MK Tours!');
+    await _share(message, subject: subject ?? 'Share MK Tours');
   }
 
   static Future<void> shareAppWithReferral({
@@ -30,19 +37,26 @@ class ShareUtils {
     final packageInfo = await PackageInfo.fromPlatform();
     final appName = packageInfo.appName;
 
-    String message = '🌟✨ Experience the FUTURE of ride-hailing with MK Tours! ✨🌟\n\n'
-        '🚀 Seamless booking • ⚡ Real-time tracking • 💎 Premium comfort\n\n'
-        '📥 Download the ULTIMATE ride experience NOW:\n'
-        '🤖 Android: $androidAppLink\n'
-        '🍎 iOS: $iosAppLink';
+    String message = '🚗 *MK Tours — Your ride, your way.*\n\n'
+        'Need to get somewhere? Just choose your *pickup point and destination*, book your ride, and let MK Tours take care of the rest. 📍\n\n'
+        '✨ Easy ride booking\n'
+        '📍 Choose your pickup & destination\n'
+        '🚘 Get a ride when you need it\n'
+        '💳 Simple & convenient payments\n'
+        '🛡️ Ride with trusted drivers\n\n'
+        '📲 *Download MK Tours and book your next ride:*\n\n'
+        '🤖 *Android*\n'
+        '$androidAppLink\n\n'
+        '🍎 *iPhone*\n'
+        '$iosAppLink';
 
     if (referralCode != null && referralCode.isNotEmpty) {
-      message += '\n\n🎁 EXCLUSIVE: Use my referral code **$referralCode** for VIP perks!';
+      message += '\n\n🎁 *Referral code: **$referralCode***';
     }
 
-    message += '\n\n💫 Your journey, elevated. Ride like royalty! 👑';
+    message += '\n\n*Wherever you\'re going, just book a ride with MK Tours.* 🚘';
 
-    await _share(message, subject: '🚀 Share the Future of Rides with MK Tours!');
+    await _share(message, subject: 'Share MK Tours');
   }
 
   static Future<void> _share(String text, {String? subject}) async {
