@@ -16,10 +16,7 @@ class ShareUtils {
         'Check out $appName - the best way to book rides! '
             'Download now: Android: $androidAppLink | iOS: $iosAppLink';
 
-    await Share.share(
-      message,
-      subject: subject ?? 'Share $appName',
-    );
+    await _share(message, subject: subject ?? 'Share $appName');
   }
 
   static Future<void> shareAppWithReferral({
@@ -35,9 +32,10 @@ class ShareUtils {
       message += '\n\nUse my referral code: $referralCode';
     }
 
-    await Share.share(
-      message,
-      subject: 'Share $appName',
-    );
+    await _share(message, subject: 'Share $appName');
+  }
+
+  static Future<void> _share(String text, {String? subject}) async {
+    await Share.share(text, subject: subject);
   }
 }
