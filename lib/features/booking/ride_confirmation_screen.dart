@@ -18,6 +18,7 @@ import 'package:latlong2/latlong.dart' as lat_lng;
 import 'package:flutter_map/flutter_map.dart' as fmap;
 import '../../core/models/vehicle.dart';
 import '../../core/models/outstanding_balance.dart';
+import '../../core/models/toll_breakdown.dart';
 import '../../core/models/error_display_helper.dart';
 import '../ride/outstanding_balance_screen.dart';
 import 'widgets/schedule_ride_sheet.dart';
@@ -386,6 +387,14 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
             0,
       );
 
+      final outstandingBalance = (outstandingRaw < 0 ? 0 : outstandingRaw);
+      // Toll chain (§1.1, TOLL-01) — EXACT same keys from the SAME shared
+      // TollInfo.fromCategory call as VehicleSelectionWidget._normalizeCategory
+      // (both copies always move together; research Pitfall 4 — `outstanding_balance`
+      // / `is_congestion` exist in both as precedent). Absent-toll categories
+      // add NO keys. `estimatedFare ?? total_fare` stays first/authoritative.
+      final toll = TollInfo.fromCategory(cat);
+
       debugPrint(
         '✅ RideConfirmationScreen: Stops-aware fare £$estimatedFare '
         '(${distanceMiles ?? '?'} mi, ${widget.stops?.length ?? 0} stops)',
@@ -399,7 +408,13 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
         'promo_applied': promoApplied,
         'is_congestion': cat['isCongestionCharge'] == true,
         'congestion_amount': numOf(cat['congestionChargeAmount'] ?? 0).toDouble(),
-        'outstanding_balance': (outstandingRaw < 0 ? 0 : outstandingRaw).toDouble(),
+        'outstanding_balance': outstandingBalance.toDouble(),
+        if (toll.hasToll || toll.tollFee > 0) ...{
+          'toll_fee': toll.tollFee,
+          if (toll.tollName != null) 'toll_name': toll.tollName,
+          'has_toll': toll.hasToll,
+          if (toll.total != null) 'total_with_toll': toll.total,
+        },
         'distance_miles': distanceMiles ?? 0.0,
         'distance_text': distanceText,
         'duration_text': durationText,

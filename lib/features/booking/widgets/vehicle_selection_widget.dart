@@ -5,6 +5,7 @@ import '../../../core/services/places_service.dart';
 import '../../../core/services/vehicle_service.dart';
 import '../../../core/models/vehicle.dart';
 import '../../../core/models/error_display_helper.dart';
+import '../../../core/models/toll_breakdown.dart';
 import '../../../core/theme.dart';
 
 class VehicleSelectionWidget extends StatefulWidget {
@@ -59,6 +60,10 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
   bool _isLoadingCategories = true;
   Map<String, Map<String, dynamic>> _fareEstimates = {};
   Map<String, dynamic>? _promoResponse;
+  // Route-level toll from the fare-estimate TOP-LEVEL map (§1.1
+  // `hasToll`/`tollDetails`) — fallback for categories that carry no
+  // per-category toll keys. Parsed once per fetch via TollInfo.fromEstimate.
+  TollInfo? _estimateToll;
   bool _isFetchingFares = false;
   String? _fareError;
   String? _fareErrorAction;
@@ -81,6 +86,7 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
       // Empty map + _isFetchingFares shows the fare skeleton instead.
       _fareEstimates = {};
       _promoResponse = null;
+      _estimateToll = null;
       _fetchFareEstimates();
     }
   }
@@ -193,6 +199,9 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
 
         setState(() {
           _promoResponse = promoData;
+          // Top-level toll (§1.1 hasToll/tollDetails) — parsed once for the
+          // whole route; per-category toll keys still win when present.
+          _estimateToll = TollInfo.fromEstimate(promoData);
           _fareError = null;
           _fareErrorAction = null;
           final List<dynamic> categories = promoData['categories'] ?? [];
@@ -306,6 +315,11 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
     );
     final outstandingBalance = (outstandingRaw < 0 ? 0 : outstandingRaw);
     final seatingCapacity = (cat['seatingCapacity'] as num?)?.toInt();
+    // Toll chain (§1.1 per-category tollFee/totalFare via the shared
+    // never-throw parser). Absent-toll categories add NO keys — the fare
+    // map stays byte-identical to today's shape (TOLL-08 baseline).
+    // `slug`/`estimatedFare` chains above stay first/authoritative.
+    final toll = TollInfo.fromCategory(cat);
 
     return {
       'slug': slug,
@@ -319,6 +333,12 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
         'congestion_amount': congestionAmount.toDouble(),
         'outstanding_balance': outstandingBalance.toDouble(),
         if (seatingCapacity != null) 'seating_capacity': seatingCapacity,
+        if (toll.hasToll || toll.tollFee > 0) ...{
+          'toll_fee': toll.tollFee,
+          if (toll.tollName != null) 'toll_name': toll.tollName,
+          'has_toll': toll.hasToll,
+          if (toll.total != null) 'total_with_toll': toll.total,
+        },
         'distance_text': distanceText,
         'distance_miles': distanceMiles ?? 0.0,
         'duration_text': durationText,
@@ -665,6 +685,26 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                 ? fareData!['duration_text'] as String
                 : 'Calculating...';
 
+            // Toll (§1.1, TOLL-01): per-category toll keys win; the
+            // route-level estimate toll (hasToll/tollDetails) is the
+            // fallback when the category entry carries none — never both,
+            // so a spec-shaped response shows the toll exactly once.
+            final catTollFee = (fareData?['toll_fee'] as num?)?.toDouble();
+            final tollFee = catTollFee ??
+                ((_estimateToll?.hasToll ?? false)
+                    ? _estimateToll!.tollFee
+                    : 0.0);
+            final tollName =
+                (fareData?['toll_name'] ?? _estimateToll?.tollName)?.toString();
+            final hasToll =
+                fareData?['has_toll'] == true || (_estimateToll?.hasToll ?? false);
+            final totalWithToll =
+                (fareData?['total_with_toll'] as num?)?.toDouble();
+            // Backend-authoritative payable total (spec totalFare) when the
+            // category carries a toll; otherwise today's price untouched.
+            final payablePrice =
+                (hasToll && totalWithToll != null) ? totalWithToll : price;
+
             return InkWell(
               onTap: () {
                 setState(() => _selectedCategorySlug = category.slug);
@@ -784,7 +824,7 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                                           Text(
                                             fareData?['is_free_ride'] == true
                                                 ? 'FREE'
-                                                : '£${price.toStringAsFixed(2)}',
+                                                : '£${payablePrice.toStringAsFixed(2)}',
                                             style: TextStyle(
                                               fontSize: 18,
                                               fontWeight: FontWeight.bold,
@@ -815,8 +855,8 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                                       ),
                                     ] else ...[
                                       Text(
-                                        price > 0
-                                            ? '£${price.toStringAsFixed(2)}'
+                                        payablePrice > 0
+                                            ? '£${payablePrice.toStringAsFixed(2)}'
                                             : 'N/A',
                                         style: TextStyle(
                                           fontSize: 18,
@@ -858,6 +898,35 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
                                   color: Colors.amber.shade800,
+                                ),
+                              ),
+                            ),
+                          // Toll row (§1.1, TOLL-01): itemized name + amount
+                          // when the category (or route-level fallback)
+                          // carries a toll. Absent/0 omits the widget
+                          // entirely — no £0.00, no layout shift (TOLL-08).
+                          if (fareData != null && tollFee > 0)
+                            Container(
+                              margin: const EdgeInsets.only(top: 4),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.blue.shade50,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: Colors.blue.shade100,
+                                ),
+                              ),
+                              child: Text(
+                                (tollName == null || tollName.isEmpty)
+                                    ? 'Toll +£${tollFee.toStringAsFixed(2)}'
+                                    : 'Toll · $tollName +£${tollFee.toStringAsFixed(2)}',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.blue.shade800,
                                 ),
                               ),
                             ),
