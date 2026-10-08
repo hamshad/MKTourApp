@@ -47,13 +47,20 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
   bool _isLoadingAddresses = true;
 
   /// Normalized toll reimbursement attached at intake (21-03 TOLL-04).
-  /// 0.0 whenever the offer carries no toll data — badge then omitted.
+  /// 0.0 whenever the offer carries no toll data — row omitted (TOLL-08).
   double get _tollReimbursement {
     final earnings = widget.rideData?['estimated_earnings'];
     if (earnings is! Map) return 0.0;
     final value = earnings['toll_reimbursement'];
     if (value is num) return value.toDouble();
     return double.tryParse('$value') ?? 0.0;
+  }
+
+  /// Toll road name (e.g. "M6 Toll Highway") — shown at card bottom.
+  String get _tollName {
+    final earnings = widget.rideData?['estimated_earnings'];
+    if (earnings is! Map) return '';
+    return earnings['toll_name']?.toString() ?? '';
   }
 
   static const int _addressCacheCapacity = 20;
@@ -681,32 +688,15 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                         ),
                       ],
                     ),
-                    // Toll reimbursement badge (21-03 TOLL-04) — styled like
-                    // the congestion badge, shown ONLY when the backend sent
-                    // a toll. Absent toll data renders this exact subtree
-                    // omitted: fare header untouched (TOLL-08).
                     if (_tollReimbursement > 0)
-                      Container(
-                        margin: const EdgeInsets.only(top: 4),
-                        constraints: const BoxConstraints(maxWidth: 170),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.green.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.green.shade200),
-                        ),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
                         child: Text(
-                          'Includes £${_tollReimbursement.toStringAsFixed(2)} Toll Reimbursement',
-                          maxLines: 2,
-                          softWrap: true,
-                          overflow: TextOverflow.ellipsis,
+                          '+£${_tollReimbursement.toStringAsFixed(2)} toll',
                           style: TextStyle(
-                            fontSize: 10,
+                            fontSize: 11,
                             fontWeight: FontWeight.w600,
-                            color: Colors.green.shade800,
+                            color: Colors.green.shade700,
                           ),
                         ),
                       ),
@@ -783,6 +773,18 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                         fontSize: 13,
                       ),
                     ),
+                    if (_tollReimbursement > 0 && _tollName.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          _tollName,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey[600],
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),

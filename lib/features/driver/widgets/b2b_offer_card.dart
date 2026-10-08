@@ -26,8 +26,11 @@ class B2bOfferData {
   final String vehicleCategory;
 
   /// Toll reimbursement normalized at intake (21-03 TOLL-04).
-  /// 0.0 when the offer carries no toll data — badge then omitted.
+  /// 0.0 when the offer carries no toll data — row omitted (TOLL-08).
   final double tollReimbursement;
+
+  /// Toll road name (e.g. "M6 Toll Highway") — shown at card bottom.
+  final String tollName;
 
   const B2bOfferData({
     this.riderName = '',
@@ -41,11 +44,13 @@ class B2bOfferData {
     this.distance = 0.0,
     this.vehicleCategory = '',
     this.tollReimbursement = 0.0,
+    this.tollName = '',
   });
 
   bool get hasFare => fare > 0;
   bool get hasDistance => distance > 0;
   bool get hasTollReimbursement => tollReimbursement > 0;
+  bool get hasTollName => tollName.isNotEmpty;
   bool get hasBothPoints =>
       pickupLat != null &&
       pickupLng != null &&
@@ -53,10 +58,6 @@ class B2bOfferData {
       dropoffLng != null;
 
   String get fareLabel => hasFare ? '\£${fare.toStringAsFixed(2)}' : '';
-
-  /// Copy pinned by spec §3.1 — rendered only when [hasTollReimbursement].
-  String get tollBadgeLabel =>
-      'Includes £${tollReimbursement.toStringAsFixed(2)} Toll Reimbursement';
 
   String get distanceLabel => hasDistance ? '${distance.toStringAsFixed(1)} mi' : '';
 
@@ -108,6 +109,9 @@ class B2bOfferData {
     final tollReimbursement = earnings is Map
         ? _num(earnings['toll_reimbursement']) ?? 0.0
         : 0.0;
+    final tollName = earnings is Map
+        ? (earnings['toll_name']?.toString() ?? '')
+        : '';
     return B2bOfferData(
       riderName: riderName.trim(),
       pickupAddress: pickup.$1,
@@ -122,6 +126,7 @@ class B2bOfferData {
           (map['vehicleCategorySlug'] ?? map['vehicleCategory'] ?? '')
               .toString(),
       tollReimbursement: tollReimbursement,
+      tollName: tollName,
     );
   }
 
@@ -511,39 +516,20 @@ class _B2bOfferCardState extends State<B2bOfferCard>
                               color: AppTheme.textPrimary,
                               fontFeatures: [FontFeature.tabularFigures()],
                             ),
-                          ),
-                          // Toll reimbursement badge (21-03 TOLL-04) —
-                          // congestion-badge styling, gated > 0. Absent toll
-                          // data omits this subtree entirely (TOLL-08).
-                           if (data.hasTollReimbursement)
-                             Container(
-                               margin: const EdgeInsets.only(top: 4),
-                               constraints: const BoxConstraints(maxWidth: 170),
-                               padding: const EdgeInsets.symmetric(
-                                 horizontal: 6,
-                                 vertical: 3,
-                               ),
-                               decoration: BoxDecoration(
-                                 color: Colors.green.shade50,
-                                 borderRadius: BorderRadius.circular(8),
-                                 border: Border.all(
-                                   color: Colors.green.shade200,
-                                 ),
-                               ),
-                               child: Text(
-                                 data.tollBadgeLabel,
-                                 textAlign: TextAlign.end,
-                                 maxLines: 2,
-                                 softWrap: true,
-                                 overflow: TextOverflow.ellipsis,
-                                 style: TextStyle(
-                                   fontSize: 10,
-                                   fontWeight: FontWeight.w600,
-                                   color: Colors.green.shade800,
-                                 ),
-                               ),
-                             ),
-                        ],
+                           ),
+                          if (data.hasTollReimbursement)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(
+                                '+£${data.tollReimbursement.toStringAsFixed(2)} toll',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.green.shade700,
+                                ),
+                              ),
+                            ),
+                         ],
                       ),
                     ),
                   ],
@@ -562,6 +548,18 @@ class _B2bOfferCardState extends State<B2bOfferCard>
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
               child: _RouteTimeline(data: data),
             ),
+            if (data.hasTollReimbursement && data.hasTollName)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                child: Text(
+                  data.tollName,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey[600],
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
             if (widget.enriching)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
