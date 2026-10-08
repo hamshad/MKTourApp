@@ -177,6 +177,7 @@ class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
   Widget _buildBody() {
     final summary = _summary ?? <String, dynamic>{};
     final payout = earningsPayoutStatus(_summary);
+    final metrics = summary is Map<String, dynamic> ? (summary['metrics'] as Map<String, dynamic>?) ?? <String, dynamic>{} : <String, dynamic>{};
 
     return RefreshIndicator(
       onRefresh: _fetch,
@@ -209,7 +210,7 @@ class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
                 Expanded(
                   child: _buildKpiCard(
                     label: 'Net Earnings',
-                    value: _money(earningsNumOf(summary['netTripEarnings'])),
+                    value: _money(earningsNumOf(metrics['netEarnings'])),
                     color: AppTheme.primaryColor,
                   ),
                 ),
@@ -219,7 +220,7 @@ class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
                     label: 'Tolls Reimbursed',
                     // Absent field → £0.00, never a crash.
                     value: _money(
-                        earningsNumOf(summary['tollsReimbursedTotal'])),
+                        earningsNumOf(metrics['tollsReimbursedTotal'])),
                     color: AppTheme.successColor,
                   ),
                 ),
@@ -231,16 +232,16 @@ class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
             // Supporting breakdown rows.
             _buildBreakdownItem(
                 'Trips Completed',
-                earningsNumOf(summary['tripsCompleted']).toStringAsFixed(0)),
+                earningsNumOf(metrics['totalRides']).toStringAsFixed(0)),
             _buildBreakdownItem('Online Hours',
-                earningsNumOf(summary['onlineHours']).toStringAsFixed(1)),
+                earningsNumOf(metrics['onlineHours']).toStringAsFixed(1)),
             _buildBreakdownItem(
-                'Gross Fares', _money(earningsNumOf(summary['grossPassengerFares']))),
+                'Gross Fares', _money(earningsNumOf(metrics['grossFare']))),
             _buildBreakdownItem(
-                'Platform Deductions', _money(earningsNumOf(summary['platformDeductions']))),
+                'Platform Deductions', _money(earningsNumOf(metrics['platformFee']))),
             // Total earnings rendered verbatim from the payload.
             _buildBreakdownItem(
-                'Total Earnings', _money(earningsNumOf(summary['totalEarnings']))),
+                'Total Earnings', _money(earningsNumOf(metrics['totalEarnings']))),
 
             if (payout != null) ...[
               _buildPayoutRow(payout),
