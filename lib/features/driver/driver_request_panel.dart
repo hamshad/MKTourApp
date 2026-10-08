@@ -688,8 +688,9 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                     if (_tollReimbursement > 0)
                       Container(
                         margin: const EdgeInsets.only(top: 4),
+                        constraints: const BoxConstraints(maxWidth: 170),
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
+                          horizontal: 6,
                           vertical: 3,
                         ),
                         decoration: BoxDecoration(
@@ -699,8 +700,11 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                         ),
                         child: Text(
                           'Includes £${_tollReimbursement.toStringAsFixed(2)} Toll Reimbursement',
+                          maxLines: 2,
+                          softWrap: true,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 11,
+                            fontSize: 10,
                             fontWeight: FontWeight.w600,
                             color: Colors.green.shade800,
                           ),

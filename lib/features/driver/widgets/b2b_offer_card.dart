@@ -515,30 +515,34 @@ class _B2bOfferCardState extends State<B2bOfferCard>
                           // Toll reimbursement badge (21-03 TOLL-04) —
                           // congestion-badge styling, gated > 0. Absent toll
                           // data omits this subtree entirely (TOLL-08).
-                          if (data.hasTollReimbursement)
-                            Container(
-                              margin: const EdgeInsets.only(top: 4),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.green.shade50,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                  color: Colors.green.shade200,
-                                ),
-                              ),
-                              child: Text(
-                                data.tollBadgeLabel,
-                                textAlign: TextAlign.end,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.green.shade800,
-                                ),
-                              ),
-                            ),
+                           if (data.hasTollReimbursement)
+                             Container(
+                               margin: const EdgeInsets.only(top: 4),
+                               constraints: const BoxConstraints(maxWidth: 170),
+                               padding: const EdgeInsets.symmetric(
+                                 horizontal: 6,
+                                 vertical: 3,
+                               ),
+                               decoration: BoxDecoration(
+                                 color: Colors.green.shade50,
+                                 borderRadius: BorderRadius.circular(8),
+                                 border: Border.all(
+                                   color: Colors.green.shade200,
+                                 ),
+                               ),
+                               child: Text(
+                                 data.tollBadgeLabel,
+                                 textAlign: TextAlign.end,
+                                 maxLines: 2,
+                                 softWrap: true,
+                                 overflow: TextOverflow.ellipsis,
+                                 style: TextStyle(
+                                   fontSize: 10,
+                                   fontWeight: FontWeight.w600,
+                                   color: Colors.green.shade800,
+                                 ),
+                               ),
+                             ),
                         ],
                       ),
                     ),
