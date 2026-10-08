@@ -1,13 +1,11 @@
 import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-
-import '../../../core/models/error_display_helper.dart';
-import '../../../core/models/toll_breakdown.dart';
-import '../../../core/models/vehicle.dart';
 import '../../../core/services/places_service.dart';
 import '../../../core/services/vehicle_service.dart';
+import '../../../core/models/vehicle.dart';
+import '../../../core/models/error_display_helper.dart';
+import '../../../core/models/toll_breakdown.dart';
 import '../../../core/theme.dart';
 
 class VehicleSelectionWidget extends StatefulWidget {
@@ -23,7 +21,7 @@ class VehicleSelectionWidget extends StatefulWidget {
     String categoryName,
     Map<String, dynamic> fareData,
   )?
-  onPrebookVehicle;
+  onPrebookVehicle; // Callback for prebook button
   final bool isLoading;
   final double? pickupLat;
   final double? pickupLng;
@@ -62,25 +60,30 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
   bool _isLoadingCategories = true;
   Map<String, Map<String, dynamic>> _fareEstimates = {};
   Map<String, dynamic>? _promoResponse;
+  // Route-level toll from the fare-estimate TOP-LEVEL map (§1.1
+  // `hasToll`/`tollDetails`) — fallback for categories that carry no
+  // per-category toll keys. Parsed once per fetch via TollInfo.fromEstimate.
   TollInfo? _estimateToll;
   bool _isFetchingFares = false;
   String? _fareError;
   String? _fareErrorAction;
+  // Fetch generation: a slow earlier response (e.g. no-stops route) must
+  // not repopulate estimates after a newer stops-change fetch started.
   int _fareFetchGen = 0;
-
-  static const double _cardRadius = 16;
-  static const double _pageHorizontal = 16;
 
   @override
   void didUpdateWidget(VehicleSelectionWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-
+    // Stops change the price — refetch estimates when stops or route change.
     if (oldWidget.stops != widget.stops ||
         oldWidget.pickupLat != widget.pickupLat ||
         oldWidget.pickupLng != widget.pickupLng ||
         oldWidget.dropoffLat != widget.dropoffLat ||
         oldWidget.dropoffLng != widget.dropoffLng ||
         oldWidget.distance != widget.distance) {
+      // Drop stale estimates immediately: keeping them made old (no-stops)
+      // fares selectable while the refetch ran — booking at the base fare.
+      // Empty map + _isFetchingFares shows the fare skeleton instead.
       _fareEstimates = {};
       _promoResponse = null;
       _estimateToll = null;
@@ -94,47 +97,49 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
     _loadCategories();
   }
 
+  /// Load vehicle categories from backend API
   Future<void> _loadCategories() async {
     debugPrint('🚗 VehicleSelectionWidget: Loading categories from API...');
     setState(() => _isLoadingCategories = true);
 
     try {
       final categories = await _vehicleService.getVehicleCategories();
-      if (!mounted) return;
+      if (mounted) {
+        setState(() {
+          _categories = categories;
+          _isLoadingCategories = false;
+          if (categories.isNotEmpty) {
+            _selectedCategorySlug = categories.first.slug;
+          }
+        });
+        debugPrint(
+          '✅ VehicleSelectionWidget: Loaded ${categories.length} categories',
+        );
 
-      setState(() {
-        _categories = categories;
-        _isLoadingCategories = false;
-        if (categories.isNotEmpty) {
-          _selectedCategorySlug = categories.first.slug;
-        }
-      });
-
-      debugPrint(
-        '✅ VehicleSelectionWidget: Loaded ${categories.length} categories',
-      );
-      _fetchFareEstimates();
+        // Fetch fare estimates for all categories if locations are available
+        _fetchFareEstimates();
+      }
     } catch (e) {
       debugPrint('❌ VehicleSelectionWidget: Error loading categories: $e');
-      if (!mounted) return;
-
-      setState(() {
-        _categories = _vehicleService.defaultCategories;
-        _isLoadingCategories = false;
-        if (_categories.isNotEmpty) {
-          _selectedCategorySlug = _categories.first.slug;
-        }
-      });
+      if (mounted) {
+        setState(() {
+          _categories = _vehicleService.defaultCategories;
+          _isLoadingCategories = false;
+          if (_categories.isNotEmpty) {
+            _selectedCategorySlug = _categories.first.slug;
+          }
+        });
+      }
     }
   }
 
+  /// Fetch fare estimates for all vehicle categories from backend
   Future<void> _fetchFareEstimates() async {
     final gen = ++_fareFetchGen;
     bool stale() => gen != _fareFetchGen;
 
     if (widget.fixedFareByCategory != null) {
       setState(() => _isFetchingFares = true);
-
       for (final category in _categories) {
         final fixedPrice = widget.fixedFareByCategory?[category.slug] ?? 0.0;
         _fareEstimates[category.slug] = {
@@ -146,7 +151,6 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
           'outstanding_balance': 0.0,
         };
       }
-
       if (mounted) {
         setState(() => _isFetchingFares = false);
       }
@@ -166,6 +170,7 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
     setState(() => _isFetchingFares = true);
 
     try {
+      // Use new fare-estimate endpoint which handles promo logically
       final promoData = await _placesService.getFareEstimate(
         pickupLat: widget.pickupLat!,
         pickupLon: widget.pickupLng!,
@@ -175,9 +180,14 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
         stops: widget.stops,
       );
 
-      if (stale()) return;
+      if (stale()) {
+        // A newer fetch (stops/route change) superseded this one — it owns
+        // _isFetchingFares and the estimate map now.
+        return;
+      }
 
       if (mounted && promoData != null) {
+        // Extract shared distance/duration from API response top-level
         final estimatedDistance = promoData['estimatedDistance'];
         final duration = promoData['duration'];
         final distanceText = estimatedDistance != null
@@ -192,14 +202,14 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
 
         setState(() {
           _promoResponse = promoData;
+          // Top-level toll (§1.1 hasToll/tollDetails) — parsed once for the
+          // whole route; per-category toll keys still win when present.
           _estimateToll = TollInfo.fromEstimate(promoData);
           _fareError = null;
           _fareErrorAction = null;
-
           final List<dynamic> categories = promoData['categories'] ?? [];
           for (var cat in categories) {
             if (cat is! Map) continue;
-
             final normalized = _normalizeCategory(
               Map<String, dynamic>.from(cat),
               distanceText: distanceText,
@@ -207,17 +217,20 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
               durationSeconds: duration is Map
                   ? (duration['seconds'] as num?)?.toInt() ?? 0
                   : 0,
+              // Top-level routed distance (includes stops) — the per-category
+              // objects carry no numeric distance, and without this the
+              // booking screens send distance 0.0 so backend underprices.
               distanceMiles: (estimatedDistance as num?)?.toDouble(),
             );
-
             if (normalized != null) {
               _fareEstimates[normalized['slug'] as String] = normalized['fare'];
             }
           }
         });
-
         debugPrint('✅ VehicleSelectionWidget: Got promo-aware fare estimates');
       } else {
+        // Fare endpoint failed (e.g. 400 missing params) — inline retry row
+        // via the central mapper, never a silent empty list.
         if (mounted) {
           final info = RideErrorMapper.map(
             'pickupLon, pickupLat, dropoffLon, dropoffLat, and distance are required',
@@ -227,11 +240,9 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
             _fareErrorAction = info.actionLabel ?? 'Try again';
           });
         }
-
         debugPrint('⚠️ Falling back to sequential fare estimates');
         for (final category in _categories) {
           if (stale()) break;
-
           try {
             final result = await _placesService.getDistanceAndFare(
               originLat: widget.pickupLat!,
@@ -269,6 +280,12 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
     }
   }
 
+  /// Normalize one fare-estimate category into the card's unified shape.
+  ///
+  /// Handles the new flow shape (`categorySlug`, `estimatedFare`,
+  /// `isPromoApplied`, `isCongestionCharge`, `congestionChargeAmount`,
+  /// `seatingCapacity`) and the legacy promo shape (`slug`, `promoApplied`,
+  /// `discount`, `isFreeRide`). Returns null when the entry has no slug.
   Map<String, dynamic>? _normalizeCategory(
     Map<String, dynamic> cat, {
     required String distanceText,
@@ -280,7 +297,6 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
     if (slug == null || slug.isEmpty) return null;
 
     num numOf(dynamic v) => v is num ? v : num.tryParse('$v') ?? 0;
-
     final estimatedFare = numOf(cat['estimatedFare'] ?? cat['total_fare']);
     final originalFare = numOf(
       cat['originalFare'] ?? cat['original_fare'] ?? estimatedFare,
@@ -292,14 +308,20 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
     final discount = numOf(cat['discount'] ?? (originalFare - estimatedFare));
     final isCongestion = cat['isCongestionCharge'] == true;
     final congestionAmount = numOf(cat['congestionChargeAmount'] ?? 0);
+    // Backend already folds unpaid balance into estimatedFare — surface the
+    // split only, never add it to the total (no double-count).
     final outstandingRaw = numOf(
       cat['outstandingBalance'] ??
           cat['excessAmount'] ??
           cat['outstanding_balance'] ??
           0,
     );
-    final outstandingBalance = outstandingRaw < 0 ? 0 : outstandingRaw;
+    final outstandingBalance = (outstandingRaw < 0 ? 0 : outstandingRaw);
     final seatingCapacity = (cat['seatingCapacity'] as num?)?.toInt();
+    // Toll chain (§1.1 per-category tollFee/totalFare via the shared
+    // never-throw parser). Absent-toll categories add NO keys — the fare
+    // map stays byte-identical to today's shape (TOLL-08 baseline).
+    // `slug`/`estimatedFare` chains above stay first/authoritative.
     final toll = TollInfo.fromCategory(cat);
 
     return {
@@ -328,681 +350,97 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
     };
   }
 
-  String _categoryDisplayName(VehicleCategory category) {
-    return category.name == category.slug || category.name == 'Unknown'
-        ? VehicleCategory.formatSlug(category.slug)
-        : category.name;
-  }
-
+  /// Get icon for vehicle category
   IconData _getVehicleIcon(String slug) {
     if (slug.contains('suv')) return Icons.directions_car_filled;
-    if (slug.contains('van') || slug.contains('bus')) {
+    if (slug.contains('van') || slug.contains('bus'))
       return Icons.airport_shuttle;
-    }
     if (slug.contains('hatchback')) return Icons.car_rental;
     return Icons.directions_car;
   }
 
   Widget _buildVehicleIconWidget(VehicleCategory category, bool isSelected) {
-    final activeColor = isSelected ? AppTheme.primaryColor : Colors.grey[700]!;
-
     if (category.icon != null && category.icon!.isNotEmpty) {
       if (category.icon!.startsWith('data:image/svg')) {
         try {
           if (category.icon!.contains(';base64,')) {
             final base64String = category.icon!.split(';base64,').last;
-            var normalizedBase64 = base64String;
+            // Pad the base64 string if necessary
+            String normalizedBase64 = base64String;
             while (normalizedBase64.length % 4 != 0) {
               normalizedBase64 += '=';
             }
             return SvgPicture.memory(
               base64Decode(normalizedBase64),
-              width: 34,
-              height: 34,
-              colorFilter: ColorFilter.mode(activeColor, BlendMode.srcIn),
+              width: 32,
+              height: 32,
+              colorFilter: ColorFilter.mode(
+                isSelected ? AppTheme.primaryColor : Colors.grey[700]!,
+                BlendMode.srcIn,
+              ),
             );
-          }
-
-          final parts = category.icon!.split(',');
-          if (parts.length > 1) {
-            final rawSvg = Uri.decodeComponent(parts.sublist(1).join(','));
-            return SvgPicture.string(
-              rawSvg,
-              width: 34,
-              height: 34,
-              colorFilter: ColorFilter.mode(activeColor, BlendMode.srcIn),
-            );
+          } else {
+            final parts = category.icon!.split(',');
+            if (parts.length > 1) {
+              final rawSvg = Uri.decodeComponent(parts.sublist(1).join(','));
+              return SvgPicture.string(
+                rawSvg,
+                width: 32,
+                height: 32,
+                colorFilter: ColorFilter.mode(
+                  isSelected ? AppTheme.primaryColor : Colors.grey[700]!,
+                  BlendMode.srcIn,
+                ),
+              );
+            }
           }
         } catch (e) {
           debugPrint('Error parsing SVG icon: $e');
         }
       } else if (category.icon!.startsWith('<svg')) {
+        // Direct SVG string
         try {
           return SvgPicture.string(
             category.icon!,
-            width: 34,
-            height: 34,
-            colorFilter: ColorFilter.mode(activeColor, BlendMode.srcIn),
+            width: 32,
+            height: 32,
+            colorFilter: ColorFilter.mode(
+              isSelected ? AppTheme.primaryColor : Colors.grey[700]!,
+              BlendMode.srcIn,
+            ),
           );
         } catch (e) {
           debugPrint('Error parsing SVG string: $e');
         }
       } else if (category.icon!.startsWith('http')) {
+        // Network SVG or Image
         if (category.icon!.endsWith('.svg') ||
             category.icon!.contains('.svg?')) {
           return SvgPicture.network(
             category.icon!,
-            width: 34,
-            height: 34,
-            colorFilter: ColorFilter.mode(activeColor, BlendMode.srcIn),
+            width: 32,
+            height: 32,
+            colorFilter: ColorFilter.mode(
+              isSelected ? AppTheme.primaryColor : Colors.grey[700]!,
+              BlendMode.srcIn,
+            ),
+          );
+        } else {
+          return Image.network(
+            category.icon!,
+            width: 32,
+            height: 32,
+            color: isSelected ? AppTheme.primaryColor : Colors.grey[700],
           );
         }
-
-        return Image.network(
-          category.icon!,
-          width: 34,
-          height: 34,
-          color: activeColor,
-        );
       }
     }
 
-    return Icon(_getVehicleIcon(category.slug), size: 34, color: activeColor);
-  }
-
-  Widget _buildMetaItem({
-    required IconData icon,
-    required String label,
-    Color? color,
-  }) {
-    final resolvedColor = color ?? Colors.grey[600]!;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 15, color: resolvedColor),
-        const SizedBox(width: 4),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            height: 1.15,
-            fontWeight: FontWeight.w500,
-            color: resolvedColor,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTollInline({
-    required String? tollName,
-    required double tollFee,
-  }) {
-    final label = (tollName == null || tollName.isEmpty)
-        ? 'Toll +£${tollFee.toStringAsFixed(2)}'
-        : 'Toll · $tollName +£${tollFee.toStringAsFixed(2)}';
-
-    return SizedBox(
-      width: double.infinity,
-      child: Row(
-        children: [
-          Icon(Icons.toll_rounded, size: 16, color: Colors.blue.shade700),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              label,
-              maxLines: 1,
-              softWrap: false,
-              overflow: TextOverflow.visible,
-              style: TextStyle(
-                fontSize: 13,
-                height: 1.15,
-                fontWeight: FontWeight.w600,
-                color: Colors.blue.shade700,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFare({
-    required Map<String, dynamic>? fareData,
-    required double payablePrice,
-    required bool isSelected,
-  }) {
-    if (_isFetchingFares && fareData == null) {
-      return const SizedBox(
-        width: 18,
-        height: 18,
-        child: CircularProgressIndicator(strokeWidth: 2),
-      );
-    }
-
-    final isPromo = fareData?['promo_applied'] == true;
-    final isFree = fareData?['is_free_ride'] == true;
-    final originalFare = (fareData?['original_fare'] as num?)?.toDouble();
-    final discount = (fareData?['discount'] as num?)?.toDouble() ?? 0;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        if (isPromo && originalFare != null)
-          Text(
-            '£${originalFare.toStringAsFixed(2)}',
-            style: TextStyle(
-              fontSize: 11,
-              color: Colors.grey[500],
-              decoration: TextDecoration.lineThrough,
-              fontWeight: FontWeight.w500,
-              height: 1.1,
-            ),
-          ),
-        if (isPromo && originalFare != null) const SizedBox(height: 2),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Text(
-              isFree
-                  ? 'FREE'
-                  : payablePrice > 0
-                  ? '£${payablePrice.toStringAsFixed(2)}'
-                  : 'N/A',
-              style: TextStyle(
-                fontSize: 19,
-                height: 1,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.4,
-                color: isFree
-                    ? AppTheme.successColor
-                    : (isSelected
-                          ? AppTheme.primaryColor
-                          : AppTheme.textPrimary),
-              ),
-            ),
-            if (isSelected) ...[
-              const SizedBox(width: 6),
-              Container(
-                width: 22,
-                height: 22,
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryColor,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.check, color: Colors.white, size: 15),
-              ),
-            ],
-          ],
-        ),
-        if (isPromo && discount > 0) ...[
-          const SizedBox(height: 3),
-          Text(
-            'Save £${discount.toStringAsFixed(2)}',
-            textAlign: TextAlign.right,
-            style: TextStyle(
-              fontSize: 10.5,
-              height: 1.15,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.successColor,
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildVehicleRow({
-    required VehicleCategory category,
-    required Map<String, dynamic>? fareData,
-    required bool isSelected,
-    required bool isLast,
-  }) {
-    final price = (fareData?['total_fare'] as num?)?.toDouble() ?? 0.0;
-    final seatingCapacity =
-        (fareData?['seating_capacity'] as num?)?.toInt() ??
-        category.seatingCapacity;
-    final durationText =
-        fareData?['duration_text']?.toString().isNotEmpty == true
-        ? fareData!['duration_text'] as String
-        : 'Calculating...';
-
-    final catTollFee = (fareData?['toll_fee'] as num?)?.toDouble();
-    final tollFee =
-        catTollFee ??
-        ((_estimateToll?.hasToll ?? false) ? _estimateToll!.tollFee : 0.0);
-    final tollName = (fareData?['toll_name'] ?? _estimateToll?.tollName)
-        ?.toString();
-    final hasToll =
-        fareData?['has_toll'] == true || (_estimateToll?.hasToll ?? false);
-    final totalWithToll = (fareData?['total_with_toll'] as num?)?.toDouble();
-    final payablePrice = (hasToll && totalWithToll != null)
-        ? totalWithToll
-        : price;
-
-    final balance =
-        (fareData?['outstanding_balance'] as num?)?.toDouble() ?? 0.0;
-    final isCongestion = fareData?['is_congestion'] == true;
-    final congestionAmount =
-        (fareData?['congestion_amount'] as num?)?.toDouble() ?? 0.0;
-    final distanceText = fareData?['distance_text']?.toString() ?? '';
-
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () {
-        setState(() => _selectedCategorySlug = category.slug);
-        widget.onVehicleSelected(category.slug);
-      },
-      child: Column(
-        children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            curve: Curves.easeOut,
-            margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-            padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
-            decoration: BoxDecoration(
-              color: isSelected
-                  ? AppTheme.primaryColor.withOpacity(0.055)
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(_cardRadius),
-              border: Border.all(
-                color: isSelected
-                    ? AppTheme.primaryColor.withOpacity(0.28)
-                    : Colors.transparent,
-                width: 1.2,
-              ),
-            ),
-            child: IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Align(
-                    alignment: Alignment.topCenter,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 160),
-                      width: 76,
-                      height: 76,
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? AppTheme.primaryColor.withOpacity(0.10)
-                            : Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(_cardRadius),
-                      ),
-                      child: Center(
-                        child: _buildVehicleIconWidget(category, isSelected),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 1),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  _categoryDisplayName(category),
-                                  softWrap: true,
-                                  style: const TextStyle(
-                                    fontSize: 17,
-                                    height: 1.15,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: -0.15,
-                                    color: AppTheme.textPrimary,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              SizedBox(
-                                width: 112,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    _buildFare(
-                                      fareData: fareData,
-                                      payablePrice: payablePrice,
-                                      isSelected: isSelected,
-                                    ),
-                                    if (distanceText.isNotEmpty) ...[
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        distanceText,
-                                        textAlign: TextAlign.right,
-                                        softWrap: false,
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          height: 1.1,
-                                          color: Colors.grey[500],
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 7),
-                          Wrap(
-                            spacing: 12,
-                            runSpacing: 5,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            children: [
-                              _buildMetaItem(
-                                icon: Icons.person_outline_rounded,
-                                label: '$seatingCapacity',
-                              ),
-                              _buildMetaItem(
-                                icon: Icons.luggage_outlined,
-                                label: '${category.luggage.suitcases}',
-                              ),
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.schedule_rounded,
-                                    size: 17,
-                                    color: AppTheme.primaryColor,
-                                  ),
-                                  const SizedBox(width: 5),
-                                  Text(
-                                    durationText,
-                                    softWrap: true,
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      height: 1.15,
-                                      fontWeight: FontWeight.w600,
-                                      color: AppTheme.primaryColor,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                          if (tollFee > 0) ...[
-                            const SizedBox(height: 7),
-                            _buildTollInline(
-                              tollName: tollName,
-                              tollFee: tollFee,
-                            ),
-                          ],
-                          if (isCongestion && congestionAmount > 0) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              '+£${congestionAmount.toStringAsFixed(2)} congestion',
-                              softWrap: true,
-                              style: TextStyle(
-                                fontSize: 11.5,
-                                height: 1.2,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.amber.shade800,
-                              ),
-                            ),
-                          ],
-                          if (isSelected && balance > 0) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              'Includes £${balance.toStringAsFixed(2)} balance',
-                              softWrap: true,
-                              style: TextStyle(
-                                fontSize: 11.5,
-                                height: 1.2,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.amber.shade800,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (!isLast)
-            Padding(
-              padding: const EdgeInsets.only(left: 102, right: 14),
-              child: Divider(
-                height: 1,
-                thickness: 1,
-                color: Colors.grey.shade200,
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSkeletonRow({required bool isLast}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
-        children: [
-          Container(
-            width: 74,
-            height: 54,
-            decoration: BoxDecoration(
-              color: Colors.grey.shade100,
-              borderRadius: BorderRadius.circular(14),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 120,
-                  height: 15,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade200,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Container(
-                  width: 165,
-                  height: 11,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  width: 90,
-                  height: 10,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Container(
-                width: 56,
-                height: 17,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade200,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                width: 42,
-                height: 10,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPromoBanner() {
-    final cap = (_promoResponse?['promoCapAmount'] as num?)?.toDouble() ?? 0;
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(
-        _pageHorizontal,
-        4,
-        _pageHorizontal,
-        12,
-      ),
-      padding: const EdgeInsets.all(13),
-      decoration: BoxDecoration(
-        color: AppTheme.successColor.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.successColor.withOpacity(0.18)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: AppTheme.successColor.withOpacity(0.12),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.local_offer_outlined,
-              color: AppTheme.successColor,
-              size: 18,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'Your free MK ride discount is applied — save up to £${cap.toStringAsFixed(2)}.',
-              style: TextStyle(
-                color: AppTheme.successColor,
-                fontWeight: FontWeight.w700,
-                fontSize: 12.5,
-                height: 1.35,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFareError() {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(
-        _pageHorizontal,
-        4,
-        _pageHorizontal,
-        12,
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.red.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.red.shade100),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.error_outline_rounded,
-            color: Colors.red.shade700,
-            size: 20,
-          ),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Text(
-              _fareError!,
-              style: TextStyle(
-                color: Colors.red.shade700,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                height: 1.3,
-              ),
-            ),
-          ),
-          TextButton(
-            onPressed: _isFetchingFares ? null : _fetchFareEstimates,
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              minimumSize: const Size(0, 34),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            child: Text(
-              _fareErrorAction ?? 'Retry',
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _selectedCategoryName() {
-    if (_categories.isEmpty || _selectedCategorySlug.isEmpty) return '';
-    final category = _categories.firstWhere(
-      (c) => c.slug == _selectedCategorySlug,
-      orElse: () => _categories.first,
-    );
-    return _categoryDisplayName(category);
-  }
-
-  Map<String, dynamic> _selectedFareData() {
-    return _fareEstimates[_selectedCategorySlug] ??
-        {
-          'total_fare': 0.0,
-          'distance_text': 'Calculation pending',
-          'duration_text': 'Calculating...',
-          'duration_seconds': 600,
-          'outstanding_balance': 0.0,
-        };
-  }
-
-  void _handlePrebook() {
-    if (widget.onPrebookVehicle == null ||
-        widget.isLoading ||
-        _selectedCategorySlug.isEmpty) {
-      return;
-    }
-
-    final category = _categories.firstWhere(
-      (c) => c.slug == _selectedCategorySlug,
-      orElse: () => _categories.first,
-    );
-
-    widget.onPrebookVehicle?.call(
-      _selectedCategorySlug,
-      _categoryDisplayName(category),
-      _selectedFareData(),
-    );
-  }
-
-  void _handleConfirm() {
-    if (widget.isLoading || _selectedCategorySlug.isEmpty) return;
-
-    final category = _categories.firstWhere(
-      (c) => c.slug == _selectedCategorySlug,
-      orElse: () => _categories.first,
-    );
-
-    widget.onSelectVehicle(
-      _selectedCategorySlug,
-      _categoryDisplayName(category),
-      _selectedFareData(),
+    // Fallback
+    return Icon(
+      _getVehicleIcon(category.slug),
+      size: 32,
+      color: isSelected ? AppTheme.primaryColor : Colors.grey[700],
     );
   }
 
@@ -1011,7 +449,7 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
     if (_isLoadingCategories) {
       return const Center(
         child: Padding(
-          padding: EdgeInsets.all(32),
+          padding: EdgeInsets.all(32.0),
           child: CircularProgressIndicator(),
         ),
       );
@@ -1020,7 +458,7 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
     if (_categories.isEmpty) {
       return Center(
         child: Padding(
-          padding: const EdgeInsets.all(32),
+          padding: const EdgeInsets.all(32.0),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -1034,14 +472,13 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                 'No rides available',
                 style: TextStyle(
                   fontSize: 16,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w600,
                   color: Colors.grey[700],
                 ),
               ),
               const SizedBox(height: 4),
               Text(
                 'Try a different pickup or destination.',
-                textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 13, color: Colors.grey[500]),
               ),
             ],
@@ -1057,174 +494,697 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (_promoResponse != null && _promoResponse!['promoApplies'] == true)
-          _buildPromoBanner(),
-        if (_fareError != null) _buildFareError(),
-        const Padding(
-          padding: EdgeInsets.fromLTRB(_pageHorizontal, 6, _pageHorizontal, 10),
-          child: Text(
-            'Book now or later',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.5,
-              color: AppTheme.textPrimary,
-            ),
-          ),
-        ),
-        if (_promoResponse != null && _promoResponse!['isOutOfArea'] == true)
-          Padding(
-            padding: const EdgeInsets.only(
-              left: _pageHorizontal,
-              right: _pageHorizontal,
-              bottom: 8,
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppTheme.successColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppTheme.successColor.withOpacity(0.3)),
             ),
             child: Row(
               children: [
-                Icon(
-                  Icons.location_off_outlined,
-                  size: 14,
-                  color: Colors.grey[500],
+                const Icon(
+                  Icons.card_giftcard,
+                  color: AppTheme.successColor,
+                  size: 24,
                 ),
-                const SizedBox(width: 5),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'Location is outside the Milton Keynes area',
-                    style: TextStyle(color: Colors.grey[500], fontSize: 11.5),
+                    'Your free MK ride discount is applied — save up to £${(_promoResponse!['promoCapAmount'] as num?)?.toStringAsFixed(2) ?? "0.00"}!',
+                    style: const TextStyle(
+                      color: AppTheme.successColor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-        Expanded(
-          child: showFareSkeleton
-              ? ListView.builder(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  itemCount: _categories.length,
-                  itemBuilder: (context, index) => Column(
-                    children: [
-                      _buildSkeletonRow(
-                        isLast: index == _categories.length - 1,
-                      ),
-                      if (index != _categories.length - 1)
-                        Divider(
-                          height: 1,
-                          thickness: 1,
-                          indent: 102,
-                          endIndent: 16,
-                          color: Colors.grey.shade100,
-                        ),
-                    ],
+
+        // Fare estimate failure → inline retry row, never silent empty list.
+        if (_fareError != null)
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.red.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.red.shade200),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.error_outline, color: Colors.red.shade700, size: 22),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _fareError!,
+                    style: TextStyle(
+                      color: Colors.red.shade700,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  itemCount: _categories.length,
-                  itemBuilder: (context, index) {
-                    final category = _categories[index];
-                    final isLast = index == _categories.length - 1;
-                    return Column(
-                      children: [
-                        _buildVehicleRow(
-                          category: category,
-                          fareData: _fareEstimates[category.slug],
-                          isSelected: _selectedCategorySlug == category.slug,
-                          isLast: isLast,
-                        ),
-                        if (!isLast)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: Divider(
-                              height: 1,
-                              thickness: 1,
-                              color: Colors.grey.shade200,
+                ),
+                TextButton(
+                  onPressed: _isFetchingFares ? null : _fetchFareEstimates,
+                  child: Text(_fareErrorAction ?? 'Retry'),
+                ),
+              ],
+            ),
+          ),
+
+        // "Book now or later" - Top text outside the box
+        const Padding(
+          padding: EdgeInsets.only(left: 16, right: 16, top: 14, bottom: 0),
+          child: Text(
+            'Book now or later',
+            style: TextStyle(
+              fontSize: 20,
+              color: AppTheme.textPrimary,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+
+        if (_promoResponse != null && _promoResponse!['isOutOfArea'] == true)
+          Padding(
+            padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
+            child: Text(
+              '* Location is outside the Milton Keynes area',
+              style: TextStyle(
+                color: Colors.grey[500],
+                fontSize: 12,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
+
+        // Box containing "Choose a ride" and vehicle list
+        Expanded(
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.grey[200]!),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // "Choose a ride" title inside the box
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Text(
+                    'Choose a ride',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey,
+                    ),
+                  ),
+                ),
+
+                // Categories list (fetched from API)
+                Expanded(
+                  child: showFareSkeleton
+                      ? ListView.separated(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemCount: _categories.length,
+                          separatorBuilder: (context, index) =>
+                              const Divider(height: 1),
+                          itemBuilder: (context, index) => Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 60,
+                                  height: 50,
+                                  margin: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey[200],
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Container(
+                                        width: 120,
+                                        height: 14,
+                                        decoration: BoxDecoration(
+                                          color: Colors.grey[200],
+                                          borderRadius: BorderRadius.circular(
+                                            4,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Container(
+                                        width: 80,
+                                        height: 12,
+                                        decoration: BoxDecoration(
+                                          color: Colors.grey[200],
+                                          borderRadius: BorderRadius.circular(
+                                            4,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                      ],
-                    );
-                  },
+                        )
+                      : ListView.separated(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemCount: _categories.length,
+                          separatorBuilder: (context, index) =>
+                              const Divider(height: 1),
+                          itemBuilder: (context, index) {
+                            final category = _categories[index];
+                            final isSelected =
+                                _selectedCategorySlug == category.slug;
+
+                            // Get fare estimate
+                            final fareData = _fareEstimates[category.slug];
+                            final price =
+                                (fareData?['total_fare'] as num?)?.toDouble() ??
+                                0.0;
+                            final seatingCapacity =
+                                (fareData?['seating_capacity'] as num?)
+                                    ?.toInt() ??
+                                category.seatingCapacity;
+                            final durationText =
+                                fareData?['duration_text']
+                                        ?.toString()
+                                        .isNotEmpty ==
+                                    true
+                                ? fareData!['duration_text'] as String
+                                : 'Calculating...';
+
+                            // Toll (§1.1, TOLL-01): per-category toll keys win; the
+                            // route-level estimate toll (hasToll/tollDetails) is the
+                            // fallback when the category entry carries none — never both,
+                            // so a spec-shaped response shows the toll exactly once.
+                            final catTollFee = (fareData?['toll_fee'] as num?)
+                                ?.toDouble();
+                            final tollFee =
+                                catTollFee ??
+                                ((_estimateToll?.hasToll ?? false)
+                                    ? _estimateToll!.tollFee
+                                    : 0.0);
+                            final tollName =
+                                (fareData?['toll_name'] ??
+                                        _estimateToll?.tollName)
+                                    ?.toString();
+                            final hasToll =
+                                fareData?['has_toll'] == true ||
+                                (_estimateToll?.hasToll ?? false);
+                            final totalWithToll =
+                                (fareData?['total_with_toll'] as num?)
+                                    ?.toDouble();
+                            // Backend-authoritative payable total (spec totalFare) when the
+                            // category carries a toll; otherwise today's price untouched.
+                            final payablePrice =
+                                (hasToll && totalWithToll != null)
+                                ? totalWithToll
+                                : price;
+
+                            return InkWell(
+                              onTap: () {
+                                setState(
+                                  () => _selectedCategorySlug = category.slug,
+                                );
+                                widget.onVehicleSelected(category.slug);
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 16,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: isSelected
+                                      ? AppTheme.surfaceColor
+                                      : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: isSelected
+                                      ? Border.all(
+                                          color: AppTheme.primaryColor,
+                                          width: 2,
+                                        )
+                                      : null,
+                                ),
+                                child: Row(
+                                  children: [
+                                    // Vehicle Icon
+                                    Container(
+                                      width: 60,
+                                      height: 50,
+                                      margin: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.grey[100],
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: _buildVehicleIconWidget(
+                                        category,
+                                        isSelected,
+                                      ),
+                                    ),
+
+                                    // Details
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            category.name == category.slug ||
+                                                    category.name == 'Unknown'
+                                                ? VehicleCategory.formatSlug(
+                                                    category.slug,
+                                                  )
+                                                : category.name,
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                              color: AppTheme.textPrimary,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  'Up to $seatingCapacity people',
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  maxLines: 1,
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.grey[600],
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Row(
+                                                children: [
+                                                  Icon(
+                                                    Icons.luggage,
+                                                    size: 14,
+                                                    color: Colors.grey[500],
+                                                  ),
+                                                  Text(
+                                                    ' ${category.luggage.suitcases}',
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: Colors.grey[600],
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Row(
+                                                children: [
+                                                  Icon(
+                                                    Icons.shopping_bag,
+                                                    size: 14,
+                                                    color: Colors.grey[500],
+                                                  ),
+                                                  Text(
+                                                    ' ${category.luggage.smallCases}',
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: Colors.grey[600],
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                          if (fareData != null) ...[
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              durationText,
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: AppTheme.primaryColor
+                                                    .withOpacity(0.8),
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+
+                                    // Price (from backend)
+                                    Flexible(
+                                      child: Padding(
+                                        padding: const EdgeInsets.only(
+                                          right: 12,
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.end,
+                                          children: [
+                                            _isFetchingFares && fareData == null
+                                                ? const SizedBox(
+                                                    width: 16,
+                                                    height: 16,
+                                                    child:
+                                                        CircularProgressIndicator(
+                                                          strokeWidth: 2,
+                                                        ),
+                                                  )
+                                                : Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment.end,
+                                                    children: [
+                                                      if (fareData?['promo_applied'] ==
+                                                              true &&
+                                                          fareData?['original_fare'] !=
+                                                              null) ...[
+                                                        Text(
+                                                          '£${(fareData!['original_fare'] as num).toStringAsFixed(2)}',
+                                                          style: TextStyle(
+                                                            fontSize: 14,
+                                                            fontWeight:
+                                                                FontWeight
+                                                                    .normal,
+                                                            color: Colors
+                                                                .grey[500],
+                                                            decoration:
+                                                                TextDecoration
+                                                                    .lineThrough,
+                                                          ),
+                                                        ),
+                                                        Row(
+                                                          mainAxisSize:
+                                                              MainAxisSize.min,
+                                                          children: [
+                                                            Text(
+                                                              fareData?['is_free_ride'] ==
+                                                                      true
+                                                                  ? 'FREE'
+                                                                  : '£${payablePrice.toStringAsFixed(2)}',
+                                                              style: TextStyle(
+                                                                fontSize: 18,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .bold,
+                                                                color:
+                                                                    fareData?['is_free_ride'] ==
+                                                                        true
+                                                                    ? AppTheme
+                                                                          .successColor
+                                                                    : (isSelected
+                                                                          ? AppTheme.primaryColor
+                                                                          : AppTheme.textPrimary),
+                                                              ),
+                                                            ),
+                                                            const SizedBox(
+                                                              width: 4,
+                                                            ),
+                                                            const Icon(
+                                                              Icons
+                                                                  .card_giftcard,
+                                                              size: 16,
+                                                              color: AppTheme
+                                                                  .successColor,
+                                                            ),
+                                                            const SizedBox(
+                                                              width: 4,
+                                                            ),
+                                                            Text(
+                                                              '-£${(fareData!['discount'] as num).toStringAsFixed(2)}',
+                                                              style: const TextStyle(
+                                                                fontSize: 12,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .bold,
+                                                                color: AppTheme
+                                                                    .successColor,
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ] else ...[
+                                                        Text(
+                                                          payablePrice > 0
+                                                              ? '£${payablePrice.toStringAsFixed(2)}'
+                                                              : 'N/A',
+                                                          style: TextStyle(
+                                                            fontSize: 18,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            color: isSelected
+                                                                ? AppTheme
+                                                                      .primaryColor
+                                                                : AppTheme
+                                                                      .textPrimary,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ],
+                                                  ),
+                                            if (fareData != null)
+                                              Text(
+                                                fareData['distance_text'] ?? '',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  color: Colors.grey[500],
+                                                ),
+                                              ),
+                                            // Congestion charge badge (new flow)
+                                            if (fareData?['is_congestion'] ==
+                                                true)
+                                              Container(
+                                                margin: const EdgeInsets.only(
+                                                  top: 4,
+                                                ),
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 8,
+                                                      vertical: 3,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.amber.shade50,
+                                                  borderRadius:
+                                                      BorderRadius.circular(8),
+                                                  border: Border.all(
+                                                    color:
+                                                        Colors.amber.shade200,
+                                                  ),
+                                                ),
+                                                child: Text(
+                                                  '+£${((fareData!['congestion_amount'] as num?) ?? 0).toStringAsFixed(2)} congestion',
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.w600,
+                                                    color:
+                                                        Colors.amber.shade800,
+                                                  ),
+                                                ),
+                                              ),
+                                            // Toll row (§1.1, TOLL-01): itemized name + amount
+                                            // when the category (or route-level fallback)
+                                            // carries a toll. Absent/0 omits the widget
+                                            // entirely — no £0.00, no layout shift (TOLL-08).
+                                            if (fareData != null && tollFee > 0)
+                                              Container(
+                                                margin: const EdgeInsets.only(
+                                                  top: 2,
+                                                ),
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 6,
+                                                      vertical: 2,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.blue.shade50,
+                                                  borderRadius:
+                                                      BorderRadius.circular(8),
+                                                  border: Border.all(
+                                                    color: Colors.blue.shade100,
+                                                  ),
+                                                ),
+                                                child: Text(
+                                                  (tollName == null ||
+                                                          tollName.isEmpty)
+                                                      ? 'Toll +£${tollFee.toStringAsFixed(2)}'
+                                                      : 'Toll · $tollName +£${tollFee.toStringAsFixed(2)}',
+                                                  style: TextStyle(
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: Colors.blue.shade800,
+                                                  ),
+                                                ),
+                                              ),
+                                            // Outstanding-balance split (Phase 15): caption under
+                                            // the selected-category price when the fare map
+                                            // carries balance > 0. Backend total shown as-is.
+                                            if (isSelected &&
+                                                ((fareData?['outstanding_balance']
+                                                                as num?)
+                                                            ?.toDouble() ??
+                                                        0.0) >
+                                                    0)
+                                              Padding(
+                                                padding: const EdgeInsets.only(
+                                                  top: 2,
+                                                ),
+                                                child: Text(
+                                                  'incl. £${((fareData!['outstanding_balance'] as num).toDouble()).toStringAsFixed(2)} balance',
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.w500,
+                                                    color:
+                                                        Colors.amber.shade800,
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                 ),
+              ],
+            ),
+          ),
         ),
+
+        // Select Vehicle button and Prebook button
         Padding(
-          padding: EdgeInsets.fromLTRB(
-            _pageHorizontal,
-            6,
-            _pageHorizontal,
-            12 + MediaQuery.of(context).padding.bottom,
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            top: 8,
+            bottom: 16 + MediaQuery.of(context).padding.bottom,
           ),
           child: Column(
             children: [
+              // Prebook button - Small text button with icon
               if (widget.onPrebookVehicle != null)
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton.icon(
                     onPressed: widget.isLoading || _selectedCategorySlug.isEmpty
                         ? null
-                        : _handlePrebook,
-                    icon: const Icon(Icons.calendar_month_rounded, size: 18),
+                        : () {
+                            final category = _categories.firstWhere(
+                              (c) => c.slug == _selectedCategorySlug,
+                              orElse: () => _categories.first,
+                            );
+
+                            final fareData =
+                                _fareEstimates[_selectedCategorySlug] ??
+                                {
+                                  'total_fare': 0.0,
+                                  'distance_text': 'Calculation pending',
+                                  'duration_text': 'Calculating...',
+                                  'duration_seconds': 600,
+                                  'outstanding_balance': 0.0,
+                                };
+
+                            widget.onPrebookVehicle?.call(
+                              _selectedCategorySlug,
+                              category.name,
+                              fareData,
+                            );
+                          },
+                    icon: const Icon(Icons.calendar_month, size: 18),
                     label: const Text(
                       'Prebook',
                       style: TextStyle(
                         fontSize: 13,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w600,
                       ),
-                    ),
-                    style: TextButton.styleFrom(
-                      foregroundColor: AppTheme.primaryColor,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 6,
-                      ),
-                      minimumSize: const Size(0, 36),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                   ),
                 ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 8),
+              // Confirm button - Full width primary button
               SizedBox(
                 width: double.infinity,
-                height: 54,
+                height: 50,
                 child: ElevatedButton(
                   onPressed: widget.isLoading || _selectedCategorySlug.isEmpty
                       ? null
-                      : _handleConfirm,
+                      : () {
+                          final category = _categories.firstWhere(
+                            (c) => c.slug == _selectedCategorySlug,
+                            orElse: () => _categories.first,
+                          );
+
+                          // Use fare data from backend if available
+                          final fareData =
+                              _fareEstimates[_selectedCategorySlug] ??
+                              {
+                                'total_fare': 0.0,
+                                'distance_text': 'Calculation pending',
+                                'duration_text': 'Calculating...',
+                                'duration_seconds': 600,
+                                'outstanding_balance': 0.0,
+                              };
+
+                          widget.onSelectVehicle(
+                            _selectedCategorySlug,
+                            category.name,
+                            fareData,
+                          );
+                        },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.primaryColor,
-                    disabledBackgroundColor: Colors.grey.shade300,
                     foregroundColor: Colors.white,
-                    disabledForegroundColor: Colors.grey.shade500,
-                    elevation: 0,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    padding: const EdgeInsets.symmetric(horizontal: 18),
+                    elevation: 0,
                   ),
                   child: widget.isLoading
                       ? const SizedBox(
-                          width: 22,
-                          height: 22,
+                          width: 24,
+                          height: 24,
                           child: CircularProgressIndicator(
                             color: Colors.white,
                             strokeWidth: 2,
                           ),
                         )
-                      : Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Flexible(
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  'Confirm ${_selectedCategoryName()}',
-                                  style: const TextStyle(
-                                    fontSize: 15.5,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ),
+                      : FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            'Confirm ${(_categories.isNotEmpty && _selectedCategorySlug.isNotEmpty) ? _categories.firstWhere((c) => c.slug == _selectedCategorySlug).name : ""}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
                             ),
-                            const SizedBox(width: 8),
-                            const Icon(Icons.arrow_forward_rounded, size: 20),
-                          ],
+                          ),
                         ),
                 ),
               ),
