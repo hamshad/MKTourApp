@@ -25,6 +25,10 @@ class B2bOfferData {
   final double distance;
   final String vehicleCategory;
 
+  /// Toll reimbursement normalized at intake (21-03 TOLL-04).
+  /// 0.0 when the offer carries no toll data — badge then omitted.
+  final double tollReimbursement;
+
   const B2bOfferData({
     this.riderName = '',
     this.pickupAddress = '',
@@ -36,10 +40,12 @@ class B2bOfferData {
     this.fare = 0.0,
     this.distance = 0.0,
     this.vehicleCategory = '',
+    this.tollReimbursement = 0.0,
   });
 
   bool get hasFare => fare > 0;
   bool get hasDistance => distance > 0;
+  bool get hasTollReimbursement => tollReimbursement > 0;
   bool get hasBothPoints =>
       pickupLat != null &&
       pickupLng != null &&
@@ -47,6 +53,10 @@ class B2bOfferData {
       dropoffLng != null;
 
   String get fareLabel => hasFare ? '\£${fare.toStringAsFixed(2)}' : '';
+
+  /// Copy pinned by spec §3.1 — rendered only when [hasTollReimbursement].
+  String get tollBadgeLabel =>
+      'Includes £${tollReimbursement.toStringAsFixed(2)} Toll Reimbursement';
 
   String get distanceLabel => hasDistance ? '${distance.toStringAsFixed(1)} mi' : '';
 
@@ -92,6 +102,12 @@ class B2bOfferData {
     final riderName = user is Map
         ? (user['name'] ?? user['userName'] ?? '').toString()
         : (map['userName'] ?? '').toString();
+    // Normalized toll map attached at _normaliseRideData intake (TOLL-04).
+    // Absent key → 0.0 → badge omitted, card byte-identical to today.
+    final earnings = map['estimated_earnings'];
+    final tollReimbursement = earnings is Map
+        ? _num(earnings['toll_reimbursement']) ?? 0.0
+        : 0.0;
     return B2bOfferData(
       riderName: riderName.trim(),
       pickupAddress: pickup.$1,
@@ -105,6 +121,7 @@ class B2bOfferData {
       vehicleCategory:
           (map['vehicleCategorySlug'] ?? map['vehicleCategory'] ?? '')
               .toString(),
+      tollReimbursement: tollReimbursement,
     );
   }
 
@@ -481,13 +498,48 @@ class _B2bOfferCardState extends State<B2bOfferCard>
                   ),
                   if (data.hasFare) ...[
                     const SizedBox(width: 12),
-                    Text(
-                      data.fareLabel,
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                        color: AppTheme.textPrimary,
-                        fontFeatures: [FontFeature.tabularFigures()],
+                    Flexible(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            data.fareLabel,
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
+                              color: AppTheme.textPrimary,
+                              fontFeatures: [FontFeature.tabularFigures()],
+                            ),
+                          ),
+                          // Toll reimbursement badge (21-03 TOLL-04) —
+                          // congestion-badge styling, gated > 0. Absent toll
+                          // data omits this subtree entirely (TOLL-08).
+                          if (data.hasTollReimbursement)
+                            Container(
+                              margin: const EdgeInsets.only(top: 4),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.green.shade50,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: Colors.green.shade200,
+                                ),
+                              ),
+                              child: Text(
+                                data.tollBadgeLabel,
+                                textAlign: TextAlign.end,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.green.shade800,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                   ],

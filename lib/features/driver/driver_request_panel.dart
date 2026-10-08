@@ -46,6 +46,16 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
   String _dropoffAddress = '';
   bool _isLoadingAddresses = true;
 
+  /// Normalized toll reimbursement attached at intake (21-03 TOLL-04).
+  /// 0.0 whenever the offer carries no toll data — badge then omitted.
+  double get _tollReimbursement {
+    final earnings = widget.rideData?['estimated_earnings'];
+    if (earnings is! Map) return 0.0;
+    final value = earnings['toll_reimbursement'];
+    if (value is num) return value.toDouble();
+    return double.tryParse('$value') ?? 0.0;
+  }
+
   static const int _addressCacheCapacity = 20;
 
   /// Bounded per-ride geocode cache: canonical rideId → {pickup, dropoff}.
@@ -671,6 +681,31 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                         ),
                       ],
                     ),
+                    // Toll reimbursement badge (21-03 TOLL-04) — styled like
+                    // the congestion badge, shown ONLY when the backend sent
+                    // a toll. Absent toll data renders this exact subtree
+                    // omitted: fare header untouched (TOLL-08).
+                    if (_tollReimbursement > 0)
+                      Container(
+                        margin: const EdgeInsets.only(top: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.green.shade200),
+                        ),
+                        child: Text(
+                          'Includes £${_tollReimbursement.toStringAsFixed(2)} Toll Reimbursement',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.green.shade800,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ],

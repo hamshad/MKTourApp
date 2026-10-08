@@ -16,6 +16,7 @@ import '../../core/widgets/connection_banner.dart';
 import '../../core/widgets/custom_snackbar.dart';
 import '../../core/models/error_display_helper.dart';
 import '../../core/models/vehicle.dart';
+import '../../core/models/toll_breakdown.dart';
 import '../../core/services/socket_service.dart';
 import '../../core/services/ride_event_dedupe.dart';
 import '../../core/services/ride_session.dart';
@@ -2019,9 +2020,51 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     return null;
   }
 
+  /// Toll-reimbursement intake (21-03 TOLL-04): parse `estimatedEarnings`
+  /// (§3.1 socket, num values) or FCM top-level toll keys (§4.1, string
+  /// values) into one normalized shape the offer cards read. Returns null
+  /// when the payload carries no toll data — an empty map is NEVER attached,
+  /// so every existing fare path stays byte-identical (TOLL-08). Never throws.
+  Map<String, dynamic>? _estimatedEarnings(Map<String, dynamic> m) {
+    final raw = m['estimatedEarnings'];
+    Map? source;
+    if (raw is Map) {
+      source = raw;
+    } else if (m.containsKey('tollFee') ||
+        m.containsKey('tollName') ||
+        m.containsKey('hasToll') ||
+        m.containsKey('toll_fee')) {
+      // FCM NEW_RIDE_REQUEST carries toll keys at the top level of data.
+      source = m;
+    } else {
+      return null;
+    }
+    // Shared never-throw parser (21-01): tollFee/tollName/hasToll alias
+    // chain with num-or-string coercion ("8.90" strings included).
+    final info = TollInfo.fromBreakdown(source);
+    final netFare = _parseNum(source['netFare'] ?? source['net_fare']) ?? 0.0;
+    final totalTakeHome = _parseNum(source['totalEstimatedTakeHome']) ??
+        _parseNum(source['totalEarnings']) ??
+        info.total;
+    return {
+      'net_fare': netFare,
+      'toll_reimbursement': info.tollFee,
+      'toll_name': info.tollName,
+      'total_take_home': totalTakeHome,
+    };
+  }
+
   /// Normalise flat FCM payload into nested structure expected by ride panels.
   Map<String, dynamic> _normaliseRideData(dynamic raw) {
-    if (raw is! Map<String, dynamic>) return raw is Map ? Map<String, dynamic>.from(raw) : {};
+    if (raw is! Map<String, dynamic>) {
+      if (raw is! Map) return {};
+      final copy = Map<String, dynamic>.from(raw);
+      // Additive toll intake on the Map-shaped branch too — both transports
+      // (socket ride:newRequest, FCM NEW_RIDE_REQUEST) land here.
+      final earnings = _estimatedEarnings(copy);
+      if (earnings != null) copy['estimated_earnings'] = earnings;
+      return copy;
+    }
 
     final m = Map<String, dynamic>.from(raw);
 
@@ -2063,6 +2106,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
     if (m['user'] == null && m['userName'] != null) {
       m['user'] = {'name': m['userName']};
     }
+
+    // Toll intake (TOLL-04): attached ONLY when the payload carried toll
+    // data. Absent → key never added (existing cards render unchanged).
+    final earnings = _estimatedEarnings(m);
+    if (earnings != null) m['estimated_earnings'] = earnings;
 
     return m;
   }
