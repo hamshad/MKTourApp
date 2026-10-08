@@ -1,10 +1,11 @@
 # MK Tours - Project State
 
 ## Current Position
-- **Phase:** 20-driver-back-to-back — Complete (3/3 plans, 20-01 + 20-02 + 20-03 complete 2026-09-24; driver queued-trip UI + rider B2B tracking, 174-test suite green)
-- **Next:** Phase verification (goal-backward must-have check) → human two-device B2B pass
+- **Phase:** 21-toll-price-implementation — In progress (1/5 plans; 21-01 complete 2026-10-08; TollInfo + FCM canonicalization foundation, 11 new contract tests, 229-test suite green)
+- **Next:** Phase 21 plans 21-02 (rider) / 21-03 (driver) / 21-04 (earnings) — parallel wave 2 on shared TollInfo + canonical FCM dispatch
 
 ## Completed Plans
+- 21-01: Toll contract + parsing/transport foundation — verbatim §3.2/§4 contract tests, never-throw TollInfo parser, FCM UPPERCASE→snake_case canonicalization, silent payout_settled, fareDetails intake (`4defe6f`, `6d4ac8c`)
 - 20-01: B2B contract + transport foundation — QueuedRide/AcceptedRide parsers, 6 socket passthrough pairs, queued-ride error copy, 17 contract tests (`8a6fe43`, `44868e2`, `246d220`)
 - 20-03: Rider B2B experience — trackDriver-once, shared ETA setter, en-route trigger, reason cancel, FCM B2B types + tap resync, 174-test suite green (`e9ebaa3`, `4013214`)
 - 20-02: Driver B2B execution — _b2bOffer/_queuedTrip state, offer card + docked pill, promotion auto-transition with cash deferral (`03aca42`, `17e515a`, `e583a3b`)
@@ -147,6 +148,10 @@
 - [20-01] onRideAcceptedEvent/offRideAcceptedEvent added as new helpers (no existing accepted passthrough; raw subscribers untouched)
 - [20-01] AcceptedRide parser lives in queued_ride.dart for 20-03 reuse, not in UI files
 - [20-01] 'not available' accept copy is 'taken by another driver' per B2B spec
+- [21-01] canonicalFcmType pure helper: lowercase types byte-identical passthrough (regression), UPPERCASE lowercased then alias-mapped ('new_ride_request'→'ride_request'); single central fix for spec-vs-live FCM type drift
+- [21-01] TollInfo.total verbatim passthrough (totalFare/totalCharged/take-home chain), never computed client-side
+- [21-01] PAYOUT_SETTLED explicit silent dispatch case — no sound, no navigation, no unknown-type log; tray copy is the experience
+- [21-01] Public getter `fareDetails` exposes private `_fareDetails` (keeps analyze at pre-existing baseline; 21-02+ consume)
 
 ## Blockers
 - None
@@ -167,7 +172,8 @@
 - Phase 17 added: Backend enforces payment_link only for scheduled rides — remove cash from prebook flow and handle new error responses
 
 ## Session
-- Last session: Completed 20-01-PLAN.md (2026-09-24, 3 commits `8a6fe43`, `44868e2`, `246d220`, SUMMARY at phases/20-driver-back-to-back/20-01-SUMMARY.md). Next: 20-02 + 20-03.
+- Last session: Completed 21-01-PLAN.md (2026-10-08, 2 commits `4defe6f`, `6d4ac8c`, SUMMARY at phases/21-toll-price-implementation/21-01-SUMMARY.md). TollInfo + FCM canonicalization + fareDetails intake, 229-test suite green. Next: 21-02/21-03/21-04 parallel wave 2.
+- Previous: Completed 20-01-PLAN.md (2026-09-24, 3 commits `8a6fe43`, `44868e2`, `246d220`, SUMMARY at phases/20-driver-back-to-back/20-01-SUMMARY.md). Next: 20-02 + 20-03.
 - Last session: Completed 19-03-PLAN.md (2026-09-22, 4 commits `98b4aeb`, `70e2a6a`, `8532ad2`, `c708cba`, SUMMARY at phases/19-ride-flow-resilience/19-03-SUMMARY.md). Human device pass: driver approved, rider searching-save bug fixed, rider re-verify pending. Next: phase transition after re-verify.
 - Previous: Completed 19-02-PLAN.md (2026-09-22, 3 commits `02d9c81`, `7676fbe`, `77d07cd`, SUMMARY at phases/19-ride-flow-resilience/19-02-SUMMARY.md). Next: 19-03.
 - Previous: Completed 19-01-PLAN.md (2026-09-22, 3 commits `bcca55d`, `edc6754`, `cf3b9c5`, SUMMARY at phases/19-ride-flow-resilience/19-01-SUMMARY.md). Socket transport hardening: unbounded reconnect, listener registry, ack emits, durable queue, 13 tests.

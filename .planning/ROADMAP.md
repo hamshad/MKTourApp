@@ -20,7 +20,7 @@
 | 18 | Enforce payment_method constraints for scheduled | Planned | 0 | PAYCONST-01..06 |
 | 19 | 3/3 | Complete   | 2026-09-22 | RES-01..06 |
 | 20 | 3/3 | In Progress|  | B2B-01..08 |
-| 21 | Toll Price Implementation | Planned | 5 | TOLL-01..08 |
+| 21 | 1/5 | In Progress|  | TOLL-01..08 |
 
 ---
 
@@ -459,7 +459,7 @@ Plans:
 - **TOLL-07**: Socket/FCM toll fields — `ride:accepted` `fareDetails`, FCM NEW_RIDE_REQUEST / RIDE_COMPLETED / PAYOUT_SETTLED data toll keys land correctly
 - **TOLL-08**: No regressions — tolerant parsing when toll fields absent/hasToll false; existing fare, payment, settlement, restore flows behavior-identical
 
-**Plans:** 5 plans (3 waves)
+**Plans:** 1/5 plans executed
 
 Plans:
 - [ ] `21-01-PLAN.md` — Contract + parsing foundation: TollInfo helper, FCM UPPERCASE type canonicalization, fareDetails intake, toll_contract_test (wave 1, TOLL-07)
