@@ -1,10 +1,11 @@
 # MK Tours - Project State
 
 ## Current Position
-- **Phase:** 21-toll-price-implementation — In progress (2/5 plans; 21-01 + 21-04 complete 2026-10-08; live earnings dashboard: 2 earnings endpoints + Tolls Reimbursed KPI + itemized toll rows, 14 new contract tests, 257-test suite green)
-- **Next:** Phase 21 plans 21-02 (rider) / 21-03 (driver) in flight — parallel wave 2 on shared TollInfo + canonical FCM dispatch; then 21-05 verification
+- **Phase:** 21-toll-price-implementation — In progress (3/5 plans; 21-01 + 21-03 + 21-04 complete 2026-10-08; driver offer toll badges + completion earnings popup with scoped ride:completed enrich, 12 TOLL-04/05 tests, full suite green)
+- **Next:** Phase 21 plan 21-02 (rider, in flight) then 21-05 verification — parallel wave 2 on shared TollInfo + canonical FCM dispatch
 
 ## Completed Plans
+- 21-03: Driver offer toll UI + completion earnings popup — `_estimatedEarnings` intake (TOLL-08 zero-drift), reimbursement badges on request panel + B2B card, DriverEarnings dual-alias model, REST-owned popup with verbatim take-home, scoped ride:completed enrich pair (`c541286`, `d4b74ed`)
 - 21-04: Driver earnings dashboard live — earningsSummary/earningsRides consts + never-throw ApiService methods, period tabs, Tolls Reimbursed KPI beside Net Earnings, gated per-ride toll lines, 14 TOLL-06 tests (`9f44dca`, `d5b89e7`)
 - 21-01: Toll contract + parsing/transport foundation — verbatim §3.2/§4 contract tests, never-throw TollInfo parser, FCM UPPERCASE→snake_case canonicalization, silent payout_settled, fareDetails intake (`4defe6f`, `6d4ac8c`)
 - 20-01: B2B contract + transport foundation — QueuedRide/AcceptedRide parsers, 6 socket passthrough pairs, queued-ride error copy, 17 contract tests (`8a6fe43`, `44868e2`, `246d220`)
@@ -52,6 +53,10 @@
 - 19-03: Connection UX + kill-proofing — ConnectionBanner on rider/driver screens, stale chips, queued-intent copy, widget tests + sweep (`98b4aeb`, `70e2a6a`); rider searching-save bug fixed + canonicalization tests (`8532ad2`, `c708cba`)
 
 ## Decisions
+- [21-03] REST complete response owns trip-earnings popup; socket ride:completed enrich-only (same rideId, toll 0→>0), never opens popup, notifier cleared in showDialog().then()
+- [21-03] socket_service ride:completed pair SCOPED (off takes handler) — bare off('ride:completed') would kill rider raw subscribers (ride_assigned_screen.dart:1605/1165/2752)
+- [21-03] DriverEarnings double fields default 0.0 + hasData gate → 'none' renders legacy popup rows; totalDriverTakeHome shown verbatim, never client-computed
+- [21-03] Never run git stash/stash pop in this repo during parallel plan execution (recovered accidental autostash pop UU conflicts)
 - [02-01] OTP dialog UI left in place; only API call path made OTP-free (UI strip-out in 03-01)
 - [02-01] Driver-cancel reassigned flag needs no code change (map passthrough)
 - [02-01] Fare-estimate change landed in PlacesService, not ApiService (actual call site)
@@ -177,7 +182,8 @@
 - Phase 17 added: Backend enforces payment_link only for scheduled rides — remove cash from prebook flow and handle new error responses
 
 ## Session
-- Last session: Completed 21-04-PLAN.md (2026-10-08, 2 commits `9f44dca`, `d5b89e7`, SUMMARY at phases/21-toll-price-implementation/21-04-SUMMARY.md). Live earnings dashboard + TOLL-06, 257-test suite green. Next: 21-05 after 21-02/21-03 land.
+- Last session: Completed 21-03-PLAN.md (2026-10-08, 2 commits `c541286`, `d4b74ed`, SUMMARY at phases/21-toll-price-implementation/21-03-SUMMARY.md). Driver offer toll badges + TOLL-05 completion earnings popup, 12 contract tests green, full suite green. Next: 21-05 after 21-02 lands.
+- Previous: Completed 21-04-PLAN.md (2026-10-08, 2 commits `9f44dca`, `d5b89e7`, SUMMARY at phases/21-toll-price-implementation/21-04-SUMMARY.md). Live earnings dashboard + TOLL-06, 257-test suite green. Next: 21-05 after 21-02/21-03 land.
 - Previous: Completed 21-01-PLAN.md (2026-10-08, 2 commits `4defe6f`, `6d4ac8c`, SUMMARY at phases/21-toll-price-implementation/21-01-SUMMARY.md). TollInfo + FCM canonicalization + fareDetails intake, 229-test suite green. Next: 21-02/21-03/21-04 parallel wave 2.
 - Previous: Completed 20-01-PLAN.md (2026-09-24, 3 commits `8a6fe43`, `44868e2`, `246d220`, SUMMARY at phases/20-driver-back-to-back/20-01-SUMMARY.md). Next: 20-02 + 20-03.
 - Last session: Completed 19-03-PLAN.md (2026-09-22, 4 commits `98b4aeb`, `70e2a6a`, `8532ad2`, `c708cba`, SUMMARY at phases/19-ride-flow-resilience/19-03-SUMMARY.md). Human device pass: driver approved, rider searching-save bug fixed, rider re-verify pending. Next: phase transition after re-verify.
