@@ -233,8 +233,6 @@ class _DriverEarningsScreenState extends State<DriverEarningsScreen> {
             _buildBreakdownItem(
                 'Trips Completed',
                 earningsNumOf(metrics['totalRides']).toStringAsFixed(0)),
-            _buildBreakdownItem('Online Hours',
-                earningsNumOf(metrics['onlineHours'] ?? 0.0).toStringAsFixed(1)),
             _buildBreakdownItem(
                 'Gross Fares', _money(earningsNumOf(metrics['grossFare']))),
             _buildBreakdownItem(
