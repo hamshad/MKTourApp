@@ -507,6 +507,15 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   double? get _tollTotalWithToll =>
       (_currentFareData['total_with_toll'] as num?)?.toDouble();
 
+  /// Toll name from the category map. Null/empty-normalized so the
+  /// breakdown line can append it only when the backend actually sent one.
+  String? get _tollName {
+    final raw = _currentFareData['toll_name'];
+    if (raw == null) return null;
+    final name = raw.toString();
+    return name.isEmpty ? null : name;
+  }
+
   /// Backend toll-inclusive payable total when the category carries a
   /// toll, otherwise today's fare — used by the compact price + CTA.
   double get _payableFare {
@@ -532,14 +541,20 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   }
 
   /// Spec §5 line: `Fare £33.00 + Toll £8.90 = £41.90` — values verbatim
-  /// from the category map. Null when toll absent or the backend sent no
-  /// total (never compute `fare + toll` client-side).
+  /// from the category map. The toll NAME is shown here (never on the
+  /// vehicle cards) so the rider sees which toll the fee covers before
+  /// confirming. Null when toll absent or the backend sent no total
+  /// (never compute `fare + toll` client-side).
   String? get _tollBreakdownLine {
     if (_tollFee <= 0) return null;
     final total = _tollTotalWithToll;
     if (total == null) return null;
+    final name = _tollName;
+    final tollPart = (name == null || name.isEmpty)
+        ? 'Toll £${_tollFee.toStringAsFixed(2)}'
+        : 'Toll £${_tollFee.toStringAsFixed(2)} ($name)';
     return 'Fare £${_fare.toStringAsFixed(2)} + '
-        'Toll £${_tollFee.toStringAsFixed(2)} = '
+        '$tollPart = '
         '£${total.toStringAsFixed(2)}';
   }
 
@@ -2000,30 +2015,21 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                 ),
 
               // Booking breakdown (spec §5, TOLL-02): `Fare + Toll = total`
-              // itemized under the fare row — values verbatim from the
-              // category map. Absent toll (or no backend total) renders
-              // nothing, exactly as today (TOLL-08).
+              // itemized under the fare row, one line, values verbatim from the
+              // category map — includes the toll NAME (hidden on the vehicle
+              // cards). Absent toll (or no backend total) renders nothing,
+              // exactly as today (TOLL-08).
               if (!hasError && _tollBreakdownLine != null) ...[
                 const SizedBox(height: 6),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.toll,
-                      size: 14,
-                      color: AppTheme.primaryColor,
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        _tollBreakdownLine!,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.grey[700],
-                        ),
-                      ),
-                    ),
-                  ],
+                Text(
+                  _tollBreakdownLine!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey[700],
+                  ),
                 ),
               ],
 

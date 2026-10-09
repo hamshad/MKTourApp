@@ -125,6 +125,8 @@ void main() {
   /// Mirror of the vehicle-row toll read in
   /// `VehicleSelectionWidget` (per-category keys first, route-level
   /// estimate toll as fallback) plus the row gate + payable price.
+  /// The vehicle card shows the AMOUNT ONLY — the toll name is
+  /// confirm-screen-only.
   Map<String, dynamic> vehicleTollRow(
     Map<String, dynamic>? fareData, {
     bool estimateHasToll = false,
@@ -147,20 +149,27 @@ void main() {
       'tollName': tollName,
       'hasToll': hasToll,
       'rowVisible': fareData != null && tollFee > 0,
+      'rowText': tollFee > 0 ? 'Toll +£${tollFee.toStringAsFixed(2)}' : null,
       'payablePrice': payablePrice,
     };
   }
 
   /// Mirror of `RideConfirmationScreen._tollBreakdownLine` (pre-create)
-  /// and `_createdBreakdownLine` (post-create §1.2).
+  /// and `_createdBreakdownLine` (post-create §1.2). Carries the toll
+  /// name in parentheses when the backend sent one.
   String? tollBreakdownLine(Map<String, dynamic> fare) {
     final tollFee = (fare['toll_fee'] as num?)?.toDouble() ?? 0.0;
     if (tollFee <= 0) return null;
     final total = (fare['total_with_toll'] as num?)?.toDouble();
     if (total == null) return null;
     final fareValue = (fare['total_fare'] as num?)?.toDouble() ?? 0.0;
+    final rawName = fare['toll_name'];
+    final name = rawName?.toString();
+    final tollPart = (name == null || name.isEmpty)
+        ? 'Toll £${tollFee.toStringAsFixed(2)}'
+        : 'Toll £${tollFee.toStringAsFixed(2)} ($name)';
     return 'Fare £${fareValue.toStringAsFixed(2)} + '
-        'Toll £${tollFee.toStringAsFixed(2)} = '
+        '$tollPart = '
         '£${total.toStringAsFixed(2)}';
   }
 

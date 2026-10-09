@@ -710,10 +710,6 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                                 ((_estimateToll?.hasToll ?? false)
                                     ? _estimateToll!.tollFee
                                     : 0.0);
-                            final tollName =
-                                (fareData?['toll_name'] ??
-                                        _estimateToll?.tollName)
-                                    ?.toString();
                             final hasToll =
                                 fareData?['has_toll'] == true ||
                                 (_estimateToll?.hasToll ?? false);
@@ -965,6 +961,27 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                                                       ],
                                                     ],
                                                   ),
+                                            // Toll (§1.1, TOLL-01): minimal one-line caption
+                                            // between the price and the distance — amount only,
+                                            // the toll name is deliberately NOT surfaced here
+                                            // (it lives on the confirm screen). Absent/0 omits
+                                            // the widget entirely — no £0.00, no layout shift
+                                            // (TOLL-08).
+                                            if (fareData != null && tollFee > 0)
+                                              Padding(
+                                                padding: const EdgeInsets.only(
+                                                  top: 2,
+                                                ),
+                                                child: Text(
+                                                  'Toll +£${tollFee.toStringAsFixed(2)}',
+                                                  maxLines: 1,
+                                                  style: TextStyle(
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: Colors.blue.shade800,
+                                                  ),
+                                                ),
+                                              ),
                                             if (fareData != null)
                                               Text(
                                                 fareData['distance_text'] ?? '',
@@ -1004,41 +1021,7 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                                                   ),
                                                 ),
                                               ),
-                                            // Toll row (§1.1, TOLL-01): itemized name + amount
-                                            // when the category (or route-level fallback)
-                                            // carries a toll. Absent/0 omits the widget
-                                            // entirely — no £0.00, no layout shift (TOLL-08).
-                                            if (fareData != null && tollFee > 0)
-                                              Container(
-                                                margin: const EdgeInsets.only(
-                                                  top: 2,
-                                                ),
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 6,
-                                                      vertical: 2,
-                                                    ),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.blue.shade50,
-                                                  borderRadius:
-                                                      BorderRadius.circular(8),
-                                                  border: Border.all(
-                                                    color: Colors.blue.shade100,
-                                                  ),
-                                                ),
-                                                child: Text(
-                                                  (tollName == null ||
-                                                          tollName.isEmpty)
-                                                      ? 'Toll +£${tollFee.toStringAsFixed(2)}'
-                                                      : 'Toll · $tollName +£${tollFee.toStringAsFixed(2)}',
-                                                  style: TextStyle(
-                                                    fontSize: 10,
-                                                    fontWeight: FontWeight.w600,
-                                                    color: Colors.blue.shade800,
-                                                  ),
-                                                ),
-                                              ),
-                                            // Outstanding-balance split (Phase 15): caption under
+// Outstanding-balance split (Phase 15): caption under
                                             // the selected-category price when the fare map
                                             // carries balance > 0. Backend total shown as-is.
                                             if (isSelected &&
