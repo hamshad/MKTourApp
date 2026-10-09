@@ -798,22 +798,35 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                                             ),
                                           ),
                                           const SizedBox(height: 4),
-                                          Row(
+                                          // Wrap (not Row + Expanded): the seating
+                                          // capacity must never be ellipsized. Icon +
+                                          // number keeps it compact; when space runs out
+                                          // the chips wrap to a second row instead.
+                                          Wrap(
+                                            spacing: 8,
+                                            runSpacing: 2,
+                                            crossAxisAlignment:
+                                                WrapCrossAlignment.center,
                                             children: [
-                                              Expanded(
-                                                child: Text(
-                                                  'Up to $seatingCapacity people',
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                  maxLines: 1,
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    color: Colors.grey[600],
-                                                  ),
-                                                ),
-                                              ),
-                                              const SizedBox(width: 8),
                                               Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(
+                                                    Icons.people_alt,
+                                                    size: 14,
+                                                    color: Colors.grey[500],
+                                                  ),
+                                                  Text(
+                                                    ' $seatingCapacity',
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: Colors.grey[600],
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              Row(
+                                                mainAxisSize: MainAxisSize.min,
                                                 children: [
                                                   Icon(
                                                     Icons.luggage,
@@ -829,8 +842,8 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                                                   ),
                                                 ],
                                               ),
-                                              const SizedBox(width: 8),
                                               Row(
+                                                mainAxisSize: MainAxisSize.min,
                                                 children: [
                                                   Icon(
                                                     Icons.shopping_bag,
