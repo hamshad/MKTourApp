@@ -323,6 +323,19 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
     // map stays byte-identical to today's shape (TOLL-08 baseline).
     // `slug`/`estimatedFare` chains above stay first/authoritative.
     final toll = TollInfo.fromCategory(cat);
+    // Route-level estimate toll is the fallback exactly as in the card row:
+    // the backend commonly sends `tollDetails {name, amount}` at the TOP
+    // level only, so a per-category parse finds the fee but no name. Without
+    // this the confirm screen — which reads `toll_name` off the fare map —
+    // would lose the name the vehicle card showed. Per-category keys still
+    // win, so a spec-shaped response is unchanged (TOLL-08 baseline intact:
+    // when no toll exists anywhere, the spread below adds NO keys).
+    final routeToll = _estimateToll;
+    final tollPresent =
+        toll.hasToll || toll.tollFee > 0 || (routeToll?.hasToll ?? false);
+    final tollFee = toll.tollFee > 0 ? toll.tollFee : (routeToll?.tollFee ?? 0.0);
+    final tollName = toll.tollName ?? routeToll?.tollName;
+    final tollTotal = toll.total ?? routeToll?.total;
 
     return {
       'slug': slug,
@@ -336,11 +349,11 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
         'congestion_amount': congestionAmount.toDouble(),
         'outstanding_balance': outstandingBalance.toDouble(),
         if (seatingCapacity != null) 'seating_capacity': seatingCapacity,
-        if (toll.hasToll || toll.tollFee > 0) ...{
-          'toll_fee': toll.tollFee,
-          if (toll.tollName != null) 'toll_name': toll.tollName,
-          'has_toll': toll.hasToll,
-          if (toll.total != null) 'total_with_toll': toll.total,
+        if (tollPresent) ...{
+          'toll_fee': tollFee,
+          if (tollName != null && tollName.isNotEmpty) 'toll_name': tollName,
+          'has_toll': toll.hasToll || (routeToll?.hasToll ?? false),
+          if (tollTotal != null) 'total_with_toll': tollTotal,
         },
         'distance_text': distanceText,
         'distance_miles': distanceMiles ?? 0.0,
@@ -851,16 +864,23 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                                       ),
                                     ),
 
-                                    // Price (from backend)
-                                    Flexible(
-                                      child: Padding(
-                                        padding: const EdgeInsets.only(
-                                          right: 12,
-                                        ),
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.end,
-                                          children: [
+// Price (from backend)
+                                     //
+                                     // Align(centerRight) is required: a loose Flexible
+                                     // shrink-wraps to its widest child, so without it the
+                                     // column sits at the START of its slot and the price /
+                                     // toll / distance float away from the card's right edge.
+                                     Flexible(
+                                       child: Align(
+                                         alignment: Alignment.centerRight,
+                                         child: Padding(
+                                           padding: const EdgeInsets.only(
+                                             right: 12,
+                                           ),
+                                           child: Column(
+                                             crossAxisAlignment:
+                                                 CrossAxisAlignment.end,
+                                             children: [
                                             _isFetchingFares && fareData == null
                                                 ? const SizedBox(
                                                     width: 16,
@@ -943,21 +963,25 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                                                           ],
                                                         ),
                                                       ] else ...[
-                                                        Text(
-                                                          payablePrice > 0
-                                                              ? '£${payablePrice.toStringAsFixed(2)}'
-                                                              : 'N/A',
-                                                          style: TextStyle(
-                                                            fontSize: 18,
-                                                            fontWeight:
-                                                                FontWeight.bold,
-                                                            color: isSelected
-                                                                ? AppTheme
-                                                                      .primaryColor
-                                                                : AppTheme
-                                                                      .textPrimary,
-                                                          ),
-                                                        ),
+Text(
+                                                           payablePrice > 0
+                                                               ? '£${payablePrice.toStringAsFixed(2)}'
+                                                               : 'N/A',
+                                                           maxLines: 1,
+                                                           softWrap: false,
+                                                           textAlign:
+                                                               TextAlign.right,
+                                                           style: TextStyle(
+                                                             fontSize: 18,
+                                                             fontWeight:
+                                                                 FontWeight.bold,
+                                                             color: isSelected
+                                                                 ? AppTheme
+                                                                       .primaryColor
+                                                                 : AppTheme
+                                                                       .textPrimary,
+                                                           ),
+                                                         ),
                                                       ],
                                                     ],
                                                   ),
@@ -966,7 +990,9 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                                             // the toll name is deliberately NOT surfaced here
                                             // (it lives on the confirm screen). Absent/0 omits
                                             // the widget entirely — no £0.00, no layout shift
-                                            // (TOLL-08).
+                                            // (TOLL-08). `softWrap: false` + explicit right align keeps its
+                                            // right edge locked to the price's regardless of
+                                            // font size differences.
                                             if (fareData != null && tollFee > 0)
                                               Padding(
                                                 padding: const EdgeInsets.only(
@@ -975,6 +1001,8 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                                                 child: Text(
                                                   'Toll +£${tollFee.toStringAsFixed(2)}',
                                                   maxLines: 1,
+                                                  softWrap: false,
+                                                  textAlign: TextAlign.right,
                                                   style: TextStyle(
                                                     fontSize: 10,
                                                     fontWeight: FontWeight.w600,
@@ -985,6 +1013,9 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                                             if (fareData != null)
                                               Text(
                                                 fareData['distance_text'] ?? '',
+                                                maxLines: 1,
+                                                softWrap: false,
+                                                textAlign: TextAlign.right,
                                                 style: TextStyle(
                                                   fontSize: 11,
                                                   color: Colors.grey[500],
@@ -1048,6 +1079,7 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
                                         ),
                                       ),
                                     ),
+                                  ),
                                   ],
                                 ),
                               ),

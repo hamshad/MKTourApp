@@ -22,12 +22,15 @@ void main() {
 
   /// Mirror of `VehicleSelectionWidget._normalizeCategory` — the unified
   /// fare-map build. Distance/duration args fixed for the fixture route.
+  /// `estimate` is the whole §1.1 response map (top-level `tollDetails`
+  /// rides along as the name/amount fallback).
   Map<String, dynamic>? vehicleFareMap(
     Map<String, dynamic> cat, {
     String distanceText = '24.50 mi',
     String durationText = '28 min',
     int durationSeconds = 1680,
     double distanceMiles = 24.5,
+    Map<String, dynamic>? estimate,
   }) {
     final slug = (cat['slug'] ?? cat['categorySlug'])?.toString();
     if (slug == null || slug.isEmpty) return null;
@@ -55,6 +58,12 @@ void main() {
     // Toll chain: same shared parser, gated spread (research Pitfall 4 —
     // BOTH normalizers must always move together).
     final toll = TollInfo.fromCategory(cat);
+    final routeToll = TollInfo.fromEstimate(estimate);
+    final tollPresent =
+        toll.hasToll || toll.tollFee > 0 || routeToll.hasToll;
+    final tollFee = toll.tollFee > 0 ? toll.tollFee : routeToll.tollFee;
+    final tollName = toll.tollName ?? routeToll.tollName;
+    final tollTotal = toll.total ?? routeToll.total;
 
     return {
       'slug': slug,
@@ -68,11 +77,11 @@ void main() {
         'congestion_amount': congestionAmount.toDouble(),
         'outstanding_balance': outstandingBalance.toDouble(),
         if (seatingCapacity != null) 'seating_capacity': seatingCapacity,
-        if (toll.hasToll || toll.tollFee > 0) ...{
-          'toll_fee': toll.tollFee,
-          if (toll.tollName != null) 'toll_name': toll.tollName,
-          'has_toll': toll.hasToll,
-          if (toll.total != null) 'total_with_toll': toll.total,
+        if (tollPresent) ...{
+          'toll_fee': tollFee,
+          if (tollName != null && tollName.isNotEmpty) 'toll_name': tollName,
+          'has_toll': toll.hasToll || routeToll.hasToll,
+          if (tollTotal != null) 'total_with_toll': tollTotal,
         },
         'distance_text': distanceText,
         'distance_miles': distanceMiles,
@@ -87,6 +96,7 @@ void main() {
   Map<String, dynamic> confirmationFareMap(
     Map<String, dynamic> cat, {
     String categorySlug = 'standard-saloon',
+    Map<String, dynamic>? estimate,
   }) {
     num numOf(dynamic v) => v is num ? v : num.tryParse('$v') ?? 0;
     final estimatedFare = numOf(cat['estimatedFare'] ?? cat['total_fare']);
@@ -97,6 +107,12 @@ void main() {
           0,
     );
     final toll = TollInfo.fromCategory(cat);
+    final routeToll = TollInfo.fromEstimate(estimate);
+    final tollPresent =
+        toll.hasToll || toll.tollFee > 0 || routeToll.hasToll;
+    final tollFee = toll.tollFee > 0 ? toll.tollFee : routeToll.tollFee;
+    final tollName = toll.tollName ?? routeToll.tollName;
+    final tollTotal = toll.total ?? routeToll.total;
     return {
       'total_fare': estimatedFare.toDouble(),
       'original_fare': (numOf(cat['originalFare'] ?? estimatedFare))
@@ -108,11 +124,11 @@ void main() {
       'congestion_amount': numOf(cat['congestionChargeAmount'] ?? 0).toDouble(),
       'outstanding_balance': (outstandingRaw < 0 ? 0 : outstandingRaw)
           .toDouble(),
-      if (toll.hasToll || toll.tollFee > 0) ...{
-        'toll_fee': toll.tollFee,
-        if (toll.tollName != null) 'toll_name': toll.tollName,
-        'has_toll': toll.hasToll,
-        if (toll.total != null) 'total_with_toll': toll.total,
+      if (tollPresent) ...{
+        'toll_fee': tollFee,
+        if (tollName != null && tollName.isNotEmpty) 'toll_name': tollName,
+        'has_toll': toll.hasToll || routeToll.hasToll,
+        if (tollTotal != null) 'total_with_toll': tollTotal,
       },
       'distance_miles': 24.5,
       'distance_text': '24.50 mi',
@@ -161,13 +177,13 @@ void main() {
     final tollFee = (fare['toll_fee'] as num?)?.toDouble() ?? 0.0;
     if (tollFee <= 0) return null;
     final total = (fare['total_with_toll'] as num?)?.toDouble();
-    if (total == null) return null;
     final fareValue = (fare['total_fare'] as num?)?.toDouble() ?? 0.0;
     final rawName = fare['toll_name'];
     final name = rawName?.toString();
     final tollPart = (name == null || name.isEmpty)
         ? 'Toll £${tollFee.toStringAsFixed(2)}'
         : 'Toll £${tollFee.toStringAsFixed(2)} ($name)';
+    if (total == null) return '$tollPart included in the fare';
     return 'Fare £${fareValue.toStringAsFixed(2)} + '
         '$tollPart = '
         '£${total.toStringAsFixed(2)}';
@@ -438,6 +454,59 @@ void main() {
       // Route-level estimate without hasToll changes nothing either.
       final noEstimate = vehicleTollRow(fare);
       expect(noEstimate['rowVisible'], isFalse);
+    });
+
+    test('route-level tollDetails name reaches BOTH fare maps (the '
+        'confirm-screen name the vehicle card hides)', () {
+      // Live backend shape: name+amount only at the TOP level, categories
+      // carry no toll keys at all.
+      final estimate = {
+        'hasToll': true,
+        'tollDetails': {'name': 'TOLL PLAZA Padalsingi', 'amount': 2.5},
+      };
+      final vehicle =
+          vehicleFareMap(legacyCategory(), estimate: estimate)!['fare']
+              as Map<String, dynamic>;
+      final confirmation =
+          confirmationFareMap(legacyCategory(), estimate: estimate);
+
+      for (final fare in [vehicle, confirmation]) {
+        expect(fare['toll_fee'], 2.5);
+        expect(fare['toll_name'], 'TOLL PLAZA Padalsingi');
+        expect(fare['has_toll'], isTrue);
+      }
+      // No backend `totalFare` in this shape, so the arithmetic form is
+      // withheld rather than guessed client-side.
+      expect(
+        tollBreakdownLine(confirmation),
+        'Toll £2.50 (TOLL PLAZA Padalsingi) included in the fare',
+      );
+      // With a backend total the full arithmetic line renders, name intact.
+      expect(
+        tollBreakdownLine({...confirmation, 'total_with_toll': 15.0}),
+        'Fare £12.50 + Toll £2.50 (TOLL PLAZA Padalsingi) = £15.00',
+      );
+      // The vehicle card deliberately shows the amount only.
+      expect(vehicleTollRow(vehicle)['rowText'], 'Toll +£2.50');
+    });
+
+    test('per-category toll keys still win over route-level tollDetails', () {
+      final estimate = {
+        'hasToll': true,
+        'tollDetails': {'name': 'ROUTE TOLL', 'amount': 9.99},
+      };
+      final cat = {
+        ...legacyCategory(),
+        'tollFee': 2.5,
+        'tollName': 'M6 Toll',
+        'totalFare': 15.0,
+      };
+      final fare =
+          vehicleFareMap(cat, estimate: estimate)!['fare']
+              as Map<String, dynamic>;
+      expect(fare['toll_fee'], 2.5);
+      expect(fare['toll_name'], 'M6 Toll');
+      expect(fare['total_with_toll'], 15.0);
     });
   });
 

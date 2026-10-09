@@ -400,6 +400,15 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
       // / `is_congestion` exist in both as precedent). Absent-toll categories
       // add NO keys. `estimatedFare ?? total_fare` stays first/authoritative.
       final toll = TollInfo.fromCategory(cat);
+      // Route-level `tollDetails {name, amount}` fallback — same shape the
+      // vehicle cards apply, so the breakdown line keeps the toll name on a
+      // stops re-price too (per-category keys still win).
+      final routeToll = TollInfo.fromEstimate(data);
+      final tollPresent =
+          toll.hasToll || toll.tollFee > 0 || routeToll.hasToll;
+      final tollFee = toll.tollFee > 0 ? toll.tollFee : routeToll.tollFee;
+      final tollName = toll.tollName ?? routeToll.tollName;
+      final tollTotal = toll.total ?? routeToll.total;
 
       debugPrint(
         '✅ RideConfirmationScreen: Stops-aware fare £$estimatedFare '
@@ -415,11 +424,11 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
         'is_congestion': cat['isCongestionCharge'] == true,
         'congestion_amount': numOf(cat['congestionChargeAmount'] ?? 0).toDouble(),
         'outstanding_balance': outstandingBalance.toDouble(),
-        if (toll.hasToll || toll.tollFee > 0) ...{
-          'toll_fee': toll.tollFee,
-          if (toll.tollName != null) 'toll_name': toll.tollName,
-          'has_toll': toll.hasToll,
-          if (toll.total != null) 'total_with_toll': toll.total,
+        if (tollPresent) ...{
+          'toll_fee': tollFee,
+          if (tollName != null && tollName.isNotEmpty) 'toll_name': tollName,
+          'has_toll': toll.hasToll || routeToll.hasToll,
+          if (tollTotal != null) 'total_with_toll': tollTotal,
         },
         'distance_miles': distanceMiles ?? 0.0,
         'distance_text': distanceText,
@@ -540,19 +549,25 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
         '£${total.toStringAsFixed(2)}';
   }
 
-  /// Spec §5 line: `Fare £33.00 + Toll £8.90 = £41.90` — values verbatim
-  /// from the category map. The toll NAME is shown here (never on the
-  /// vehicle cards) so the rider sees which toll the fee covers before
-  /// confirming. Null when toll absent or the backend sent no total
-  /// (never compute `fare + toll` client-side).
+  /// Spec §5 line: `Fare £33.00 + Toll £8.90 (M6 Toll) = £41.90` — values
+  /// verbatim from the category map. The toll NAME is shown here (never on
+  /// the vehicle cards) so the rider sees which toll the fee covers before
+  /// confirming.
+  ///
+  /// Two shapes, both single-line:
+  ///  - backend sent `total_with_toll` → full `Fare + Toll (name) = total`.
+  ///  - backend sent the toll but NO total → `Toll £2.50 (name) included in
+  ///    the fare` — we never add the toll to the fare client-side (research
+  ///    Pitfall 1), so the arithmetic form is withheld rather than guessed.
+  /// Null when no toll at all (TOLL-08 legacy rendering unchanged).
   String? get _tollBreakdownLine {
     if (_tollFee <= 0) return null;
-    final total = _tollTotalWithToll;
-    if (total == null) return null;
     final name = _tollName;
     final tollPart = (name == null || name.isEmpty)
         ? 'Toll £${_tollFee.toStringAsFixed(2)}'
         : 'Toll £${_tollFee.toStringAsFixed(2)} ($name)';
+    final total = _tollTotalWithToll;
+    if (total == null) return '$tollPart included in the fare';
     return 'Fare £${_fare.toStringAsFixed(2)} + '
         '$tollPart = '
         '£${total.toStringAsFixed(2)}';
