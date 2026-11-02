@@ -6,3 +6,4 @@
 /// ```
 
 export 'vehicle.dart';
+export 'coupon.dart';

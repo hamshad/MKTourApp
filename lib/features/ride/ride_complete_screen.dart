@@ -45,11 +45,24 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
   }
 
   double get _promoDiscount {
-    for (final key in ['promoDiscount', 'discount']) {
+    for (final key in ['couponDiscount', 'promoDiscount', 'discount']) {
       final raw = widget.rideData[key];
       if (raw is num && raw.toDouble() > 0) return raw.toDouble();
     }
     return 0.0;
+  }
+
+  /// True when the receipt should render the itemized coupon rows
+  /// (spec P1): a coupon code AND a positive discount both present.
+  bool get _couponDiscountRow => _couponCode != null && _promoDiscount > 0;
+
+  /// Coupon code applied to this ride (coupons spec: receipt row label
+  /// `Coupon Discount (MK-XXXX)`). Null/empty for legacy promo rides.
+  String? get _couponCode {
+    final raw = widget.rideData['couponCode'];
+    if (raw == null) return null;
+    final code = raw.toString();
+    return code.isEmpty ? null : code;
   }
 
   bool get _hasWaitData =>
@@ -849,7 +862,22 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                               '£${_congestionFee.toStringAsFixed(2)}',
                             ),
                           ],
-                          if (_promoDiscount > 0) ...[
+                          // Coupon discount (spec P1 receipt): show the
+                          // original fare + itemized discount with the code.
+                          // Legacy free-ride promo keeps its own rows below.
+                          if (_couponDiscountRow) ...[
+                            if (_originalFare > 0)
+                              _buildFareRow(
+                                'Original Fare',
+                                '£${_originalFare.toStringAsFixed(2)}',
+                              ),
+                            _buildFareRow(
+                              'Coupon Discount (${_couponCode!})',
+                              '- £${_promoDiscount.toStringAsFixed(2)}',
+                              valueColor: const Color(0xFF22C55E),
+                            ),
+                          ],
+                          if (_promoDiscount > 0 && _couponCode == null) ...[
                             _buildFareRow(
                               'Promo discount',
                               '- £${_promoDiscount.toStringAsFixed(2)}',
@@ -869,8 +897,12 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                                 valueColor: const Color(0xFF22C55E),
                               ),
                           ],
-                          // Promo fare breakdown rows
-                          if (_isPromoRide && _originalFare > 0) ...[
+                          // Promo fare breakdown rows (legacy free-ride
+                          // system — coupon rides render their own rows
+                          // above and must not double up).
+                          if (_isPromoRide &&
+                              _originalFare > 0 &&
+                              _couponCode == null) ...[
                             _buildFareRow(
                               'Original Fare',
                               '£${_originalFare.toStringAsFixed(2)}',
@@ -915,8 +947,14 @@ class _RideCompleteScreenState extends State<RideCompleteScreen> {
                               Column(
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
-                                  // Show strikethrough original fare for promo rides or scheduled airport rides
-                                  if ((_isPromoRide || (_isScheduled && _isAirportTransfer)) && _originalFare > 0 && _fare < _originalFare)
+                                  // Strikethrough original fare for promo /
+                                  // coupon / scheduled airport rides
+                                  if (((_isPromoRide ||
+                                              _couponDiscountRow) ||
+                                          (_isScheduled &&
+                                              _isAirportTransfer)) &&
+                                      _originalFare > 0 &&
+                                      _fare < _originalFare)
                                     Text(
                                       '£${_originalFare.toStringAsFixed(2)}',
                                       style: const TextStyle(

@@ -7,6 +7,11 @@ import '../account/edit_profile_screen.dart';
 import '../account/payment_methods_screen.dart';
 import '../account/settings_screen.dart';
 import '../auth/phone_login_screen.dart';
+import '../coupons/coupon_wallet_screen.dart';
+import '../coupons/loyalty_tiers_screen.dart';
+import '../coupons/loyalty_badge.dart';
+import '../../core/services/coupon_service.dart';
+import '../../core/models/coupon.dart';
 
 import 'package:provider/provider.dart';
 import '../../core/auth_provider.dart';
@@ -19,12 +24,26 @@ class AccountScreen extends StatefulWidget {
 }
 
 class _AccountScreenState extends State<AccountScreen> {
+  /// Loyalty tier + completed rides from GET /coupons/tiers (spec P4).
+  /// Null until first fetch; badge renders nothing until then.
+  LoyaltyTiers? _loyaltyTiers;
+
   @override
   void initState() {
     super.initState();
     runAfterFrame((_) {
       context.read<AuthProvider>().fetchUserProfile();
+      _fetchLoyalty();
     });
+  }
+
+  Future<void> _fetchLoyalty() async {
+    try {
+      final tiers = await CouponService.fetchTiers();
+      if (mounted) setState(() => _loyaltyTiers = tiers);
+    } catch (e) {
+      // Badge is non-critical — stay silent on failure.
+    }
   }
 
   @override
@@ -137,6 +156,25 @@ class _AccountScreenState extends State<AccountScreen> {
                               ],
                             ),
                           ),
+                          // Loyalty badge + completed rides (spec: Account)
+                          if (_loyaltyTiers != null &&
+                              _loyaltyTiers!.userTier.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            GestureDetector(
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const LoyaltyTiersScreen(),
+                                ),
+                              ),
+                              child: LoyaltyBadge(
+                                tier: _loyaltyTiers!.userTier,
+                                completedRides:
+                                    _loyaltyTiers!.completedRidesCount,
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                       const Spacer(),
@@ -148,6 +186,29 @@ class _AccountScreenState extends State<AccountScreen> {
                   ),
                 ),
                 const SizedBox(height: 32),
+                _buildMenuOption(
+                  context,
+                  icon: Icons.local_offer_outlined,
+                  title: 'My Coupons / Wallet',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const CouponWalletScreen(),
+                    ),
+                  ),
+                ),
+                _buildMenuOption(
+                  context,
+                  icon: Icons.military_tech,
+                  title: 'Loyalty Tiers',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const LoyaltyTiersScreen(),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
                 // _buildMenuOption(
                 //   context,
                 //   icon: Icons.help_outline,

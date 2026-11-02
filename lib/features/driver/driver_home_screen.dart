@@ -1889,11 +1889,32 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
               ),
             ],
           ),
-        );
+);
       }
     });
 
-    // User cancelled the ride (before start)
+    // ride:statusUpdate (coupons spec §3): generic status push with
+    // fare/originalFare/couponDiscount. Update in-memory _rideData for
+    // coupon receipt enrichment — no navigation, no state change.
+    _socketService.on('ride:statusUpdate', (data) {
+      debugPrint('📊 [DriverHomeScreen] Status Update: $data');
+      final rideId = data['rideId']?.toString() ??
+          data['_id']?.toString() ??
+          data['id']?.toString();
+      if (rideId != null &&
+          _currentRideId != null &&
+          _rideData != null &&
+          _canonicalRideId(_rideData!) == rideId) {
+        // Merge new fields into existing rideData for any open receipt
+        // enrichment (couponDiscount, originalFare, fare). Dedupe handled
+        // by RideEventDedupe at the FCM layer — socket is authoritative
+        // for live updates so we just merge.
+        setState(() {
+          _rideData = {...?_rideData, ...data};
+        });
+      }
+    });
+
     _socketService.on('ride:cancelledByUser', (data) {
       debugPrint('❌ [DriverHomeScreen] Ride Cancelled By User: $data');
       if (mounted) {
@@ -3486,6 +3507,21 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
                   Map<String, dynamic>.from(rideResult['earnings'] as Map),
                 )
               : DriverEarnings.none;
+          // Coupon receipt fields (coupons spec): read once from the
+          // complete response (or pre-completion snapshot), pass verbatim.
+          double numOf(dynamic v) => v is num ? v.toDouble() : 0.0;
+          final couponDiscount = numOf(
+            rideResult['couponDiscount'] ?? completingRide?['couponDiscount'],
+          );
+          final couponOriginalFare = numOf(
+            rideResult['originalFare'] ?? completingRide?['originalFare'],
+          );
+          final couponCodeRaw =
+              rideResult['couponCode'] ?? completingRide?['couponCode'];
+          final couponCode =
+              couponCodeRaw == null || couponCodeRaw.toString().isEmpty
+              ? null
+              : couponCodeRaw.toString();
           // Trip A is gone and Trip B already owns the screen: summarize
           // only. Never mutate status/ride state for a superseded ride —
           // this is what painted 'Confirm Cash Collected' over Trip B.
@@ -3498,6 +3534,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
               subline: 'Your next trip is ready. Head to the pickup location.',
               earnings: earnings,
               rideId: completingRideId,
+              originalFare: couponOriginalFare,
+              couponDiscount: couponDiscount,
+              couponCode: couponCode,
             );
             return;
           }
@@ -3528,6 +3567,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
                   subline: 'No cash to collect.',
                   earnings: earnings,
                   rideId: completingRideId,
+                  originalFare: couponOriginalFare,
+                  couponDiscount: couponDiscount,
+                  couponCode: couponCode,
                 );
                 return;
               }
@@ -3546,6 +3588,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
                 subline: 'No cash to collect.',
                 earnings: earnings,
                 rideId: completingRideId,
+                originalFare: couponOriginalFare,
+                couponDiscount: couponDiscount,
+                couponCode: couponCode,
               );
             } else {
               if (!mounted) return;
@@ -3574,6 +3619,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
             subline: 'Collect cash from the passenger.',
             earnings: earnings,
             rideId: completingRideId,
+            originalFare: couponOriginalFare,
+            couponDiscount: couponDiscount,
+            couponCode: couponCode,
           );
           } else {
             // B2B: Trip B takes over instead of going online (20-02).
@@ -3587,6 +3635,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
                 subline: null,
                 earnings: earnings,
                 rideId: completingRideId,
+                originalFare: couponOriginalFare,
+                couponDiscount: couponDiscount,
+                couponCode: couponCode,
               );
               return;
             }
@@ -3612,6 +3663,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
                     : null,
                 earnings: earnings,
                 rideId: completingRideId,
+                originalFare: couponOriginalFare,
+                couponDiscount: couponDiscount,
+                couponCode: couponCode,
               );
               if (promoted) return;
               if (_currentRideId == null) {
@@ -3641,6 +3695,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
               subline: null,
               earnings: earnings,
               rideId: completingRideId,
+              originalFare: couponOriginalFare,
+              couponDiscount: couponDiscount,
+              couponCode: couponCode,
             );
           }
         } else {
@@ -3844,12 +3901,17 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
   }
 
   /// Fare receipt after completion: actualFare + accumulated wait totals.
+  /// Coupon rides (coupons spec) add an itemized subsidy block — every
+  /// value VERBATIM from the complete response, no client arithmetic.
   void _showFareSummary({
     required FareSummary summary,
     required String headline,
     String? subline,
     DriverEarnings? earnings,
     String? rideId,
+    double originalFare = 0,
+    double couponDiscount = 0,
+    String? couponCode,
   }) {
     // Enrich-only channel (21-03 TOLL-05): while this popup is open a
     // driver `ride:completed` socket payload (§3.3) may fill missing toll
@@ -3884,6 +3946,71 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
                 ],
               ),
               const SizedBox(height: 12),
+              // Coupon subsidy receipt (coupons spec §2): driver is 100%
+              // protected — earnings ride on originalFare, never the
+              // discounted amount. Verbatim backend values only.
+              if (couponDiscount > 0) ...[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Customer Paid'),
+                    Text('£${summary.actualFare.toStringAsFixed(2)}'),
+                  ],
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Platform Coupon Subsidy'),
+                    Text(
+                      '+£${couponDiscount.toStringAsFixed(2)}',
+                      style: const TextStyle(color: Color(0xFF22C55E)),
+                    ),
+                  ],
+                ),
+                if (originalFare > 0)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Gross Compensable Fare'),
+                      Text('£${originalFare.toStringAsFixed(2)}'),
+                    ],
+                  ),
+                if (earnings != null && earnings.hasData) ...[
+                  if (earnings.platformFee > 0)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Platform Fee'),
+                        Text('-£${earnings.platformFee.toStringAsFixed(2)}'),
+                      ],
+                    ),
+                  if (earnings.totalDriverTakeHome > 0)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Driver Take-Home',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          '£${earnings.totalDriverTakeHome.toStringAsFixed(2)}',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                ],
+                if (couponCode != null && couponCode.isNotEmpty)
+                  Text(
+                    'Coupon $couponCode — platform covers the discount.',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                const SizedBox(height: 8),
+                Divider(color: Colors.grey[300]),
+                const SizedBox(height: 8),
+              ],
               Text('Base fare £${summary.fare.toStringAsFixed(2)}'),
               if (summary.totalWaitMinutes > 0 || summary.totalWaitFee > 0)
                 Text(
@@ -3893,17 +4020,21 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
               // §2.1 earnings itemization (21-03 TOLL-05). Verbatim backend
               // values only — no net − fee or fare + toll arithmetic here.
               // Absent earnings → subtree omitted → legacy rows exactly.
+              // Coupon receipts already itemize fee + take-home above —
+              // keep only the toll line to avoid duplicate rows.
               if (liveEarnings != null && liveEarnings.hasData) ...[
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Net earnings'),
-                    Text(
-                      '£${liveEarnings.netTripEarnings.toStringAsFixed(2)}',
-                    ),
-                  ],
-                ),
+                if (couponDiscount <= 0) ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Net earnings'),
+                      Text(
+                        '£${liveEarnings.netTripEarnings.toStringAsFixed(2)}',
+                      ),
+                    ],
+                  ),
+                ],
                 if (liveEarnings.tollReimbursed > 0)
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -3917,7 +4048,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen>
                       ),
                     ],
                   ),
-                if (liveEarnings.totalDriverTakeHome > 0)
+                if (liveEarnings.totalDriverTakeHome > 0 &&
+                    couponDiscount <= 0)
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [

@@ -311,7 +311,11 @@ class DriverNavigationPanel extends StatelessWidget {
                           ),
                           _buildTotalItem(
                             Icons.receipt_long,
-                            'Fare',
+                            // Cash → collect discounted fare from passenger;
+                            // digital → already paid online.
+                            rideData?['paymentMethod'] == 'cash'
+                                ? 'To Collect'
+                                : 'Fare',
                             farePreview != null
                                 ? '£${farePreview!.toStringAsFixed(2)}'
                                 : '—',

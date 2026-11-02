@@ -189,6 +189,9 @@ class PaymentService {
     String? notes,
     List<Map<String, dynamic>>? stops,
     required String paymentMethod,
+    /// Validated coupon code from /coupons/validate (spec P2). Sent
+    /// verbatim; backend rejects with a coupon error when ineligible.
+    String? couponCode,
   }) async {
     // Normalize and validate paymentMethod
     final normalizedMethod = paymentMethod.trim().toLowerCase();
@@ -221,6 +224,8 @@ class PaymentService {
         'vehicleCategorySlug': vehicleCategorySlug,
         'distance': distance,
         'paymentMethod': normalizedMethod,
+        if (couponCode != null && couponCode.isNotEmpty)
+          'couponCode': couponCode,
         if (isScheduled)
           'scheduledPickupTime': scheduledAt.toUtc().toIso8601String(),
         if (notes != null && notes.isNotEmpty)

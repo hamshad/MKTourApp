@@ -22,12 +22,17 @@ import '../../core/services/active_ride_storage.dart';
 import '../../core/api_service.dart';
 import '../../core/models/outstanding_balance.dart';
 import '../../core/services/fcm_service.dart';
+import '../../core/services/coupon_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../ride/outstanding_balance_screen.dart';
 import '../ride/ride_assigned_screen.dart';
 import '../booking/ride_confirmation_screen.dart';
 import 'airport_selection_screen.dart';
 import '../promo/promo_status_screen.dart';
+import '../coupons/coupon_wallet_screen.dart';
+import '../coupons/loyalty_tiers_screen.dart';
+import '../coupons/loyalty_badge.dart';
+import '../../core/models/coupon.dart';
 import '../../core/widgets/custom_snackbar.dart';
 
 /// Build the rider tracking screen from the authoritative restored ride map.
@@ -123,6 +128,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // Promo status
   Map<String, dynamic>? _promoStatusData;
 
+  /// Loyalty tier + progress from GET /coupons/tiers.
+  /// Updated on init and after coupon/loyalty FCM events.
+  LoyaltyTiers? _loyaltyTiers;
+
   /// Outstanding balance (payment-flow.md §3). Persisted rideId survives
   /// restarts so the banner returns until `payment:succeeded` clears it.
   /// Cash + payment_link only — tap opens [OutstandingBalanceScreen].
@@ -132,6 +141,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   StreamSubscription<FcmNotificationData>? _balanceTapSub;
   // Ride-lifecycle push-tap resync (RideSession, no navigation).
   StreamSubscription<FcmNotificationData>? _rideResyncTapSub;
+
+  // Coupon / Loyalty FCM (coupons spec §3)
+  StreamSubscription<FcmNotificationData>? _couponFcmTapSub;
+  StreamSubscription<FcmNotificationData>? _couponFcmForegroundSub;
 
   // Connection status subscription
   StreamSubscription<bool>? _connectionSubscription;
@@ -160,6 +173,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _checkPendingBalance();
     _listenBalanceFcm();
     _listenRideResyncFcm();
+    _listenCouponFcm();
+    _fetchLoyaltyTiers();
+  }
+
+  /// Fetch loyalty tiers for the progress bar (coupons spec P4).
+  Future<void> _fetchLoyaltyTiers() async {
+    try {
+      final tiers = await CouponService.fetchTiers();
+      if (mounted) setState(() => _loyaltyTiers = tiers);
+    } catch (e) {
+      // Non-critical — progress bar stays hidden on failure.
+    }
   }
 
   @override
@@ -264,13 +289,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _socketService.onDriverReassigning((data) {
       debugPrint('🔄 [HomeScreen] Driver reassigning: $data');
       if (!mounted) return;
-      final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
+      final map = data is Map
+          ? Map<String, dynamic>.from(data)
+          : <String, dynamic>{};
       final nested = map['data'];
-      final count = map['reassignmentCount'] ??
+      final count =
+          map['reassignmentCount'] ??
           (nested is Map ? (nested as Map)['reassignmentCount'] : null);
       setState(() {
         _isSearching = true;
-        _reassignmentCount = count is num ? count.toInt() : _reassignmentCount + 1;
+        _reassignmentCount = count is num
+            ? count.toInt()
+            : _reassignmentCount + 1;
       });
       // Backend moved the ride back to `requested` — keep the snapshot on the
       // searching route. Guarded: when the assigned screen owns the ride
@@ -338,11 +368,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  /// Sync ride status with backend when app resumes
-  Future<void> _syncRideStatus() async {
-    if (_activeRide == null) return;
-
-    final rideId = _activeRide!['_id'] ?? _activeRide!['id'];
+  /// Sync ride status with backend when app resumes or on status update.
+  /// [rideId] optional — uses active ride when omitted (app resume path).
+  Future<void> _syncRideStatus([String? rideId]) async {
+    rideId ??= _activeRide!['_id'] ?? _activeRide!['id'];
     if (rideId == null) return;
 
     try {
@@ -387,7 +416,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // Use state manager to determine scheduled status (persisted at booking time)
     // instead of relying on socket event data which may lack isScheduled flag.
     final auth = Provider.of<AuthProvider>(context, listen: false);
-    final bool isScheduled = data['isScheduled'] == true || auth.isRideScheduled(rideId);
+    final bool isScheduled =
+        data['isScheduled'] == true || auth.isRideScheduled(rideId);
 
     // Scheduled accept arrives hours/days later while the user browses the
     // app — never navigate, never persist an active ride (that would corrupt
@@ -397,7 +427,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final driverName = driver is Map
           ? (driver['name'] ?? driver['driverName'] ?? '').toString()
           : '';
-      final timeRaw = data['scheduledPickupTime'] ??
+      final timeRaw =
+          data['scheduledPickupTime'] ??
           data['pickupTime'] ??
           data['scheduledAt'];
       String whenStr = '';
@@ -510,7 +541,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// is intentionally skipped: the pushed screen fetches what it needs itself
   /// and its live listeners catch all subsequent events.
   Future<void> _handleDriverArrivedGlobal(dynamic data) async {
-    final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
+    final map = data is Map
+        ? Map<String, dynamic>.from(data)
+        : <String, dynamic>{};
     final rideId =
         map['rideId']?.toString() ??
         map['bookingId']?.toString() ??
@@ -576,9 +609,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             dropoff: dropoff,
             fare: fare,
             driver: driver,
-            paymentTiming: cached?['paymentTiming']?.toString() ??
+            paymentTiming:
+                cached?['paymentTiming']?.toString() ??
                 map['paymentTiming']?.toString(),
-            clientSecret: cached?['clientSecret']?.toString() ??
+            clientSecret:
+                cached?['clientSecret']?.toString() ??
                 map['clientSecret']?.toString(),
             isScheduled: true,
             initialStatus: 'driver_arrived',
@@ -596,7 +631,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// into tracking at in-progress state. No-op when the live screen already
   /// owns this ride.
   Future<void> _handleRideStartedGlobal(dynamic data) async {
-    final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
+    final map = data is Map
+        ? Map<String, dynamic>.from(data)
+        : <String, dynamic>{};
     final rideId =
         map['rideId']?.toString() ??
         map['_id']?.toString() ??
@@ -869,18 +906,46 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     });
 
+    // ride:statusUpdate (coupons spec §3): generic status push with
+    // fare/originalFare/couponDiscount. Dedupe + resync active ride.
+    _socketService.on('ride:statusUpdate', (data) {
+      debugPrint('📊 [HomeScreen] Status Update: $data');
+      final rideId =
+          data['rideId']?.toString() ??
+          data['_id']?.toString() ??
+          data['id']?.toString();
+      final activeRideId =
+          _activeRide?['_id']?.toString() ?? _activeRide?['rideId']?.toString();
+      if (rideId == null || activeRideId == null || rideId != activeRideId) {
+        return;
+      }
+      if (!RideEventDedupe.shouldHandleEvent(
+        source: 'socket',
+        type: 'status_update',
+        data: data,
+      )) {
+        return;
+      }
+      _syncRideStatus(rideId);
+    });
+
     // Driver-cancel auto-reassign: ride stays alive in `requested` status —
     // keep the overlay up in its reassign state, never drop to home.
     _socketService.onDriverReassigning((data) {
       debugPrint('🔄 [HomeScreen] Driver reassigning: $data');
       if (!mounted) return;
-      final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
+      final map = data is Map
+          ? Map<String, dynamic>.from(data)
+          : <String, dynamic>{};
       final nested = map['data'];
-      final count = map['reassignmentCount'] ??
+      final count =
+          map['reassignmentCount'] ??
           (nested is Map ? (nested as Map)['reassignmentCount'] : null);
       setState(() {
         _isSearching = true;
-        _reassignmentCount = count is num ? count.toInt() : _reassignmentCount + 1;
+        _reassignmentCount = count is num
+            ? count.toInt()
+            : _reassignmentCount + 1;
       });
       // Backend moved the ride back to `requested` — keep the snapshot on the
       // searching route. Guarded: when the assigned screen owns the ride
@@ -895,7 +960,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (mounted) {
         CustomSnackbar.show(
           context,
-          message: data['message'] ?? 'Payment confirmed! Your ride is scheduled.',
+          message:
+              data['message'] ?? 'Payment confirmed! Your ride is scheduled.',
           type: SnackbarType.success,
         );
       }
@@ -912,7 +978,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _fetchRideHistory();
         CustomSnackbar.show(
           context,
-          message: data['message'] ?? 'A driver is now being found for your scheduled ride.',
+          message:
+              data['message'] ??
+              'A driver is now being found for your scheduled ride.',
           type: SnackbarType.info,
         );
       }
@@ -927,7 +995,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _fetchRideHistory();
         CustomSnackbar.show(
           context,
-          message: data['message'] ??
+          message:
+              data['message'] ??
               'Driver cancelled. Finding a new driver for your scheduled ride…',
           type: SnackbarType.warning,
           duration: const Duration(seconds: 6),
@@ -940,8 +1009,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (mounted) {
         // Prebook reminders ring — first transport (socket or FCM) wins via
         // the shared canonical key, so no double ringtone.
-        final reminderType =
-            data is Map ? data['reminderType']?.toString().toLowerCase() : null;
+        final reminderType = data is Map
+            ? data['reminderType']?.toString().toLowerCase()
+            : null;
         final key = (reminderType?.contains('final') ?? false)
             ? 'reminder_final'
             : 'reminder_first';
@@ -956,7 +1026,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         }
         CustomSnackbar.show(
           context,
-          message: data['message'] ?? 'Reminder: You have a scheduled ride soon!',
+          message:
+              data['message'] ?? 'Reminder: You have a scheduled ride soon!',
           type: SnackbarType.warning,
         );
       }
@@ -968,7 +1039,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _fetchRideHistory();
         CustomSnackbar.show(
           context,
-          message: data['message'] ?? 'Your booking expired because the payment was not completed in time.',
+          message:
+              data['message'] ??
+              'Your booking expired because the payment was not completed in time.',
           type: SnackbarType.error,
         );
       }
@@ -980,7 +1053,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _fetchRideHistory();
         CustomSnackbar.show(
           context,
-          message: data['message'] ?? 'No driver was found for your scheduled ride. Your payment will be refunded.',
+          message:
+              data['message'] ??
+              'No driver was found for your scheduled ride. Your payment will be refunded.',
           type: SnackbarType.error,
         );
       }
@@ -992,14 +1067,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _fetchRideHistory();
         // depositForfeited is a number (e.g. 0.53), not a boolean
         final forfeitedRaw = data['depositForfeited'];
-        final depositForfeited = forfeitedRaw != null &&
-            forfeitedRaw != false &&
-            forfeitedRaw != 0;
-        final forfeitedAmount = (forfeitedRaw is num) ? forfeitedRaw.toDouble() : 0.0;
-        final forfeitedStr = forfeitedAmount > 0 ? ' £${forfeitedAmount.toStringAsFixed(2)} payment forfeited.' : '';
+        final depositForfeited =
+            forfeitedRaw != null && forfeitedRaw != false && forfeitedRaw != 0;
+        final forfeitedAmount = (forfeitedRaw is num)
+            ? forfeitedRaw.toDouble()
+            : 0.0;
+        final forfeitedStr = forfeitedAmount > 0
+            ? ' £${forfeitedAmount.toStringAsFixed(2)} payment forfeited.'
+            : '';
         CustomSnackbar.show(
           context,
-          message: data['message'] ??
+          message:
+              data['message'] ??
               (depositForfeited
                   ? 'Ride cancelled due to no-show.$forfeitedStr'
                   : 'Ride cancelled due to no-show.'),
@@ -1021,9 +1100,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final map = ride is Map<String, dynamic>
         ? ride
         : ride is Map
-            ? Map<String, dynamic>.from(ride)
-            : null;
-    final rideId = map?['_id']?.toString() ??
+        ? Map<String, dynamic>.from(ride)
+        : null;
+    final rideId =
+        map?['_id']?.toString() ??
         map?['rideId']?.toString() ??
         map?['id']?.toString() ??
         '';
@@ -1309,18 +1389,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// FCM balance taps (payment-flow.md §3, §5): reminder tap opens the
   /// balance screen; succeeded clears the banner.
   void _listenBalanceFcm() {
-    _balanceForegroundSub = FcmService.instance.onForegroundNotification.listen((
-      data,
-    ) {
-      if (!mounted) return;
-      if (data.type == NotificationType.balanceDueReminder ||
-          data.type == NotificationType.paymentBalanceDue) {
-        _setPendingBalanceFromFcm(data);
-      } else if (data.type == NotificationType.paymentSucceeded ||
-          data.type == NotificationType.cashCollected) {
-        _clearPendingBalance();
-      }
-    });
+    _balanceForegroundSub = FcmService.instance.onForegroundNotification.listen(
+      (data) {
+        if (!mounted) return;
+        if (data.type == NotificationType.balanceDueReminder ||
+            data.type == NotificationType.paymentBalanceDue) {
+          _setPendingBalanceFromFcm(data);
+        } else if (data.type == NotificationType.paymentSucceeded ||
+            data.type == NotificationType.cashCollected) {
+          _clearPendingBalance();
+        }
+      },
+    );
     _balanceTapSub = FcmService.instance.onNotificationTap.listen((data) {
       if (!mounted) return;
       if (data.type == NotificationType.balanceDueReminder ||
@@ -1344,7 +1424,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (rideId == null || rideId.isEmpty) return;
       switch (data.type) {
         case NotificationType.rideAccepted:
-        case NotificationType.rideDriverEnRoute: // B2B: driver finished trip A, heading over (20-03)
+        case NotificationType
+            .rideDriverEnRoute: // B2B: driver finished trip A, heading over (20-03)
         case NotificationType.driverArrived:
         case NotificationType.rideStarted:
         case NotificationType.rideCompleted:
@@ -1363,6 +1444,111 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           break;
       }
     });
+  }
+
+  /// Coupon / Loyalty FCM (coupons spec §3):
+  /// - coupon_issued tap → open My Coupons/Wallet
+  /// - loyalty_upgrade tap/foreground → celebratory modal
+  void _listenCouponFcm() {
+    _couponFcmTapSub = FcmService.instance.onNotificationTap.listen((data) {
+      if (!mounted) return;
+      if (data.type == NotificationType.couponIssued) {
+        Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const CouponWalletScreen()));
+      } else if (data.type == NotificationType.loyaltyUpgrade) {
+        _showLoyaltyUpgradeDialog(data);
+      }
+    });
+
+    // Foreground: loyalty_upgrade shows celebratory dialog immediately
+    _couponFcmForegroundSub = FcmService.instance.onForegroundNotification
+        .listen((data) {
+          if (!mounted) return;
+          if (data.type == NotificationType.loyaltyUpgrade) {
+            _showLoyaltyUpgradeDialog(data);
+          }
+        });
+  }
+
+  void _showLoyaltyUpgradeDialog(FcmNotificationData data) {
+    final tier = data.newTier ?? 'Bronze';
+    final rides = data.completedRides ?? 0;
+    final code = data.couponCode;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(
+              Icons.military_tech,
+              color: AppTheme.primaryColor,
+              size: 28,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Welcome to ${tier[0].toUpperCase() + tier.substring(1)}!',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Congratulations! You\'ve reached $rides rides and unlocked the '
+              '${tier[0].toUpperCase() + tier.substring(1)} tier.',
+              style: const TextStyle(fontSize: 14),
+            ),
+            if (code != null && code.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.local_offer, color: AppTheme.primaryColor),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Your $code coupon is ready in your wallet.',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const LoyaltyTiersScreen()),
+              );
+            },
+            child: const Text('View Tiers'),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Authoritative resync for a push tap (no navigation). Rejoins driver
@@ -1404,7 +1590,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         rideId: rideId,
         amount: data.excessAmount ?? data.amount ?? 0,
         status: 'balance_due',
-        message: 'You have an unpaid balance. Please pay now to continue using the app.',
+        message:
+            'You have an unpaid balance. Please pay now to continue using the app.',
         paymentUrl: data.paymentUrl,
         clientSecret: data.clientSecret,
         isReminder: true,
@@ -1449,8 +1636,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final map = data is Map<String, dynamic>
           ? data
           : data is Map
-              ? Map<String, dynamic>.from(data)
-              : <String, dynamic>{};
+          ? Map<String, dynamic>.from(data)
+          : <String, dynamic>{};
       if (!RideEventDedupe.shouldHandleEvent(
         source: 'socket',
         type: 'payment_balance_due',
@@ -1561,56 +1748,62 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     if (!mounted || !context.mounted) return;
     runAfterFrame((_) {
-        if (!mounted || !context.mounted) return;
-        if (status == 'in_progress' || status == 'at_stop') {
-          // Rider side collapses at_stop → in_progress (snapshotStatusForRider);
-          // RideAssignedScreen is the canonical tracking screen — feed it the
-          // reconciled ride map instead of the arg-less '/ride-progress' route
-          // (which rendered a null-data screen full of demo fallbacks).
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (context) =>
-                  restoredRideAssignedScreen(rideId: id, ride: ride),
-            ),
-          );
-        } else if (status == 'requested' ||
-            status == 'searching' ||
-            status == 'reassigning') {
-          // Back to the searching overlay with the live ride payload —
-          // the exact mid-flow screen, not home.
-          final rideMap =
-              ride is Map<String, dynamic> ? ride : Map<String, dynamic>.from(ride as Map);
-          setState(() {
-            _isSearching = true;
-            _activeRide = rideMap;
-          });
-        } else {
-          // New flow: no ride code anywhere — driver map passes through
-          // untouched (auth code paths are separate and unchanged).
-          // `restoreActiveRide` reconciled the authoritative server status;
-          // preserve it in the assigned screen's initial state. Without this,
-          // a valid driver makes the screen default back to `accepted` even
-          // when the server says `driver_arrived`.
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (context) =>
-                  restoredRideAssignedScreen(rideId: id, ride: ride),
-            ),
-          );
-        }
-      });
+      if (!mounted || !context.mounted) return;
+      if (status == 'in_progress' || status == 'at_stop') {
+        // Rider side collapses at_stop → in_progress (snapshotStatusForRider);
+        // RideAssignedScreen is the canonical tracking screen — feed it the
+        // reconciled ride map instead of the arg-less '/ride-progress' route
+        // (which rendered a null-data screen full of demo fallbacks).
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) =>
+                restoredRideAssignedScreen(rideId: id, ride: ride),
+          ),
+        );
+      } else if (status == 'requested' ||
+          status == 'searching' ||
+          status == 'reassigning') {
+        // Back to the searching overlay with the live ride payload —
+        // the exact mid-flow screen, not home.
+        final rideMap = ride is Map<String, dynamic>
+            ? ride
+            : Map<String, dynamic>.from(ride as Map);
+        setState(() {
+          _isSearching = true;
+          _activeRide = rideMap;
+        });
+      } else {
+        // New flow: no ride code anywhere — driver map passes through
+        // untouched (auth code paths are separate and unchanged).
+        // `restoreActiveRide` reconciled the authoritative server status;
+        // preserve it in the assigned screen's initial state. Without this,
+        // a valid driver makes the screen default back to `accepted` even
+        // when the server says `driver_arrived`.
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) =>
+                restoredRideAssignedScreen(rideId: id, ride: ride),
+          ),
+        );
+      }
+    });
   }
 
   void _initLocation() async {
     debugPrint("📍 [HomeScreen] _initLocation() starting...");
-    
+
     // 1. Try to get last known location immediately for instant map update
     try {
       final lastKnown = await _locationService.getLastKnownLocation();
       if (lastKnown != null && mounted) {
-        debugPrint("📍 [HomeScreen] Instant last-known location: ${lastKnown.latitude}, ${lastKnown.longitude}");
+        debugPrint(
+          "📍 [HomeScreen] Instant last-known location: ${lastKnown.latitude}, ${lastKnown.longitude}",
+        );
         setState(() {
-          _currentLocation = lat_lng.LatLng(lastKnown.latitude, lastKnown.longitude);
+          _currentLocation = lat_lng.LatLng(
+            lastKnown.latitude,
+            lastKnown.longitude,
+          );
         });
       }
     } catch (e) {
@@ -1622,9 +1815,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       final position = await _locationService.getCurrentLocation();
       if (position != null && mounted) {
-        debugPrint("📍 [HomeScreen] Fresh location received: ${position.latitude}, ${position.longitude}");
+        debugPrint(
+          "📍 [HomeScreen] Fresh location received: ${position.latitude}, ${position.longitude}",
+        );
         setState(() {
-          _currentLocation = lat_lng.LatLng(position.latitude, position.longitude);
+          _currentLocation = lat_lng.LatLng(
+            position.latitude,
+            position.longitude,
+          );
         });
 
         // 3. Update Address in background
@@ -1676,6 +1874,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _balanceForegroundSub?.cancel();
     _balanceTapSub?.cancel();
     _rideResyncTapSub?.cancel();
+    _couponFcmTapSub?.cancel();
+    _couponFcmForegroundSub?.cancel();
     _socketService.off('ride:accepted');
     _socketService.off('ride:expired');
     _socketService.off('ride:cancelled');
@@ -1866,6 +2066,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                       ],
                                     ),
                                   ),
+
+                                // Loyalty Progress Bar (coupons spec P4) — compact,
+                                // taps → LoyaltyTiersScreen
+                                if (_loyaltyTiers != null &&
+                                    _loyaltyTiers!.userTier.isNotEmpty) ...[
+                                  const SizedBox(height: 10),
+                                  GestureDetector(
+                                    onTap: () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) =>
+                                            const LoyaltyTiersScreen(),
+                                      ),
+                                    ),
+                                    child: _buildLoyaltyProgressBar(
+                                      _loyaltyTiers!,
+                                    ),
+                                  ),
+                                ],
                               ],
                             );
                           },
@@ -1873,7 +2092,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ),
                     ],
                   ),
-
                 ],
               ),
             ),
@@ -2188,10 +2406,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           padding: const EdgeInsets.all(14),
                           margin: const EdgeInsets.only(bottom: 20),
                           decoration: BoxDecoration(
-                            color: AppTheme.primaryColor.withValues(alpha: 0.06),
+                            color: AppTheme.primaryColor.withValues(
+                              alpha: 0.06,
+                            ),
                             borderRadius: BorderRadius.circular(14),
                             border: Border.all(
-                              color: AppTheme.primaryColor.withValues(alpha: 0.15),
+                              color: AppTheme.primaryColor.withValues(
+                                alpha: 0.15,
+                              ),
                             ),
                           ),
                           child: Row(
@@ -2199,11 +2421,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               Container(
                                 padding: const EdgeInsets.all(10),
                                 decoration: BoxDecoration(
-                                  color: AppTheme.primaryColor.withValues(alpha: 0.12),
+                                  color: AppTheme.primaryColor.withValues(
+                                    alpha: 0.12,
+                                  ),
                                   shape: BoxShape.circle,
                                 ),
-                                child: const Icon(Icons.calendar_today,
-                                    color: AppTheme.primaryColor, size: 22),
+                                child: const Icon(
+                                  Icons.calendar_today,
+                                  color: AppTheme.primaryColor,
+                                  size: 22,
+                                ),
                               ),
                               const SizedBox(width: 14),
                               Expanded(
@@ -2229,7 +2456,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                   ],
                                 ),
                               ),
-                              Icon(Icons.chevron_right, color: Colors.grey[400]),
+                              Icon(
+                                Icons.chevron_right,
+                                color: Colors.grey[400],
+                              ),
                             ],
                           ),
                         ),
@@ -2298,8 +2528,82 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               );
             },
           ),
-
       ],
+    );
+  }
+
+  /// Compact loyalty tier progress bar for the home header.
+  /// Shows current tier badge + progress toward next tier.
+  Widget _buildLoyaltyProgressBar(LoyaltyTiers tiers) {
+    final currentTier = tiers.userTier;
+    final completed = tiers.completedRidesCount;
+    final next = tiers.nextTier;
+    final color = loyaltyTierColor(currentTier);
+
+    double progress = 1.0;
+    String label;
+    if (next != null) {
+      final target = next.value.minRides;
+      progress = target <= 0 ? 1.0 : (completed / target).clamp(0.0, 1.0);
+      label = '$completed / $target rides to ${loyaltyTierLabel(next.key)}';
+    } else {
+      label = '$completed rides — ${loyaltyTierLabel(currentTier)} tier!';
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.military_tech, size: 16, color: color),
+              const SizedBox(width: 6),
+              Text(
+                '${loyaltyTierLabel(currentTier)} Tier',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: color,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '$completed rides',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 6,
+              backgroundColor: Colors.white,
+              valueColor: AlwaysStoppedAnimation<Color>(color),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textSecondary,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

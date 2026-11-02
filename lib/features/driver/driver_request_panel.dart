@@ -679,7 +679,11 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                         Text(
                           widget.rideData?['isFallback']?.toString().toLowerCase() == 'true'
                               ? 'Standard 5-Seater Rate'
-                              : 'Est. Fare',
+                              // Cash → driver collects the discounted fare;
+                              // digital → passenger already paid online.
+                              : widget.rideData?['paymentMethod'] == 'cash'
+                                  ? 'Fare to Collect'
+                                  : 'Est. Fare',
                           style: TextStyle(
                             fontSize: 12,
                             color: widget.rideData?['isFallback']?.toString().toLowerCase() == 'true'

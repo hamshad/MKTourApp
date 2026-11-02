@@ -6,6 +6,8 @@ import '../../core/constants.dart';
 import '../../core/api_service.dart';
 import '../../core/services/places_service.dart';
 import '../../core/services/payment_service.dart';
+import '../../core/services/coupon_service.dart';
+import '../../core/models/coupon.dart';
 import '../../core/services/socket_service.dart';
 import '../ride/payment_webview_screen.dart';
 import '../ride/ride_assigned_screen.dart';
@@ -82,6 +84,33 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   Map<String, dynamic>? _createdFareBreakdown;
   bool get _isFixedFare => widget.fareData['is_fixed_fare'] == true;
 
+  // Coupon / promo code (coupons spec P1/P2). Preview only — the backend
+  // recomputes the discount at create; the client sends `couponCode`.
+  final TextEditingController _couponController = TextEditingController();
+  CouponValidation? _appliedCoupon;
+  bool _isValidatingCoupon = false;
+  String? _couponError;
+
+  /// Live discount preview: coupon discount capped so the payable fare
+  /// never goes negative. Display arithmetic only (preview row), the
+  /// booking request carries the code, never a computed amount.
+  double get _couponDiscountPreview {
+    final coupon = _appliedCoupon;
+    if (coupon == null || !coupon.isValid) return 0.0;
+    final discount = coupon.computedDiscount;
+    if (discount <= 0) return 0.0;
+    return discount > _payableFare ? _payableFare : discount;
+  }
+
+  /// Payable fare after the applied coupon (preview).
+  double get _couponPayableFare {
+    final after = _payableFare - _couponDiscountPreview;
+    return after < 0 ? 0.0 : after;
+  }
+
+  bool get _hasCouponApplied =>
+      _appliedCoupon != null && _appliedCoupon!.isValid;
+
   // Route polyline points - initialized synchronously from passed data
   late List<lat_lng.LatLng> _routePoints;
   late fmap.LatLngBounds? _routeBounds;
@@ -128,6 +157,12 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
         _showScheduleSheet();
       });
     }
+  }
+
+  @override
+  void dispose() {
+    _couponController.dispose();
+    super.dispose();
   }
 
   // Cancellation policy
@@ -303,6 +338,8 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
         debugPrint(
           '✅ RideConfirmationScreen: Dynamic fare fetched: £${_dynamicFareData!['total_fare']}',
         );
+        // Fare moved — keep an applied coupon honest (spec P1 preview).
+        _revalidateAppliedCoupon();
       } else if (mounted) {
         setState(() {
           _isFetchingFare = false;
@@ -447,6 +484,96 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   /// Retry fetching fare after an error
   void _retryFetchFare() {
     _fetchDirectionsAndFare();
+  }
+
+  /// POST /coupons/validate (spec P1). Success stores the preview;
+  /// 400 shows the server message verbatim (server decides eligibility).
+  Future<void> _applyCoupon() async {
+    final code = _couponController.text.trim();
+    if (code.isEmpty || _isValidatingCoupon) return;
+    if (_isFetchingFare) {
+      setState(() => _couponError = 'Wait for the fare estimate first');
+      return;
+    }
+
+    setState(() {
+      _isValidatingCoupon = true;
+      _couponError = null;
+    });
+
+    try {
+      final result = await CouponService.validateCoupon(
+        code: code,
+        fare: _fare,
+        vehicleCategorySlug: widget.categorySlug,
+        isScheduled: widget.isScheduled && widget.scheduledDateTime != null,
+        isAirportTransfer: false,
+      );
+      if (!mounted) return;
+      if (result.isValid) {
+        setState(() {
+          _appliedCoupon = result;
+          _couponError = null;
+          _isValidatingCoupon = false;
+        });
+      } else {
+        setState(() {
+          _appliedCoupon = null;
+          _couponError = 'Invalid or unauthorized coupon code';
+          _isValidatingCoupon = false;
+        });
+      }
+    } on CouponException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _appliedCoupon = null;
+        _couponError = e.message;
+        _isValidatingCoupon = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _appliedCoupon = null;
+        _couponError = 'Could not validate coupon. Check your connection.';
+        _isValidatingCoupon = false;
+      });
+    }
+  }
+
+  void _removeCoupon() {
+    setState(() {
+      _appliedCoupon = null;
+      _couponError = null;
+      _couponController.clear();
+    });
+  }
+
+  /// Silent re-validation after a fare re-fetch (stops changed, retry).
+  /// Invalidates the preview when the server now rejects the code.
+  Future<void> _revalidateAppliedCoupon() async {
+    if (!_hasCouponApplied) return;
+    final code = _appliedCoupon!.code;
+    try {
+      final result = await CouponService.validateCoupon(
+        code: code,
+        fare: _fare,
+        vehicleCategorySlug: widget.categorySlug,
+        isScheduled: widget.isScheduled && widget.scheduledDateTime != null,
+        isAirportTransfer: false,
+      );
+      if (!mounted) return;
+      setState(() {
+        if (result.isValid) {
+          _appliedCoupon = result;
+        } else {
+          _appliedCoupon = null;
+          _couponError = 'Coupon no longer applies to this fare';
+        }
+      });
+    } catch (_) {
+      // Keep the previous preview on network failure; backend still
+      // validates at booking time.
+    }
   }
 
   void _showScheduleSheet() {
@@ -805,6 +932,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
         scheduledAt: scheduledAt,
         notes: notes,
         stops: widget.stops?.isNotEmpty == true ? widget.stops : null,
+        couponCode: _hasCouponApplied ? _appliedCoupon!.code : null,
       );
 
       if (mounted) {
@@ -941,9 +1069,17 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
       debugPrint('❌ RideConfirmationScreen: Error scaling booking: $e');
       if (mounted) {
         setState(() => _isLoading = false);
+        // Coupon rejection at booking (spec P2 error case) — show the
+        // backend copy verbatim, drop the "Error creating booking" prefix.
+        final raw = e.toString();
+        final isCouponError = raw.toLowerCase().contains('coupon');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error creating booking: $e'),
+            content: Text(
+              isCouponError
+                  ? raw.replaceFirst('Exception: ', '')
+                  : 'Error creating booking: $e',
+            ),
             backgroundColor: Colors.red,
           ),
         );
@@ -1232,6 +1368,11 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
 
                   // Trip Details Card
                   _buildTripDetailsCard(),
+
+                  const SizedBox(height: 16),
+
+                  // Promo / coupon code (coupons spec P1)
+                  _buildPromoCard(),
                 ],
               ),
             ),
@@ -1896,7 +2037,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     final confirmLabel = isPrebooked ? 'Confirm Prebook' : 'Confirm';
     final priceLabel = _isFetchingFare
         ? '...'
-        : '£${_payableFare.toStringAsFixed(2)}';
+        : '£${(_hasCouponApplied ? _couponPayableFare : _payableFare).toStringAsFixed(2)}';
 
     return Container(
       decoration: BoxDecoration(
@@ -2303,6 +2444,155 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
     );
   }
 
+  /// Apply-promo card (coupons spec P1): input + Apply button, live
+  /// discount preview after validation, server error copy as-is.
+  Widget _buildPromoCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Promo Code',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (_hasCouponApplied) ...[
+            // Applied state: code + discount preview + remove.
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: AppTheme.successColor.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppTheme.successColor),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.check_circle,
+                    size: 18,
+                    color: AppTheme.successColor,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _appliedCoupon!.code,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.textPrimary,
+                          ),
+                        ),
+                        Text(
+                          '-£${_couponDiscountPreview.toStringAsFixed(2)} off · '
+                          'Pay £${_couponPayableFare.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppTheme.successColor,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: _removeCoupon,
+                    icon: const Icon(Icons.close, size: 18),
+                    tooltip: 'Remove coupon',
+                    color: AppTheme.textSecondary,
+                  ),
+                ],
+              ),
+            ),
+          ] else ...[
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _couponController,
+                    textCapitalization: TextCapitalization.characters,
+                    decoration: InputDecoration(
+                      hintText: 'MK-XXXX-XXXX',
+                      hintStyle: TextStyle(color: Colors.grey[400]),
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 12,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey[300]!),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey[300]!),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(
+                          color: AppTheme.primaryColor,
+                        ),
+                      ),
+                      errorText: _couponError,
+                      errorMaxLines: 2,
+                    ),
+                    onSubmitted: (_) => _applyCoupon(),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                SizedBox(
+                  height: 44,
+                  child: ElevatedButton(
+                    onPressed: _isValidatingCoupon ? null : _applyCoupon,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 18),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: _isValidatingCoupon
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text(
+                            'Apply',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   /// Outstanding-balance transparency banner (Phase 15). Amber info
   /// style matching the congestion badge family. Rendered only when
   /// [_outstandingBalance] > 0; balance 0/absent renders nothing.
@@ -2334,7 +2624,48 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   }
 
   /// Compact price block preserving promo FREE/discount rendering.
+  /// Coupon preview (spec P1) layers on top: strikethrough pre-coupon
+  /// payable + discounted final. Server recomputes at booking.
   Widget _buildCompactPrice() {
+    if (_hasCouponApplied) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '£${_payableFare.toStringAsFixed(2)}',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey[500],
+              decoration: TextDecoration.lineThrough,
+            ),
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _couponPayableFare == 0
+                    ? 'FREE'
+                    : '£${_couponPayableFare.toStringAsFixed(2)}',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: _couponPayableFare == 0
+                      ? AppTheme.successColor
+                      : AppTheme.primaryColor,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(
+                Icons.local_offer,
+                size: 16,
+                color: AppTheme.successColor,
+              ),
+            ],
+          ),
+        ],
+      );
+    }
     if (_currentFareData['promo_applied'] == true &&
         _currentFareData['original_fare'] != null) {
       return Column(

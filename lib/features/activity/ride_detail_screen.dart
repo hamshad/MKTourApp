@@ -197,6 +197,12 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     final bool isPromoRide = _rideData?['isPromoRide'] == true;
     final double rawFare = (_rideData?['fare'] as num?)?.toDouble() ?? 0.0;
     final double originalFare = (_rideData?['originalFare'] as num?)?.toDouble() ?? 0.0;
+    // Coupon ride (coupons spec): itemized discount rows in Payment card.
+    final double couponDiscount = (_rideData?['couponDiscount'] as num?)?.toDouble() ?? 0.0;
+    final String? couponCode = (_rideData?['couponCode']?.toString() ?? '').isEmpty
+        ? null
+        : _rideData?['couponCode'].toString();
+    final bool isCouponRide = couponDiscount > 0 && couponCode != null;
     // For display: show actual fare; if promo, also show original fare
     final price = '\u00a3${rawFare.toStringAsFixed(2)}';
     final destination = _rideData?['dropoffLocation'] is Map ? _rideData!['dropoffLocation']['address'] ?? 'Unknown Destination' : 'Unknown Destination';
@@ -466,8 +472,8 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                           ],
                         ),
                         const SizedBox(height: 16),
-                        // Original fare row (promo rides only)
-                        if (isPromoRide && originalFare > 0)
+                        // Original fare row (promo or coupon rides)
+                        if ((isPromoRide || isCouponRide) && originalFare > 0)
                           Padding(
                             padding: const EdgeInsets.only(bottom: 8),
                             child: Row(
@@ -487,6 +493,31 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                                     color: Colors.grey,
                                     decoration: TextDecoration.lineThrough,
                                     decorationColor: Colors.grey,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        // Itemized coupon discount (coupons spec receipt)
+                        if (isCouponRide)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Coupon Discount ($couponCode)',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    color: AppTheme.textSecondary,
+                                  ),
+                                ),
+                                Text(
+                                  '- £${couponDiscount.toStringAsFixed(2)}',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF22C55E),
                                   ),
                                 ),
                               ],

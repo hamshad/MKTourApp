@@ -44,9 +44,18 @@ class _DriverRideDetailScreenState extends State<DriverRideDetailScreen> {
     final surge = _toDouble(widget.rideData['surge']);
     final bool isPromoRide = widget.rideData['isPromoRide'] == true;
     final double originalFare = _toDouble(widget.rideData['originalFare']);
+    // Coupon ride (coupons spec): passenger paid the discounted fare,
+    // the platform subsidizes the difference — driver earns the original.
+    final double couponDiscount = _toDouble(widget.rideData['couponDiscount']);
+    final String? couponCode =
+        (widget.rideData['couponCode']?.toString() ?? '').isEmpty
+        ? null
+        : widget.rideData['couponCode'].toString();
+    final bool isCouponRide = couponDiscount > 0;
     // Drivers always see the original fare (the amount they earn),
     // not the discounted fare the passenger pays.
-    final double displayFare = isPromoRide && originalFare > 0
+    final double displayFare =
+        (isPromoRide || isCouponRide) && originalFare > 0
         ? originalFare
         : fare;
     final total = displayFare + tip + surge;
@@ -267,7 +276,7 @@ class _DriverRideDetailScreenState extends State<DriverRideDetailScreen> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  if (isPromoRide)
+                  if (isPromoRide || isCouponRide)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: Container(
@@ -279,18 +288,25 @@ class _DriverRideDetailScreenState extends State<DriverRideDetailScreen> {
                           color: const Color(0xFF22C55E).withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
-                            color: const Color(0xFF22C55E).withValues(alpha: 0.3),
+                            color: const Color(0xFF22C55E)
+                                .withValues(alpha: 0.3),
                           ),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
-                          children: const [
-                            Text('🎁', style: TextStyle(fontSize: 12)),
-                            SizedBox(width: 6),
+                          children: [
+                            Text(
+                              isCouponRide ? '🎟️' : '🎁',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            const SizedBox(width: 6),
                             Expanded(
                               child: Text(
-                                'Promo ride — passenger fare was discounted. Your earnings are unchanged.',
-                                style: TextStyle(
+                                isCouponRide
+                                    ? 'Coupon${couponCode != null ? ' $couponCode' : ''} ride — passenger fare was discounted by '
+                                        '£${couponDiscount.toStringAsFixed(2)}. Your earnings are unchanged.'
+                                    : 'Promo ride — passenger fare was discounted. Your earnings are unchanged.',
+                                style: const TextStyle(
                                   fontSize: 11,
                                   color: Color(0xFF16A34A),
                                 ),

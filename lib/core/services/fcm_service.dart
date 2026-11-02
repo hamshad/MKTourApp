@@ -93,6 +93,12 @@ class NotificationType {
   static const String promoUnlocked = 'promo_unlocked';
   static const String promoApplied = 'promo_applied';
   static const String promoClaimed = 'promo_claimed';
+
+  // Coupon / Loyalty Notifications (coupons spec §3):
+  // - `coupon_issued` — admin/promotion issued a coupon → open Wallet.
+  // - `loyalty_upgrade` — ride crossed a tier threshold → celebrate modal.
+  static const String couponIssued = 'coupon_issued';
+  static const String loyaltyUpgrade = 'loyalty_upgrade';
 }
 
 /// Canonical dedupe key for prebook reminders, shared between the FCM
@@ -176,6 +182,10 @@ class FcmNotificationData {
   final Map<String, dynamic> rawData;
   final double? tollFee;
   final String? tollName;
+  // Coupon / Loyalty fields (coupons spec §3)
+  final String? couponCode;
+  final String? newTier;
+  final int? completedRides;
 
   FcmNotificationData({
     required this.type,
@@ -198,6 +208,9 @@ class FcmNotificationData {
     this.fallbackNote,
     this.tollFee,
     this.tollName,
+    this.couponCode,
+    this.newTier,
+    this.completedRides,
     required this.rawData,
   });
 
@@ -226,8 +239,18 @@ class FcmNotificationData {
       // FCM toll values arrive stringly (§4: "8.90"); coerce at intake.
       tollFee: _parseDouble(data['tollFee']),
       tollName: data['tollName']?.toString(),
+      couponCode: data['couponCode']?.toString(),
+      newTier: data['newTier']?.toString(),
+      completedRides: _parseInt(data['completedRides']),
       rawData: data,
     );
+  }
+
+  static int? _parseInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is String) return int.tryParse(value);
+    return null;
   }
 
   static double? _parseDouble(dynamic value) {
@@ -902,6 +925,10 @@ mixin FcmNotificationHandler<T extends StatefulWidget> on State<T> {
   void onPromoUnlocked(FcmNotificationData data) {}
   void onPromoApplied(FcmNotificationData data) {}
   void onPromoClaimed(FcmNotificationData data) {}
+
+  // Coupon / Loyalty notification handlers (coupons spec §3)
+  void onCouponIssued(FcmNotificationData data) {}
+  void onLoyaltyUpgrade(FcmNotificationData data) {}
 
   // Scheduled ride notification handlers
   void onScheduledReminder(FcmNotificationData data) {}
