@@ -1,4 +1,4 @@
-/// Coupon + loyalty models (coupons spec P1-P4).
+/// Coupon models (coupons spec P1, P3).
 ///
 /// Tolerant, never throws (FareSummary style): missing keys default,
 /// junk input yields empty objects, every value passes coercion helpers.
@@ -212,14 +212,10 @@ class CouponPagination {
 
 /// Full GET /coupons/wallet response `data` (spec P3).
 class CouponWallet {
-  final String loyaltyTier;
-  final int completedRidesCount;
   final List<CouponWalletItem> coupons;
   final CouponPagination pagination;
 
   const CouponWallet({
-    this.loyaltyTier = '',
-    this.completedRidesCount = 0,
     this.coupons = const [],
     this.pagination = const CouponPagination(),
   });
@@ -227,8 +223,6 @@ class CouponWallet {
   factory CouponWallet.fromJson(Map<String, dynamic> json) {
     final rawCoupons = json['coupons'];
     return CouponWallet(
-      loyaltyTier: json['loyaltyTier']?.toString() ?? '',
-      completedRidesCount: _asInt(json['completedRidesCount']),
       coupons: rawCoupons is List
           ? rawCoupons.map((e) => CouponWalletItem.parse(e)).toList()
           : const [],
@@ -245,92 +239,4 @@ class CouponWallet {
     if (raw is Map) return CouponWallet.fromJson(Map<String, dynamic>.from(raw));
     return const CouponWallet();
   }
-}
-
-/// One tier's rules (spec P4).
-class LoyaltyTierRule {
-  final int minRides;
-  final double discountValue;
-  final double maxDiscountAmount;
-  final String discountType;
-
-  const LoyaltyTierRule({
-    this.minRides = 0,
-    this.discountValue = 0.0,
-    this.maxDiscountAmount = 0.0,
-    this.discountType = 'percentage',
-  });
-
-  factory LoyaltyTierRule.fromJson(Map<String, dynamic> json) {
-    return LoyaltyTierRule(
-      minRides: _asInt(json['minRides']),
-      discountValue: _asDouble(json['discountValue']),
-      maxDiscountAmount: _asDouble(json['maxDiscountAmount']),
-      discountType: json['discountType']?.toString() ?? 'percentage',
-    );
-  }
-
-  factory LoyaltyTierRule.parse(dynamic raw) {
-    if (raw is Map<String, dynamic>) return LoyaltyTierRule.fromJson(raw);
-    if (raw is Map) {
-      return LoyaltyTierRule.fromJson(Map<String, dynamic>.from(raw));
-    }
-    return const LoyaltyTierRule();
-  }
-}
-
-/// Full GET /coupons/tiers response `data` (spec P4).
-///
-/// [tiers] keeps insertion order keys as sent (bronze→platinum assumed);
-/// callers sort by [minRides] when order matters.
-class LoyaltyTiers {
-  final String userTier;
-  final int completedRidesCount;
-  final Map<String, LoyaltyTierRule> tiers;
-
-  const LoyaltyTiers({
-    this.userTier = '',
-    this.completedRidesCount = 0,
-    this.tiers = const {},
-  });
-
-  factory LoyaltyTiers.fromJson(Map<String, dynamic> json) {
-    final rawTiers = json['tiers'];
-    final map = <String, LoyaltyTierRule>{};
-    if (rawTiers is Map) {
-      rawTiers.forEach((key, value) {
-        map[key.toString()] = LoyaltyTierRule.parse(value);
-      });
-    }
-    return LoyaltyTiers(
-      userTier: json['userTier']?.toString() ?? '',
-      completedRidesCount: _asInt(json['completedRidesCount']),
-      tiers: map,
-    );
-  }
-
-  factory LoyaltyTiers.parse(dynamic raw) {
-    if (raw is Map<String, dynamic>) return LoyaltyTiers.fromJson(raw);
-    if (raw is Map) return LoyaltyTiers.fromJson(Map<String, dynamic>.from(raw));
-    return const LoyaltyTiers();
-  }
-
-  /// Tiers sorted ascending by minRides.
-  List<MapEntry<String, LoyaltyTierRule>> get sortedTiers {
-    final entries = tiers.entries.toList()
-      ..sort((a, b) => a.value.minRides.compareTo(b.value.minRides));
-    return entries;
-  }
-
-  /// Next tier above the user's current one, or null at max tier.
-  MapEntry<String, LoyaltyTierRule>? get nextTier {
-    final sorted = sortedTiers;
-    for (final entry in sorted) {
-      if (entry.value.minRides > completedRidesCount) return entry;
-    }
-    return null;
-  }
-
-  /// Current tier rule for [userTier], or null when unknown.
-  LoyaltyTierRule? get currentTierRule => tiers[userTier];
 }

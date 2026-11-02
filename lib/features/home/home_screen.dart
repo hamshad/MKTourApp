@@ -30,8 +30,6 @@ import '../booking/ride_confirmation_screen.dart';
 import 'airport_selection_screen.dart';
 import '../promo/promo_status_screen.dart';
 import '../coupons/coupon_wallet_screen.dart';
-import '../coupons/loyalty_tiers_screen.dart';
-import '../coupons/loyalty_badge.dart';
 import '../../core/models/coupon.dart';
 import '../../core/widgets/custom_snackbar.dart';
 
@@ -128,10 +126,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // Promo status
   Map<String, dynamic>? _promoStatusData;
 
-  /// Loyalty tier + progress from GET /coupons/tiers.
-  /// Updated on init and after coupon/loyalty FCM events.
-  LoyaltyTiers? _loyaltyTiers;
-
   /// Outstanding balance (payment-flow.md §3). Persisted rideId survives
   /// restarts so the banner returns until `payment:succeeded` clears it.
   /// Cash + payment_link only — tap opens [OutstandingBalanceScreen].
@@ -174,17 +168,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _listenBalanceFcm();
     _listenRideResyncFcm();
     _listenCouponFcm();
-    _fetchLoyaltyTiers();
-  }
-
-  /// Fetch loyalty tiers for the progress bar (coupons spec P4).
-  Future<void> _fetchLoyaltyTiers() async {
-    try {
-      final tiers = await CouponService.fetchTiers();
-      if (mounted) setState(() => _loyaltyTiers = tiers);
-    } catch (e) {
-      // Non-critical — progress bar stays hidden on failure.
-    }
   }
 
   @override
@@ -1446,9 +1429,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
   }
 
-  /// Coupon / Loyalty FCM (coupons spec §3):
+  /// Coupon FCM (coupons spec §3):
   /// - coupon_issued tap → open My Coupons/Wallet
-  /// - loyalty_upgrade tap/foreground → celebratory modal
   void _listenCouponFcm() {
     _couponFcmTapSub = FcmService.instance.onNotificationTap.listen((data) {
       if (!mounted) return;
@@ -1456,99 +1438,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         Navigator.of(
           context,
         ).push(MaterialPageRoute(builder: (_) => const CouponWalletScreen()));
-      } else if (data.type == NotificationType.loyaltyUpgrade) {
-        _showLoyaltyUpgradeDialog(data);
       }
     });
 
-    // Foreground: loyalty_upgrade shows celebratory dialog immediately
+    // Foreground: coupon_issued shows no in-app action (tray handles it)
     _couponFcmForegroundSub = FcmService.instance.onForegroundNotification
         .listen((data) {
-          if (!mounted) return;
-          if (data.type == NotificationType.loyaltyUpgrade) {
-            _showLoyaltyUpgradeDialog(data);
-          }
-        });
-  }
-
-  void _showLoyaltyUpgradeDialog(FcmNotificationData data) {
-    final tier = data.newTier ?? 'Bronze';
-    final rides = data.completedRides ?? 0;
-    final code = data.couponCode;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            const Icon(
-              Icons.military_tech,
-              color: AppTheme.primaryColor,
-              size: 28,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Welcome to ${tier[0].toUpperCase() + tier.substring(1)}!',
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Congratulations! You\'ve reached $rides rides and unlocked the '
-              '${tier[0].toUpperCase() + tier.substring(1)} tier.',
-              style: const TextStyle(fontSize: 14),
-            ),
-            if (code != null && code.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.local_offer, color: AppTheme.primaryColor),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Your $code coupon is ready in your wallet.',
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const LoyaltyTiersScreen()),
-              );
-            },
-            child: const Text('View Tiers'),
-          ),
-        ],
-      ),
-    );
+      // No foreground action needed for coupons
+    });
   }
 
   /// Authoritative resync for a push tap (no navigation). Rejoins driver
@@ -2067,24 +1964,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                     ),
                                   ),
 
-                                // Loyalty Progress Bar (coupons spec P4) — compact,
-                                // taps → LoyaltyTiersScreen
-                                if (_loyaltyTiers != null &&
-                                    _loyaltyTiers!.userTier.isNotEmpty) ...[
-                                  const SizedBox(height: 10),
-                                  GestureDetector(
-                                    onTap: () => Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) =>
-                                            const LoyaltyTiersScreen(),
-                                      ),
-                                    ),
-                                    child: _buildLoyaltyProgressBar(
-                                      _loyaltyTiers!,
-                                    ),
-                                  ),
-                                ],
                               ],
                             );
                           },
@@ -2534,79 +2413,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   /// Compact loyalty tier progress bar for the home header.
   /// Shows current tier badge + progress toward next tier.
-  Widget _buildLoyaltyProgressBar(LoyaltyTiers tiers) {
-    final currentTier = tiers.userTier;
-    final completed = tiers.completedRidesCount;
-    final next = tiers.nextTier;
-    final color = loyaltyTierColor(currentTier);
-
-    double progress = 1.0;
-    String label;
-    if (next != null) {
-      final target = next.value.minRides;
-      progress = target <= 0 ? 1.0 : (completed / target).clamp(0.0, 1.0);
-      label = '$completed / $target rides to ${loyaltyTierLabel(next.key)}';
-    } else {
-      label = '$completed rides — ${loyaltyTierLabel(currentTier)} tier!';
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.military_tech, size: 16, color: color),
-              const SizedBox(width: 6),
-              Text(
-                '${loyaltyTierLabel(currentTier)} Tier',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: color,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                '$completed rides',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: color,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 6,
-              backgroundColor: Colors.white,
-              valueColor: AlwaysStoppedAnimation<Color>(color),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textSecondary,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildPromoBanner(Map<String, dynamic> promoData) {
     final String status = promoData['promoStatus']?.toString() ?? 'none';
     final int completedRides =

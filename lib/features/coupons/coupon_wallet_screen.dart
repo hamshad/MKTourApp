@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import '../../core/models/coupon.dart';
 import '../../core/services/coupon_service.dart';
 import '../../core/theme.dart';
-import 'loyalty_badge.dart';
 
 /// My Coupons / Wallet (coupons spec P3): active / used / expired tabs
 /// backed by GET /coupons/wallet?status=&page=&limit=.
@@ -35,9 +34,6 @@ class _CouponWalletScreenState extends State<CouponWalletScreen>
   final Map<String, bool> _loading = {'active': false, 'used': false, 'expired': false};
   final Map<String, bool> _loadingMore = {'active': false, 'used': false, 'expired': false};
   final Map<String, String?> _error = {'active': null, 'used': null, 'expired': null};
-
-  String _loyaltyTier = '';
-  int _completedRidesCount = 0;
 
   String get _status => _tabs[_tabController.index].$1;
 
@@ -92,10 +88,7 @@ class _CouponWalletScreenState extends State<CouponWalletScreen>
           _itemsByStatus[status] = [...currentItems, ...wallet.coupons];
         }
         _pagination[status] = wallet.pagination;
-        if (wallet.loyaltyTier.isNotEmpty) _loyaltyTier = wallet.loyaltyTier;
-        if (wallet.completedRidesCount > 0) {
-          _completedRidesCount = wallet.completedRidesCount;
-        }
+        
         if (wallet.pagination.hasNextPage) {
           _page[status] = _page[status]! + 1;
         }
@@ -135,37 +128,9 @@ class _CouponWalletScreenState extends State<CouponWalletScreen>
           tabs: _tabs.map((t) => Tab(text: t.$2)).toList(),
         ),
       ),
-      body: Column(
-        children: [
-          if (_loyaltyTier.isNotEmpty)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-              color: AppTheme.surfaceColor,
-              child: Row(
-                children: [
-                  LoyaltyBadge(
-                    tier: _loyaltyTier,
-                    completedRides: _completedRidesCount,
-                  ),
-                  const Spacer(),
-                  Text(
-                    '$_completedRidesCount completed rides',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppTheme.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: _tabs.map((t) => _buildList(t.$1)).toList(),
-            ),
-          ),
-        ],
+      body: TabBarView(
+        controller: _tabController,
+        children: _tabs.map((t) => _buildList(t.$1)).toList(),
       ),
     );
   }

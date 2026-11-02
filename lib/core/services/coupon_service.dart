@@ -7,7 +7,7 @@ import '../config/api_config.dart';
 import '../constants/api_constants.dart';
 import '../models/coupon.dart';
 
-/// Coupon validation + wallet + loyalty tiers API (coupons spec P1/P3/P4).
+/// Coupon validation + wallet API (coupons spec P1/P3).
 ///
 /// Static methods, `ApiConfig.getAuthHeaders()` auth, raw `package:http`
 /// (PaymentService style). Money values pass through untouched.
@@ -88,29 +88,6 @@ class CouponService {
     }
     throw CouponException(
       decoded['message']?.toString() ?? 'Failed to load coupons',
-      statusCode: response.statusCode,
-    );
-  }
-
-  /// GET /coupons/tiers (spec P4).
-  static Future<LoyaltyTiers> fetchTiers() async {
-    final headers = await ApiConfig.getAuthHeaders();
-
-    debugPrint('🎫 CouponService.fetchTiers');
-    final response = await http.get(
-      Uri.parse(ApiConstants.loyaltyTiers),
-      headers: headers,
-    );
-    debugPrint(
-      '🎫 CouponService tiers: ${response.statusCode} ${response.body}',
-    );
-
-    final decoded = _safeDecode(response.body);
-    if (response.statusCode == 200) {
-      return LoyaltyTiers.parse(decoded['data'] ?? decoded);
-    }
-    throw CouponException(
-      decoded['message']?.toString() ?? 'Failed to load loyalty tiers',
       statusCode: response.statusCode,
     );
   }

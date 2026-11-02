@@ -3287,7 +3287,7 @@ class _RideAssignedScreenState extends State<RideAssignedScreen>
                       ] else
                         TextSpan(
                           text:
-                              'Estimated Fare: £${widget.fare.toStringAsFixed(2)}',
+                              'Estimated Fare: £${(_currentFare ?? widget.fare).toStringAsFixed(2)}',
                         ),
                     ],
                   ),

@@ -136,7 +136,7 @@ class ApiConstants {
   // App Version Control & Force Update
   static const String checkVersion = '$baseUrl/app/check-version';
 
-  // Coupon / Loyalty Endpoints (coupons spec P1-P4)
+  // Coupon / Loyalty Endpoints (coupons spec P1, P3)
   static const String validateCoupon = '$baseUrl/coupons/validate';
 
   /// User's coupon wallet. Query: `status` (active|used|expired|all),
@@ -147,9 +147,6 @@ class ApiConstants {
     int limit = 20,
   }) =>
       '$baseUrl/coupons/wallet?status=$status&page=$page&limit=$limit';
-
-  /// Loyalty tiers + user's current tier (spec P4).
-  static const String loyaltyTiers = '$baseUrl/coupons/tiers';
 
   // Maps API Endpoints (proxied through backend for security)
   static const String mapsBaseUrl = '$baseUrl/maps';
