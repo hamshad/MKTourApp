@@ -696,6 +696,44 @@ class _DriverRequestPanelState extends State<DriverRequestPanel> {
                         ),
                       ],
                     ),
+                    // Coupon ride: show collect-from-customer amount (cash) or
+                    // "paid online" note (digital) per backend message.
+                    if (widget.rideData?['isCouponRide'] == true &&
+                        widget.rideData?['paymentMethod'] == 'cash') ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Collect £${double.tryParse(widget.rideData?['collectFromCustomer']?.toString() ?? widget.rideData?['customerFare']?.toString() ?? '0.0')?.toStringAsFixed(2) ?? '0.00'} cash from rider',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.successColor,
+                        ),
+                      ),
+                    ] else if (widget.rideData?['isCouponRide'] == true &&
+                        widget.rideData?['paymentMethod'] != 'cash') ...[
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Rider paid online',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.successColor,
+                        ),
+                      ),
+                    ],
+                    // Backend message (e.g. "Coupon applied (£5.00 off). Collect £15.00 cash...").
+                    if (widget.rideData?['message']?.toString().isNotEmpty == true) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        widget.rideData!['message'].toString(),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey[700],
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                     if (_tollReimbursement > 0)
                       Padding(
                         padding: const EdgeInsets.only(top: 2),
