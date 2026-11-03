@@ -117,10 +117,10 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
           '✅ VehicleSelectionWidget: Loaded ${categories.length} categories',
         );
 
-        // Fetch fare estimates only once route distance is known —
-        // fetching with distance 0.0 first causes a visible fare flip
-        // when the real-distance refetch lands.
-        if (widget.distance != null) {
+        // Fetch fare estimates once route distance is known — fetching with
+        // distance 0.0 first causes a visible fare flip on refetch. Airport
+        // flow passes fixedFareByCategory instead of distance.
+        if (widget.distance != null || widget.fixedFareByCategory != null) {
           _fetchFareEstimates();
         }
       }
@@ -925,7 +925,11 @@ if (mounted && !_isStale(gen)) {
                                              crossAxisAlignment:
                                                  CrossAxisAlignment.end,
                                              children: [
-                                            _isFetchingFares && fareData == null
+                                            // No fare yet: keep the spinner up
+                                            // (pre-fetch or in-flight) instead
+                                            // of flashing N/A.
+                                            fareData == null &&
+                                                    _fareError == null
                                                 ? const SizedBox(
                                                     width: 16,
                                                     height: 16,
