@@ -2759,36 +2759,64 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   }
 
   /// Bottom sheet: single-tap pick of an active coupon.
-  Future<String?> _showCouponSelectorSheet(BuildContext context) async {
-    final wallet = await CouponService.fetchWallet(status: 'active', limit: 50);
-    final active =
-        wallet.coupons.where((c) => c.status == 'active').toList();
+  /// Opens immediately; coupons load inside the sheet.
+  Future<String?> _showCouponSelectorSheet(BuildContext context) {
+    return showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const _CouponSelectorSheet(),
+    );
+  }
+}
 
-    if (active.isEmpty) {
-      if (context.mounted) {
+class _CouponSelectorSheet extends StatefulWidget {
+  const _CouponSelectorSheet();
+
+  @override
+  State<_CouponSelectorSheet> createState() => _CouponSelectorSheetState();
+}
+
+class _CouponSelectorSheetState extends State<_CouponSelectorSheet> {
+  List<CouponWalletItem>? _coupons;
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final wallet =
+          await CouponService.fetchWallet(status: 'active', limit: 50);
+      final active = wallet.coupons
+          .where((c) => c.status == 'active')
+          .toList();
+      if (!mounted) return;
+      setState(() {
+        _coupons = active;
+        _loading = false;
+      });
+      if (active.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('No active coupons available'),
             backgroundColor: Colors.orange,
           ),
         );
+        if (mounted) Navigator.pop(context);
       }
-      return null;
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Failed to load coupons';
+        _loading = false;
+      });
     }
-
-    return showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _CouponSelectorSheet(coupons: active),
-    );
   }
-}
-
-class _CouponSelectorSheet extends StatelessWidget {
-  final List<CouponWalletItem> coupons;
-
-  const _CouponSelectorSheet({required this.coupons});
 
   @override
   Widget build(BuildContext context) {
@@ -2835,32 +2863,82 @@ class _CouponSelectorSheet extends StatelessWidget {
               ),
             ),
             const Divider(height: 1),
-            Expanded(
-              child: ListView.builder(
-                controller: scrollController,
-                padding: const EdgeInsets.all(16),
-                itemCount: coupons.length,
-                itemBuilder: (context, index) {
-                  final coupon = coupons[index];
-                  final campaign = coupon.campaign;
-                  return _CouponSelectorTile(
-                    code: coupon.code,
-                    campaignName: campaign.name,
-                    discountLabel: couponDiscountLabel(
-                      campaign.discountType,
-                      campaign.discountValue,
-                    ),
-                    minFare: campaign.minFare,
-                    maxDiscountAmount: campaign.maxDiscountAmount,
-                    expiresAt: coupon.expiresAt,
-                    onTap: () => Navigator.pop(context, coupon.code),
-                  );
-                },
+            Expanded(child: _buildBody(scrollController)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBody(ScrollController scrollController) {
+    if (_loading) {
+      return const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: AppTheme.primaryColor),
+            SizedBox(height: 12),
+            Text(
+              'Loading coupons...',
+              style: TextStyle(
+                fontSize: 13,
+                color: AppTheme.textSecondary,
               ),
             ),
           ],
         ),
-      ),
+      );
+    }
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline, size: 40, color: AppTheme.errorColor),
+            const SizedBox(height: 8),
+            Text(
+              _error!,
+              style: const TextStyle(
+                fontSize: 14,
+                color: AppTheme.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _loading = true;
+                  _error = null;
+                });
+                _load();
+              },
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+    final coupons = _coupons ?? const <CouponWalletItem>[];
+    return ListView.builder(
+      controller: scrollController,
+      padding: const EdgeInsets.all(16),
+      itemCount: coupons.length,
+      itemBuilder: (context, index) {
+        final coupon = coupons[index];
+        final campaign = coupon.campaign;
+        return _CouponSelectorTile(
+          code: coupon.code,
+          campaignName: campaign.name,
+          discountLabel: couponDiscountLabel(
+            campaign.discountType,
+            campaign.discountValue,
+          ),
+          minFare: campaign.minFare,
+          maxDiscountAmount: campaign.maxDiscountAmount,
+          expiresAt: coupon.expiresAt,
+          onTap: () => Navigator.pop(context, coupon.code),
+        );
+      },
     );
   }
 }
