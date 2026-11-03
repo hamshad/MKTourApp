@@ -8,7 +8,14 @@ import '../../core/theme.dart';
 /// My Coupons / Wallet (coupons spec P3): active / used / expired tabs
 /// backed by GET /coupons/wallet?status=&page=&limit=.
 class CouponWalletScreen extends StatefulWidget {
-  const CouponWalletScreen({super.key});
+  const CouponWalletScreen({
+    super.key,
+    /// When true, tapping a coupon returns its code via Navigator.pop()
+    /// (used by ride confirmation screen for auto-fill).
+    this.selectMode = false,
+  });
+
+  final bool selectMode;
 
   @override
   State<CouponWalletScreen> createState() => _CouponWalletScreenState();
@@ -174,7 +181,7 @@ class _CouponWalletScreenState extends State<CouponWalletScreen>
                 ),
               );
             }
-            return _CouponCard(item: items[index]);
+            return _CouponCard(item: items[index], selectMode: widget.selectMode);
           },
         ),
       ),
@@ -239,8 +246,12 @@ class _CouponWalletScreenState extends State<CouponWalletScreen>
 
 class _CouponCard extends StatelessWidget {
   final CouponWalletItem item;
+  final bool selectMode;
 
-  const _CouponCard({required this.item});
+  const _CouponCard({
+    required this.item,
+    this.selectMode = false,
+  });
 
   Color get _statusColor {
     switch (item.status) {
@@ -270,12 +281,16 @@ class _CouponCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final campaign = item.campaign;
+    final isSelectable = selectMode && item.status == 'active';
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.borderColor),
+        border: Border.all(
+          color: isSelectable ? AppTheme.primaryColor : AppTheme.borderColor,
+          width: isSelectable ? 2 : 1,
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.04),
@@ -284,156 +299,161 @@ class _CouponCard extends StatelessWidget {
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  _discountLabel,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    color: AppTheme.primaryColor,
+      child: InkWell(
+        onTap: isSelectable
+            ? () => Navigator.pop(context, item.code)
+            : null,
+        borderRadius: BorderRadius.circular(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    _discountLabel,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.primaryColor,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  campaign.name.isNotEmpty ? campaign.name : 'Coupon',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textPrimary,
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    campaign.name.isNotEmpty ? campaign.name : 'Coupon',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textPrimary,
+                    ),
                   ),
                 ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: _statusColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  item.status.toUpperCase(),
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    color: _statusColor,
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: _statusColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    item.status.toUpperCase(),
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: _statusColor,
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-          if (campaign.description.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-              campaign.description,
-              style: const TextStyle(
-                fontSize: 13,
-                color: AppTheme.textSecondary,
-              ),
+              ],
             ),
-          ],
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              // Code + copy
-              GestureDetector(
-                onTap: () async {
-                  await Clipboard.setData(ClipboardData(text: item.code));
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Copied ${item.code}'),
-                        duration: const Duration(seconds: 1),
-                      ),
-                    );
-                  }
-                },
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      item.code,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.5,
-                        color: AppTheme.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    const Icon(
-                      Icons.copy,
-                      size: 14,
-                      color: AppTheme.textSecondary,
-                    ),
-                  ],
-                ),
-              ),
-              const Spacer(),
-              const Icon(
-                Icons.schedule,
-                size: 13,
-                color: AppTheme.textSecondary,
-              ),
-              const SizedBox(width: 4),
+            if (campaign.description.isNotEmpty) ...[
+              const SizedBox(height: 8),
               Text(
-                'Expires ${_formatDate(item.expiresAt ?? campaign.validUntil)}',
+                campaign.description,
                 style: const TextStyle(
-                  fontSize: 12,
+                  fontSize: 13,
                   color: AppTheme.textSecondary,
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Text(
-                'Min fare £${campaign.minFare.toStringAsFixed(2)}',
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: AppTheme.textSecondary,
-                ),
-              ),
-              if (campaign.maxDiscountAmount > 0) ...[
-                const SizedBox(width: 12),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                // Code
+                if (isSelectable) ...[
+                  Text(
+                    'Tap to select',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.primaryColor,
+                    ),
+                  ),
+                  const Spacer(),
+                ] else ...[
+                  // Code + copy
+                  GestureDetector(
+                    onTap: () async {
+                      await Clipboard.setData(ClipboardData(text: item.code));
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Copied ${item.code}'),
+                            duration: const Duration(seconds: 1),
+                          ),
+                        );
+                      }
+                    },
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          item.code,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.5,
+                            color: AppTheme.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(
+                          Icons.copy,
+                          size: 14,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
                 Text(
-                  'Max off £${campaign.maxDiscountAmount.toStringAsFixed(2)}',
+                  'Min fare £${campaign.minFare.toStringAsFixed(2)}',
                   style: const TextStyle(
                     fontSize: 12,
                     color: AppTheme.textSecondary,
                   ),
                 ),
-              ],
-              const Spacer(),
-              if (item.maxUses > 0)
-                Text(
-                  item.isFullyUsed
-                      ? 'Used'
-                      : 'Uses ${item.usedCount}/${item.maxUses}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: item.isFullyUsed
-                        ? AppTheme.errorColor
-                        : AppTheme.textSecondary,
+                if (campaign.maxDiscountAmount > 0) ...[
+                  const SizedBox(width: 12),
+                  Text(
+                    'Max off £${campaign.maxDiscountAmount.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.textSecondary,
+                    ),
                   ),
-                ),
-            ],
-          ),
-        ],
+                ],
+                const Spacer(),
+                if (item.maxUses > 0)
+                  Text(
+                    item.isFullyUsed
+                        ? 'Used'
+                        : 'Uses ${item.usedCount}/${item.maxUses}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: item.isFullyUsed
+                          ? AppTheme.errorColor
+                          : AppTheme.textSecondary,
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
