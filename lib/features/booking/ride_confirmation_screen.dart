@@ -24,6 +24,7 @@ import '../../core/models/toll_breakdown.dart';
 import '../../core/models/error_display_helper.dart';
 import '../ride/outstanding_balance_screen.dart';
 import 'widgets/schedule_ride_sheet.dart';
+import '../coupons/coupon_wallet_screen.dart';
 
 /// Ride Confirmation Screen - Shows ride details before final booking
 /// Displays pickup, dropoff, vehicle type, distance, duration, and fare
@@ -2601,6 +2602,39 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                             'Apply',
                             style: TextStyle(fontWeight: FontWeight.w600),
                           ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  height: 44,
+                  child: OutlinedButton.icon(
+                    onPressed: _hasCouponApplied
+                        ? null
+                        : () async {
+                            final couponCode = await Navigator.push<String>(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const CouponWalletScreen(),
+                              ),
+                            );
+                            if (couponCode != null && couponCode.isNotEmpty) {
+                              _couponController.text = couponCode;
+                              _applyCoupon();
+                            }
+                          },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.primaryColor,
+                      side: BorderSide(color: AppTheme.primaryColor),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    icon: const Icon(Icons.wallet_giftcard, size: 18),
+                    label: const Text(
+                      'Wallet',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
                   ),
                 ),
               ],
