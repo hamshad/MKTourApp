@@ -2606,8 +2606,9 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                 ),
                 const SizedBox(width: 8),
                 SizedBox(
+                  width: 44,
                   height: 44,
-                  child: OutlinedButton.icon(
+                  child: OutlinedButton(
                     onPressed: _hasCouponApplied
                         ? null
                         : () async {
@@ -2625,16 +2626,12 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppTheme.primaryColor,
                       side: BorderSide(color: AppTheme.primaryColor),
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      padding: EdgeInsets.zero,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    icon: const Icon(Icons.wallet_giftcard, size: 18),
-                    label: const Text(
-                      'Wallet',
-                      style: TextStyle(fontWeight: FontWeight.w600),
-                    ),
+                    child: const Icon(Icons.wallet_giftcard, size: 20),
                   ),
                 ),
               ],
