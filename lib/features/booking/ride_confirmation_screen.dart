@@ -2032,7 +2032,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   /// loading gating identical to pre-compaction behavior.
   Widget _buildBottomBar() {
     // Check if there's a fare error
-    final hasError = _fareError != null;
+    final hasError = _fareError != null && _payableFare == 0;
     final isPrebooked = widget.isScheduled && widget.scheduledDateTime != null;
     final confirmLabel = isPrebooked ? 'Confirm Prebook' : 'Confirm';
     final priceLabel = _isFetchingFare
