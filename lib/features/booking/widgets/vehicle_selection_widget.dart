@@ -77,17 +77,15 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
   @override
   void didUpdateWidget(VehicleSelectionWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Stops change the price — refetch estimates when stops or route change.
+    // Stops/route change price — refetch estimates.
     if (oldWidget.stops != widget.stops ||
         oldWidget.pickupLat != widget.pickupLat ||
         oldWidget.pickupLng != widget.pickupLng ||
         oldWidget.dropoffLat != widget.dropoffLat ||
         oldWidget.dropoffLng != widget.dropoffLng ||
         oldWidget.distance != widget.distance) {
-      // Drop stale estimates immediately: keeping them made old (no-stops)
-      // fares selectable while the refetch ran — booking at the base fare.
-      // Empty map + _isFetchingFares shows the fare skeleton instead.
-      _fareEstimates = {};
+      // Keep previous fares visible; set fetching flag so cards show
+      // a subtle loading pulse instead of flashing NA.
       _promoResponse = null;
       _estimateToll = null;
       _fetchFareEstimates();
