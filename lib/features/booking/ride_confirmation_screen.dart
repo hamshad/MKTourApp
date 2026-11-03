@@ -24,7 +24,6 @@ import '../../core/models/toll_breakdown.dart';
 import '../../core/models/error_display_helper.dart';
 import '../ride/outstanding_balance_screen.dart';
 import 'widgets/schedule_ride_sheet.dart';
-import '../coupons/coupon_wallet_screen.dart';
 
 /// Ride Confirmation Screen - Shows ride details before final booking
 /// Displays pickup, dropoff, vehicle type, distance, duration, and fare
@@ -2612,12 +2611,8 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                     onPressed: _hasCouponApplied
                         ? null
                         : () async {
-                            final couponCode = await Navigator.push<String>(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const CouponWalletScreen(),
-                              ),
-                            );
+                            final couponCode =
+                                await _showCouponSelectorSheet(context);
                             if (couponCode != null && couponCode.isNotEmpty) {
                               _couponController.text = couponCode;
                               _applyCoupon();
@@ -2759,6 +2754,247 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
         fontSize: 20,
         fontWeight: FontWeight.bold,
         color: AppTheme.primaryColor,
+      ),
+    );
+  }
+
+  /// Bottom sheet: single-tap pick of an active coupon.
+  Future<String?> _showCouponSelectorSheet(BuildContext context) async {
+    final wallet = await CouponService.fetchWallet(status: 'active', limit: 50);
+    final active =
+        wallet.coupons.where((c) => c.status == 'active').toList();
+
+    if (active.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No active coupons available'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return null;
+    }
+
+    return showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _CouponSelectorSheet(coupons: active),
+    );
+  }
+}
+
+class _CouponSelectorSheet extends StatelessWidget {
+  final List<CouponWalletItem> coupons;
+
+  const _CouponSelectorSheet({required this.coupons});
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.3,
+      maxChildSize: 0.9,
+      expand: false,
+      builder: (context, scrollController) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
+              child: Row(
+                children: [
+                  const Text(
+                    'Select Coupon',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close),
+                    tooltip: 'Close',
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: ListView.builder(
+                controller: scrollController,
+                padding: const EdgeInsets.all(16),
+                itemCount: coupons.length,
+                itemBuilder: (context, index) {
+                  final coupon = coupons[index];
+                  final campaign = coupon.campaign;
+                  return _CouponSelectorTile(
+                    code: coupon.code,
+                    campaignName: campaign.name,
+                    discountLabel: couponDiscountLabel(
+                      campaign.discountType,
+                      campaign.discountValue,
+                    ),
+                    minFare: campaign.minFare,
+                    maxDiscountAmount: campaign.maxDiscountAmount,
+                    expiresAt: coupon.expiresAt,
+                    onTap: () => Navigator.pop(context, coupon.code),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CouponSelectorTile extends StatelessWidget {
+  final String code;
+  final String campaignName;
+  final String discountLabel;
+  final double minFare;
+  final double maxDiscountAmount;
+  final DateTime? expiresAt;
+  final VoidCallback onTap;
+
+  const _CouponSelectorTile({
+    required this.code,
+    required this.campaignName,
+    required this.discountLabel,
+    required this.minFare,
+    required this.maxDiscountAmount,
+    this.expiresAt,
+    required this.onTap,
+  });
+
+  String _formatDate(DateTime? date) {
+    if (date == null) return '—';
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    return '${date.day} ${months[date.month - 1]} ${date.year}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppTheme.borderColor),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  discountLabel,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.primaryColor,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      campaignName.isNotEmpty ? campaignName : 'Coupon',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Code: $code',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textSecondary,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Text(
+                          'Min £${minFare.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: AppTheme.textSecondary,
+                          ),
+                        ),
+                        if (maxDiscountAmount > 0) ...[
+                          const SizedBox(width: 8),
+                          Text(
+                            'Max off £${maxDiscountAmount.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppTheme.textSecondary,
+                            ),
+                          ),
+                        ],
+                        if (expiresAt != null) ...[
+                          const SizedBox(width: 8),
+                          Text(
+                            'Until ${_formatDate(expiresAt)}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppTheme.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Icon(
+                Icons.arrow_forward_ios,
+                size: 16,
+                color: AppTheme.textSecondary,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
