@@ -71,6 +71,9 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
   // not repopulate estimates after a newer stops-change fetch started.
   int _fareFetchGen = 0;
 
+  /// Check if current fetch generation is stale (a newer fetch started).
+  bool _isStale(int gen) => gen != _fareFetchGen;
+
   @override
   void didUpdateWidget(VehicleSelectionWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -136,7 +139,6 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
   /// Fetch fare estimates for all vehicle categories from backend
   Future<void> _fetchFareEstimates() async {
     final gen = ++_fareFetchGen;
-    bool stale() => gen != _fareFetchGen;
 
     if (widget.fixedFareByCategory != null) {
       setState(() => _isFetchingFares = true);
@@ -171,16 +173,30 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
 
     try {
       // Use new fare-estimate endpoint which handles promo logically
-      final promoData = await _placesService.getFareEstimate(
-        pickupLat: widget.pickupLat!,
-        pickupLon: widget.pickupLng!,
-        dropoffLat: widget.dropoffLat!,
-        dropoffLon: widget.dropoffLng!,
-        distance: widget.distance ?? 0.0,
-        stops: widget.stops,
-      );
+      Map<String, dynamic>? promoData;
+      try {
+        promoData = await _placesService.getFareEstimate(
+          pickupLat: widget.pickupLat!,
+          pickupLon: widget.pickupLng!,
+          dropoffLat: widget.dropoffLat!,
+          dropoffLon: widget.dropoffLng!,
+          distance: widget.distance ?? 0.0,
+          stops: widget.stops,
+        );
+      } on Exception catch (e) {
+        // getFareEstimate throws on 400 with the backend error message
+        debugPrint('🔴 [VehicleSelectionWidget] Fare estimate failed: $e');
+if (mounted && !_isStale(gen)) {
+          final info = RideErrorMapper.map(e.toString());
+          setState(() {
+            _fareError = '${info.title}: ${info.copy}';
+            _fareErrorAction = info.actionLabel ?? 'Try again';
+          });
+        }
+        promoData = null; // Will trigger fallback
+      }
 
-      if (stale()) {
+      if (_isStale(gen)) {
         // A newer fetch (stops/route change) superseded this one — it owns
         // _isFetchingFares and the estimate map now.
         return;
@@ -207,7 +223,7 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
           _estimateToll = TollInfo.fromEstimate(promoData);
           _fareError = null;
           _fareErrorAction = null;
-          final List<dynamic> categories = promoData['categories'] ?? [];
+          final List<dynamic> categories = (promoData?['categories'] as List<dynamic>?) ?? [];
           for (var cat in categories) {
             if (cat is! Map) continue;
             final normalized = _normalizeCategory(
@@ -228,45 +244,18 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
           }
         });
         debugPrint('✅ VehicleSelectionWidget: Got promo-aware fare estimates');
-      } else {
-        // Fare endpoint failed (e.g. 400 missing params) — inline retry row
-        // via the central mapper, never a silent empty list.
-        if (mounted) {
-          final info = RideErrorMapper.map(
-            'pickupLon, pickupLat, dropoffLon, dropoffLat, and distance are required',
-          );
-          setState(() {
-            _fareError = '${info.title}: ${info.copy}';
-            _fareErrorAction = info.actionLabel ?? 'Try again';
-          });
+        if (mounted && !_isStale(gen)) {
+          _promoteFallbackFares(gen);
         }
-        debugPrint('⚠️ Falling back to sequential fare estimates');
-        for (final category in _categories) {
-          if (stale()) break;
-          try {
-            final result = await _placesService.getDistanceAndFare(
-              originLat: widget.pickupLat!,
-              originLng: widget.pickupLng!,
-              destLat: widget.dropoffLat!,
-              destLng: widget.dropoffLng!,
-              categorySlug: category.slug,
-            );
-
-            if (mounted && result != null && !stale()) {
-              setState(() {
-                _fareEstimates[category.slug] = result;
-              });
-            }
-          } catch (e) {
-            debugPrint(
-              '❌ VehicleSelectionWidget: Error getting fare for ${category.slug}: $e',
-            );
-          }
-        }
+        return;
       }
+
+      // Fallback: sequential fare estimates (only if promo endpoint failed)
+      debugPrint('⚠️ Falling back to sequential fare estimates');
+      await _promoteFallbackFares(gen);
     } catch (e) {
       debugPrint('❌ VehicleSelectionWidget: Error fetching fare estimates: $e');
-      if (mounted && !stale()) {
+      if (mounted && !_isStale(gen)) {
         final info = RideErrorMapper.map(e.toString());
         setState(() {
           _fareError = '${info.title}: ${info.copy}';
@@ -275,8 +264,37 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
       }
     }
 
-    if (mounted && !stale()) {
+    if (mounted && !_isStale(gen)) {
       setState(() => _isFetchingFares = false);
+    }
+  }
+
+  /// Normalize one fare-estimate category
+  /// Fallback to sequential per-category fare estimates (used when
+  /// the promo-aware batch endpoint fails, e.g. service area restriction).
+  Future<void> _promoteFallbackFares(int gen) async {
+    debugPrint('⚠️ Promoting fallback sequential fare estimates');
+    for (final category in _categories) {
+      if (_isStale(gen)) break;
+      try {
+        final result = await _placesService.getDistanceAndFare(
+          originLat: widget.pickupLat!,
+          originLng: widget.pickupLng!,
+          destLat: widget.dropoffLat!,
+          destLng: widget.dropoffLng!,
+          categorySlug: category.slug,
+        );
+
+        if (mounted && result != null && !_isStale(gen)) {
+          setState(() {
+            _fareEstimates[category.slug] = result;
+          });
+        }
+      } catch (e) {
+        debugPrint(
+          '❌ VehicleSelectionWidget: Error getting fare for ${category.slug}: $e',
+        );
+      }
     }
   }
 

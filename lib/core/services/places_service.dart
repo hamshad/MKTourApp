@@ -540,6 +540,9 @@ class PlacesService {
   }) async {
     try {
       final headers = await ApiConfig.getAuthHeaders();
+      
+      // Use the same origin/destination format as getDistanceAndFare
+      // Backend expects: origin=lat,lng&destination=lat,lng
       final queryParams = <String, String>{
         'pickupLat': '$pickupLat',
         'pickupLon': '$pickupLon',
@@ -557,6 +560,8 @@ class PlacesService {
       debugPrint('💷 ─────────────────────────────────────────────');
       debugPrint('💷 PlacesService.getFareEstimate()');
       debugPrint('💷 [Request] URL: $url');
+      debugPrint('💷 [Request] Params: $queryParams');
+      debugPrint('💷 [Request] Headers: $headers');
 
       final response = await http.get(url, headers: headers);
       debugPrint('💷 [Response] Status Code: ${response.statusCode}');
@@ -575,7 +580,13 @@ class PlacesService {
       } else {
         debugPrint('🔴 PlacesService.getFareEstimate() Failed: HTTP ${response.statusCode}');
         debugPrint('🔴 [Response] Body: ${response.body}');
-        return null;
+        // Parse error message from response body
+        String errorMessage = 'Failed to get fare estimate';
+        try {
+          final body = json.decode(response.body);
+          errorMessage = body['message']?.toString() ?? errorMessage;
+        } catch (_) {}
+        throw Exception(errorMessage);
       }
     } catch (e) {
       debugPrint('🔴 PlacesService.getFareEstimate() Error: $e');

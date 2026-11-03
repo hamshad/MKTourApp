@@ -347,7 +347,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
               'Unable to calculate fare for this route. Please try a different location.';
         });
         debugPrint(
-          '❌ RideConfirmationScreen: Fare API returned null - cannot proceed',
+          '❌ RideConfirmationScreen: Fare API returned null - cannot proceed | _fareError=$_fareError',
         );
       }
     } catch (e) {
@@ -358,6 +358,9 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
           _fareError =
               'Failed to calculate fare. Please check your connection and try again.';
         });
+        debugPrint(
+          '❌ RideConfirmationScreen: Caught error, _fareError=$_fareError',
+        );
       }
     }
   }
@@ -367,12 +370,14 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   /// the `_currentFareData` shape (routed distance incl. stops, promo
   /// split, congestion, outstanding balance).
   Future<Map<String, dynamic>?> _fetchFareEstimateWithStops() async {
-    final pickupLat = (widget.pickupLocation['coordinates'][1] as num).toDouble();
-    final pickupLng = (widget.pickupLocation['coordinates'][0] as num).toDouble();
-    final dropoffLat =
-        (widget.dropoffLocation['coordinates'][1] as num).toDouble();
-    final dropoffLng =
-        (widget.dropoffLocation['coordinates'][0] as num).toDouble();
+    final pickupLat = (widget.pickupLocation['coordinates'][1] as num)
+        .toDouble();
+    final pickupLng = (widget.pickupLocation['coordinates'][0] as num)
+        .toDouble();
+    final dropoffLat = (widget.dropoffLocation['coordinates'][1] as num)
+        .toDouble();
+    final dropoffLng = (widget.dropoffLocation['coordinates'][0] as num)
+        .toDouble();
 
     final data = await _placesService.getFareEstimate(
       pickupLat: pickupLat,
@@ -441,8 +446,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
       // vehicle cards apply, so the breakdown line keeps the toll name on a
       // stops re-price too (per-category keys still win).
       final routeToll = TollInfo.fromEstimate(data);
-      final tollPresent =
-          toll.hasToll || toll.tollFee > 0 || routeToll.hasToll;
+      final tollPresent = toll.hasToll || toll.tollFee > 0 || routeToll.hasToll;
       final tollFee = toll.tollFee > 0 ? toll.tollFee : routeToll.tollFee;
       final tollName = toll.tollName ?? routeToll.tollName;
       final tollTotal = toll.total ?? routeToll.total;
@@ -459,7 +463,9 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
         'is_free_ride': isFreeRide,
         'promo_applied': promoApplied,
         'is_congestion': cat['isCongestionCharge'] == true,
-        'congestion_amount': numOf(cat['congestionChargeAmount'] ?? 0).toDouble(),
+        'congestion_amount': numOf(
+          cat['congestionChargeAmount'] ?? 0,
+        ).toDouble(),
         'outstanding_balance': outstandingBalance.toDouble(),
         if (tollPresent) ...{
           'toll_fee': tollFee,
@@ -2032,10 +2038,14 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
   /// loading gating identical to pre-compaction behavior.
   Widget _buildBottomBar() {
     // Check if there's a fare error
-    final hasError = _fareError != null &&
-    (_currentFareData == null ||
-     _currentFareData['total_fare'] == null ||
-     (_currentFareData['total_fare'] as num?) == 0);
+    final hasError =
+        _fareError != null &&
+        (_currentFareData == null ||
+            _currentFareData['total_fare'] == null ||
+            (_currentFareData['total_fare'] as num?) == 0);
+    debugPrint(
+      '🔍 [hasError] _fareError=$_fareError, _currentFareData=$_currentFareData, total_fare=${_currentFareData?['total_fare']}, hasError=$hasError',
+    );
     final isPrebooked = widget.isScheduled && widget.scheduledDateTime != null;
     final confirmLabel = isPrebooked ? 'Confirm Prebook' : 'Confirm';
     final priceLabel = _isFetchingFare
@@ -2076,33 +2086,38 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
 
               // Error Message (if any)
               if (hasError) ...[
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.red.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.red.shade200),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.error_outline,
-                        color: Colors.red.shade700,
-                        size: 20,
+                Builder(
+                  builder: (context) {
+                    debugPrint('🔍 [ErrorBanner] Showing error: $_fareError');
+                    return Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.red.shade200),
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _fareError!,
-                          style: TextStyle(
-                            fontSize: 13,
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.error_outline,
                             color: Colors.red.shade700,
+                            size: 20,
                           ),
-                        ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _fareError!,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.red.shade700,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
+                    );
+                  },
+                ), // Builder builder
                 const SizedBox(height: 8),
               ],
 
@@ -2659,11 +2674,7 @@ class _RideConfirmationScreenState extends State<RideConfirmationScreen> {
                 ),
               ),
               const SizedBox(width: 4),
-              Icon(
-                Icons.local_offer,
-                size: 16,
-                color: AppTheme.successColor,
-              ),
+              Icon(Icons.local_offer, size: 16, color: AppTheme.successColor),
             ],
           ),
         ],

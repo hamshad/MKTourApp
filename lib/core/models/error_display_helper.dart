@@ -231,6 +231,16 @@ class RideErrorMapper {
       );
     }
 
+    if (lower.contains('only operate rides starting in milton keynes') ||
+        lower.contains('we currently only operate')) {
+      return const RideErrorInfo(
+        title: 'Service area restriction',
+        copy: 'We currently only operate rides starting in Milton Keynes, '
+            'or returning to Milton Keynes from partner airports.',
+        actionLabel: 'OK',
+      );
+    }
+
     if (lower.contains('pickup and dropoff locations are required') ||
         (lower.contains('pickuplon') && lower.contains('required'))) {
       return const RideErrorInfo(
