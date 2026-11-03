@@ -119,8 +119,12 @@ class _VehicleSelectionWidgetState extends State<VehicleSelectionWidget> {
           '✅ VehicleSelectionWidget: Loaded ${categories.length} categories',
         );
 
-        // Fetch fare estimates for all categories if locations are available
-        _fetchFareEstimates();
+        // Fetch fare estimates only once route distance is known —
+        // fetching with distance 0.0 first causes a visible fare flip
+        // when the real-distance refetch lands.
+        if (widget.distance != null) {
+          _fetchFareEstimates();
+        }
       }
     } catch (e) {
       debugPrint('❌ VehicleSelectionWidget: Error loading categories: $e');
@@ -244,8 +248,16 @@ if (mounted && !_isStale(gen)) {
           }
         });
         debugPrint('✅ VehicleSelectionWidget: Got promo-aware fare estimates');
+        // Only fill categories the promo batch did NOT return — never
+        // overwrite promo-aware fares with sequential ones (they differ).
         if (mounted && !_isStale(gen)) {
-          _promoteFallbackFares(gen);
+          final missing = _categories
+              .where((c) => !_fareEstimates.containsKey(c.slug))
+              .map((c) => c.slug)
+              .toList();
+          if (missing.isNotEmpty) {
+            await _promoteFallbackFares(gen, onlySlugs: missing);
+          }
         }
         return;
       }
@@ -269,12 +281,15 @@ if (mounted && !_isStale(gen)) {
     }
   }
 
-  /// Normalize one fare-estimate category
   /// Fallback to sequential per-category fare estimates (used when
-  /// the promo-aware batch endpoint fails, e.g. service area restriction).
-  Future<void> _promoteFallbackFares(int gen) async {
+  /// the promo-aware batch endpoint fails, e.g. service area restriction,
+  /// or when specific categories are missing from the batch response).
+  Future<void> _promoteFallbackFares(int gen, {List<String>? onlySlugs}) async {
     debugPrint('⚠️ Promoting fallback sequential fare estimates');
-    for (final category in _categories) {
+    final targets = onlySlugs == null
+        ? _categories
+        : _categories.where((c) => onlySlugs.contains(c.slug)).toList();
+    for (final category in targets) {
       if (_isStale(gen)) break;
       try {
         final result = await _placesService.getDistanceAndFare(
