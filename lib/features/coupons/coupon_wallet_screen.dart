@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../core/models/coupon.dart';
 import '../../core/services/coupon_service.dart';
 import '../../core/theme.dart';
+import '../account/pdf_viewer_screen.dart';
 
 /// My Coupons / Wallet (coupons spec P3): active / used / expired tabs
 /// backed by GET /coupons/wallet?status=&page=&limit=.
@@ -120,6 +121,24 @@ class _CouponWalletScreenState extends State<CouponWalletScreen>
         backgroundColor: Colors.white,
         elevation: 0,
         iconTheme: const IconThemeData(color: AppTheme.textPrimary),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: IconButton(
+              icon: const Icon(Icons.info_outline, color: AppTheme.textPrimary),
+              tooltip: 'Coupon Terms & Conditions',
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const PdfViewerScreen(
+                    title: 'Coupon Terms & Conditions',
+                    assetPath: 'assets/coupon_terms_conditions.pdf',
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           labelColor: AppTheme.primaryColor,

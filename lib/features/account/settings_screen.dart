@@ -145,7 +145,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       body: ListView(
         children: [
-          _buildSectionHeader('Privacy \u0026 Security'),
+          _buildSectionHeader('Privacy'),
           _buildLinkItem('Privacy Policy', onTap: _showPrivacyPolicy),
           _buildLinkItem(
             'Customer Complaint Policy',
@@ -171,18 +171,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
-          _buildLinkItem(
-            'Payment Security & PCI Compliance',
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const PdfViewerScreen(
-                  title: 'Payment Security & PCI Compliance',
-                  assetPath: 'assets/payment_security_pci_compliance.pdf',
-                ),
-              ),
-            ),
-          ),
+          _buildSectionHeader('Terms'),
           _buildLinkItem(
             'Terms & Conditions',
             onTap: () => Navigator.push(
@@ -191,6 +180,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 builder: (_) => const PdfViewerScreen(
                   title: 'Terms & Conditions',
                   assetPath: 'assets/terms_and_conditions.pdf',
+                ),
+              ),
+            ),
+          ),
+          _buildLinkItem(
+            'Coupon Terms & Conditions',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const PdfViewerScreen(
+                  title: 'Coupon Terms & Conditions',
+                  assetPath: 'assets/coupon_terms_conditions.pdf',
+                ),
+              ),
+            ),
+          ),
+          _buildSectionHeader('Security'),
+          _buildLinkItem(
+            'Payment Security & PCI Compliance',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const PdfViewerScreen(
+                  title: 'Payment Security & PCI Compliance',
+                  assetPath: 'assets/payment_security_pci_compliance.pdf',
                 ),
               ),
             ),

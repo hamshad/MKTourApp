@@ -1132,6 +1132,21 @@ actions: [
                         showDivider: true,
                       ),
                       _buildMenuItem(
+                        Icons.description_outlined,
+                        'Coupon Terms & Conditions',
+                        'View coupon terms',
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const PdfViewerScreen(
+                              title: 'Coupon Terms & Conditions',
+                              assetPath: 'assets/coupon_terms_conditions.pdf',
+                            ),
+                          ),
+                        ),
+                        showDivider: true,
+                      ),
+                      _buildMenuItem(
                         Icons.delete_forever,
                         'Delete Account',
                         'Permanently delete your driver account',
